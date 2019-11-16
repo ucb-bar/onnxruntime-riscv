@@ -18,7 +18,6 @@
 #include <algorithm>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 using onnxruntime::concurrency::ThreadPool;
 
@@ -37,6 +36,62 @@ EIGEN_MATMUL_FUNCTION(int32_t)
 EIGEN_MATMUL_FUNCTION(uint32_t)
 EIGEN_MATMUL_FUNCTION(int64_t)
 EIGEN_MATMUL_FUNCTION(uint64_t)
+
+// Caffe2 gemm provides a simpler interface to the gemm functions, with the
+// limitation that the data has to be contiguous in memory.
+//
+// The gemm call implements the following operation:
+//
+//                  C = alpha * op(A) * op(B) + beta * C
+//
+// where op(A) has size M x K, op(B) has size K x N, and C has size M x N. Each
+// of A, B, and C are matrices and alpha and beta are scalars. Note that the
+// most common use case of gemm will involve setting alpha to 1 and beta to 0.
+//
+// op(A) and op(B) represent the transformations that are done to A and B before
+// the matrix multiply; depending on the flags set, op(A) is equal to A or A^T
+// (transpose) if the argument TransA or TransB is set to CblasNoTrans or
+// CblasTrans, respectively, for each of A and B.
+template <>
+void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
+                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
+                             float* C, ThreadPool* threadpool) {
+  std::runtime_error("Gemm not implemented");
+  ORT_UNUSED_PARAMETER(TransA);
+  ORT_UNUSED_PARAMETER(TransB);
+  ORT_UNUSED_PARAMETER(M);
+  ORT_UNUSED_PARAMETER(N);
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(alpha);
+    ORT_UNUSED_PARAMETER(A);
+      ORT_UNUSED_PARAMETER(B);
+        ORT_UNUSED_PARAMETER(beta);
+          ORT_UNUSED_PARAMETER(C);
+            ORT_UNUSED_PARAMETER(threadpool);
+
+  
+}
+
+template <>
+void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
+                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
+                               int ldc, ThreadPool* threadpool) {
+  std::runtime_error("GemmEx not implemented");
+  ORT_UNUSED_PARAMETER(TransA);
+  ORT_UNUSED_PARAMETER(TransB);
+  ORT_UNUSED_PARAMETER(M);
+  ORT_UNUSED_PARAMETER(N);
+  ORT_UNUSED_PARAMETER(K);
+  ORT_UNUSED_PARAMETER(alpha);
+    ORT_UNUSED_PARAMETER(A);
+      ORT_UNUSED_PARAMETER(lda);
+      ORT_UNUSED_PARAMETER(B);
+        ORT_UNUSED_PARAMETER(ldb);
+        ORT_UNUSED_PARAMETER(beta);
+          ORT_UNUSED_PARAMETER(C);
+            ORT_UNUSED_PARAMETER(ldc);
+            ORT_UNUSED_PARAMETER(threadpool);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // BLAS alternatives.
@@ -62,35 +117,10 @@ EIGEN_MATMUL_FUNCTION(uint64_t)
 // the matrix multiply; depending on the flags set, op(A) is equal to A or A^T
 // (transpose) if the argument TransA or TransB is set to CblasNoTrans or
 // CblasTrans, respectively, for each of A and B.
-template <>
-void Gemm<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, const int64_t M,
-                             const int64_t N, const int64_t K, float alpha, const float* A, const float* B, float beta,
-                             float* C, ThreadPool* threadpool) {
-  int lda = static_cast<int>((TransA == CblasNoTrans) ? K : M);
-  int ldb = static_cast<int>((TransB == CblasNoTrans) ? N : K);
-  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
-}
 
-template <>
-void MatMul<float>(int M, int N, int K, const float* A, const float* B, float* C, ThreadPool* threadpool) {
-  MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
-}
-
-#if defined(_M_AMD64) || defined(__x86_64__)
-template <>
-void MatMul<double>(int M, int N, int K, const double* A, const double* B, double* C, ThreadPool* threadpool) {
-  MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool);
-}
-#else
+EIGEN_MATMUL_FUNCTION(float)
 EIGEN_MATMUL_FUNCTION(double)
-#endif
 
-template <>
-void GemmEx<float, ThreadPool>(const CBLAS_TRANSPOSE TransA, const CBLAS_TRANSPOSE TransB, int M, int N, int K,
-                               float alpha, const float* A, int lda, const float* B, int ldb, float beta, float* C,
-                               int ldc, ThreadPool* threadpool) {
-  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
-}
 
 template <>
 void Gemv<float, CPUMathUtil>(const CBLAS_TRANSPOSE TransA, int M, int N, float alpha, const float* A, const float* x,

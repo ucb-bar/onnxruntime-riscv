@@ -10,7 +10,6 @@
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/function.h"
-#include "core/mlas/inc/mlas.h"
 
 #ifdef MICROSOFT_INTERNAL
 #include "core/graph/contrib_ops/internal_schema_defs.h"
@@ -1920,9 +1919,9 @@ Example 4:
       });
 
   // Register the NCHWc schemas if supported by the platform.
-  if (MlasNchwcGetBlockSize() > 1) {
-    RegisterNchwcSchemas();
-  }
+  // if (MlasNchwcGetBlockSize() > 1) {
+  //   RegisterNchwcSchemas();
+  // }
 
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.

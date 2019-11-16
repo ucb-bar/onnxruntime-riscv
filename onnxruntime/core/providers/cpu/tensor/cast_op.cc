@@ -10,9 +10,6 @@
 #include "Eigen/src/Core/arch/Default/Half.h"
 #include "core/common/common.h"
 
-#if defined(_M_AMD64)
-#include "core/mlas/inc/mlas.h"
-#endif
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -40,13 +37,11 @@ inline void CastData<MLFloat16, float>(const Tensor* in, Tensor* out, const Tens
   auto out_data = out->template MutableData<float>();
   auto in_data = in->template Data<MLFloat16>();
   auto shape_size = shape.Size();
-#if defined(_M_AMD64)
-  MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
-#else
+
   auto in_vector = ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(in_data)), shape_size);
   auto output_vector = EigenVectorMap<float>(out_data, shape_size);
   output_vector = in_vector.template cast<float>();
-#endif
+
 }
 
 template <typename SrcType,

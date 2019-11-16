@@ -8,7 +8,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 
@@ -96,6 +95,13 @@ class LpPool {
     y_data = static_cast<T>(std::pow(y_data, 1.0f / cxt.p_));
   }
   static const PoolType type = PoolType::kLpPool;
+};
+
+enum MLAS_POOLING_KIND {
+    MlasMaximumPooling,
+    MlasAveragePoolingExcludePad,
+    MlasAveragePoolingIncludePad,
+    MlasPoolingKindCount,
 };
 
 class PoolBase {

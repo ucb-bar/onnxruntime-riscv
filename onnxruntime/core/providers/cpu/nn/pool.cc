@@ -169,44 +169,37 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 }
 
 Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const {
-  const auto* X = context->Input<Tensor>(0);
-  const TensorShape& x_shape = X->Shape();
+  // const auto* X = context->Input<Tensor>(0);
+  // const TensorShape& x_shape = X->Shape();
 
-  size_t input_dims = x_shape.NumDimensions();
-  ORT_RETURN_IF_NOT(input_dims >= 3, "Input dimension cannot be less than 3.");
+  // size_t input_dims = x_shape.NumDimensions();
+  // ORT_RETURN_IF_NOT(input_dims >= 3, "Input dimension cannot be less than 3.");
 
-  size_t pooling_dims = input_dims - 2;
-  if (pooling_dims > 3) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
-  }
-  if (!pool_attrs_.global_pooling) {
-    ORT_RETURN_IF_NOT(pooling_dims == pool_attrs_.kernel_shape.size(),
-                      "kernel_shape num_dims is not compatible with X num_dims.");
-  }
+  // size_t pooling_dims = input_dims - 2;
+  // if (pooling_dims > 3) {
+  //   return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
+  // }
+  // if (!pool_attrs_.global_pooling) {
+  //   ORT_RETURN_IF_NOT(pooling_dims == pool_attrs_.kernel_shape.size(),
+  //                     "kernel_shape num_dims is not compatible with X num_dims.");
+  // }
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
-  TensorShape output_shape(output_dims);
-  Tensor* Y = context->Output(0, output_shape);
+  // std::vector<int64_t> pads = pool_attrs_.pads;
+  // std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  // TensorShape output_shape(output_dims);
+  // Tensor* Y = context->Output(0, output_shape);
 
-  // edge case: one or more dims with value of 0
-  if (output_shape.Size() == 0)
-    return Status::OK();
+  // // edge case: one or more dims with value of 0
+  // if (output_shape.Size() == 0)
+  //   return Status::OK();
 
   // Get access to the internal threadpool
   // Temporarily derive concurrency parameters without access to session state
-  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+  //concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  MlasPool(kind,
-           pooling_dims,
-           X->Shape().GetDims().data(),
-           pool_attrs_.global_pooling ? nullptr : pool_attrs_.kernel_shape.data(),
-           pool_attrs_.global_pooling ? nullptr : pads.data(),
-           pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(),
-           output_dims.data(),
-           X->template Data<float>(),
-           Y->template MutableData<float>(),
-           thread_pool);
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(kind);
+  throw std::runtime_error("Pooling not implemented");
 
   return Status::OK();
 }

@@ -4,7 +4,6 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include <unsupported/Eigen/SpecialFunctions>
 #include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
 
 #include <cmath>
 
@@ -945,7 +944,13 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   auto& X = *X_ptr;
   auto& Y = *context->Output(0, X.Shape());
 
-  MlasComputeErf(X.template Data<float>(), Y.template MutableData<float>(), X.Shape().Size());
+  const float* read = X.template Data<float>();
+  float *write = Y.template MutableData<float>();
+  size_t numElem = X.Shape().Size();
+
+  for (size_t i = 0; i < numElem; i++) {
+    write[i] = erf(read[i]);
+  }
 
   return Status::OK();
 }

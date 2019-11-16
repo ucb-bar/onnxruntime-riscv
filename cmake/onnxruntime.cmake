@@ -73,7 +73,6 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_framework
     onnxruntime_graph
     onnxruntime_common
-    onnxruntime_mlas
     ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)

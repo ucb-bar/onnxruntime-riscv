@@ -22,7 +22,6 @@
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {

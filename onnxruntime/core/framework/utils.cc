@@ -17,7 +17,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace ONNX_NAMESPACE {
@@ -69,7 +68,7 @@ namespace utils {
 void* DefaultAlloc(size_t size) {
   if (size <= 0) return nullptr;
   void* p;
-  size_t alignment = MlasGetPreferredBufferAlignment();
+  size_t alignment = 32;
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);
   if (p == nullptr) throw std::bad_alloc();

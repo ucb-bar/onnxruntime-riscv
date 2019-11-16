@@ -677,7 +677,6 @@ include(onnxruntime_util.cmake)
 include(onnxruntime_providers.cmake)
 include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
-include(onnxruntime_mlas.cmake)
 
 if(onnxruntime_USE_AUTOML)
   add_definitions(-DMICROSOFT_AUTOML)

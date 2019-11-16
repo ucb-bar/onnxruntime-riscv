@@ -184,7 +184,6 @@ set(onnxruntime_test_framework_libs
   onnxruntime_util
   onnxruntime_graph
   onnxruntime_common
-  onnxruntime_mlas
   )
 
 set(onnxruntime_test_server_libs
@@ -271,7 +270,6 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
-    onnxruntime_mlas
 )
 
 set(onnxruntime_test_providers_libs
@@ -786,13 +784,3 @@ if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
     target_compile_definitions(compare_two_sessions PRIVATE "_CONSOLE" "_UNICODE" "UNICODE")
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
 endif()
-
-add_executable(onnxruntime_mlas_test ${TEST_SRC_DIR}/mlas/unittest.cpp)
-target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT})
-set(onnxruntime_mlas_test_libs onnxruntime_mlas onnxruntime_common)
-if(onnxruntime_USE_NSYNC)
-  list(APPEND onnxruntime_mlas_test_libs nsync_cpp)
-endif()
-list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
-target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
-set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
