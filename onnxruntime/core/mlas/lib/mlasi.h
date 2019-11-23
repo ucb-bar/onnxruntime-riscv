@@ -79,18 +79,18 @@ Abstract:
 
 #if defined(_M_AMD64) || defined(__x86_64__)
 #define MLAS_TARGET_AMD64
-#endif
-#if defined(_M_IX86) || defined(__i386__)
+#elif defined(_M_IX86) || defined(__i386__)
 #define MLAS_TARGET_IX86
+#elif defined(_M_ARM64) || defined(__aarch64__)
+#define MLAS_TARGET_ARM64
+#elif defined(_M_ARM) || defined(__arm__)
+#define MLAS_TARGET_ARM
+#else
+#define MLAS_TARGET_CPU_ONLY
 #endif
+
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
 #define MLAS_TARGET_AMD64_IX86
-#endif
-#if defined(_M_ARM64) || defined(__aarch64__)
-#define MLAS_TARGET_ARM64
-#endif
-#if defined(_M_ARM) || defined(__arm__)
-#define MLAS_TARGET_ARM
 #endif
 
 //
@@ -710,14 +710,14 @@ MlasGetMaximumThreadCount(
 #if defined(__FMA__) || (defined(_MSC_VER) && defined(__AVX2__))
 #define MLAS_FMA3_INTRINSICS
 #endif
-#else
-#error Unsupported architecture.
 #endif
 
 #if defined(MLAS_NEON_INTRINSICS)
 typedef float32x4_t MLAS_FLOAT32X4;
 #elif defined(MLAS_SSE2_INTRINSICS)
 typedef __m128 MLAS_FLOAT32X4;
+#elif defined(MLAS_TARGET_CPU_ONLY)
+typedef float MLAS_FLOAT32X4 __attribute__((vector_size(16)));
 #endif
 
 inline
@@ -728,6 +728,9 @@ MlasZeroFloat32x4(void)
     return vdupq_n_f32(0.0f);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_setzero_ps();
+#else
+  MLAS_FLOAT32X4 zero = {0.0f, 0.0f, 0.0f, 0.0f};
+  return zero;
 #endif
 }
 
@@ -739,6 +742,9 @@ MlasLoadFloat32x4(const float* Buffer)
     return vld1q_f32(Buffer);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_loadu_ps(Buffer);
+#else
+  MLAS_FLOAT32X4 loaded = {Buffer[0], Buffer[1], Buffer[2], Buffer[3]};
+  return loaded;
 #endif
 }
 
@@ -750,6 +756,11 @@ MlasStoreFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
     vst1q_f32(Buffer, Vector);
 #elif defined(MLAS_SSE2_INTRINSICS)
     _mm_storeu_ps(Buffer, Vector);
+#else
+  Buffer[0] = Vector[0];
+  Buffer[1] = Vector[1];
+  Buffer[2] = Vector[2];
+  Buffer[3] = Vector[3];
 #endif
 }
 
@@ -761,6 +772,8 @@ MlasStoreAlignedFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
     vst1q_f32(Buffer, Vector);
 #elif defined(MLAS_SSE2_INTRINSICS)
     _mm_store_ps(Buffer, Vector);
+#else
+  MlasStoreFloat32x4(Buffer, Vector);
 #endif
 }
 
@@ -772,6 +785,9 @@ MlasStoreLowHalfFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
     vst1_f32(Buffer, vget_low_f32(Vector));
 #elif defined(MLAS_SSE2_INTRINSICS)
     _mm_storel_pi((__m64*)Buffer, Vector);
+#else
+  Buffer[0] = Vector[0];
+  Buffer[1] = Vector[1];
 #endif
 }
 
@@ -786,6 +802,8 @@ MlasStoreLaneFloat32x4(float* Buffer, MLAS_FLOAT32X4 Vector)
     // N.B. When building with AVX instructions, compilers optimize the following
     // to a single vextractps instruction.
     _mm_store_ss(Buffer, _mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(Lane, Lane, Lane, Lane)));
+#else
+  *Buffer = Vector[Lane];
 #endif
 }
 
@@ -798,6 +816,8 @@ MlasExtractLaneFloat32x4(MLAS_FLOAT32X4 Vector)
     return vgetq_lane_f32(Vector, Lane);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_cvtss_f32(_mm_shuffle_ps(Vector, Vector, _MM_SHUFFLE(Lane, Lane, Lane, Lane)));
+#else
+  return Vector[Lane];
 #endif
 }
 
@@ -829,6 +849,9 @@ MlasBroadcastFloat32x4(float Value)
     return vdupq_n_f32(Value);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_set1_ps(Value);
+#else
+  MLAS_FLOAT32X4 splat = {Value, Value, Value, Value};
+  return splat;
 #endif
 }
 
@@ -840,6 +863,9 @@ MlasBroadcastFloat32x4(const float* Value)
     return vld1q_dup_f32(Value);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_load_ps1(Value);
+#else
+  MLAS_FLOAT32X4 splat = {*Value, *Value, *Value, *Value};
+  return splat;
 #endif
 }
 
@@ -851,6 +877,8 @@ MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vaddq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_add_ps(Vector1, Vector2);
+#else
+  return Vector1 + Vector2;
 #endif
 }
 
@@ -862,6 +890,8 @@ MlasSubtractFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vsubq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_sub_ps(Vector1, Vector2);
+#else
+  return Vector1 - Vector2;
 #endif
 }
 
@@ -873,6 +903,8 @@ MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vmulq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_mul_ps(Vector1, Vector2);
+#else
+  return Vector1 * Vector2;
 #endif
 }
 
@@ -886,6 +918,8 @@ MlasMultiplyAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2, MLAS_FL
     return _mm_fmadd_ps(Vector1, Vector2, Vector3);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_add_ps(_mm_mul_ps(Vector1, Vector2), Vector3);
+#else
+  return Vector1 * Vector2 + Vector3;
 #endif
 }
 
@@ -903,6 +937,8 @@ MlasDivideFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return Vector1;
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_div_ps(Vector1, Vector2);
+#else
+  return Vector1 / Vector2;
 #endif
 }
 
@@ -914,6 +950,8 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vmaxq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
+#else
+  return (Vector1 > Vector2 ? Vector1 : Vector2);
 #endif
 }
 
@@ -925,8 +963,12 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return vminq_f32(Vector1, Vector2);
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
+#else
+  return (Vector1 < Vector2 ? Vector1 : Vector2);
 #endif
 }
+
+#if !defined(MLAS_TARGET_CPU_ONLY)
 
 inline
 MLAS_FLOAT32X4
@@ -996,6 +1038,8 @@ MlasPowerOf2Float32x4(MLAS_FLOAT32X4 Vector)
     return _mm_castsi128_ps(_mm_slli_epi32(emm0, 23));
 #endif
 }
+
+#endif
 
 //
 // Cross-platform wrappers for 64-bit vector intrinsics.

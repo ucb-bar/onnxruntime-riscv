@@ -100,6 +100,12 @@ struct MLAS_MAXIMUM_POOLING
     {
         return vpmax_f32(Vector0, Vector1);
     }
+#elif defined(MLAS_TARGET_CPU_ONLY)
+
+    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction) {
+      float max = std::max({Reduction[0], Reduction[1], Reduction[2], Reduction[3]});
+      return max;
+    }
 
 #endif
 
@@ -184,6 +190,12 @@ struct MLAS_AVERAGE_POOLING
     static float32x2_t ReducePairwise(float32x2_t Vector0, float32x2_t Vector1)
     {
         return vpadd_f32(Vector0, Vector1);
+    }
+
+#elif defined(MLAS_TARGET_CPU_ONLY)
+
+    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction) {
+      return Reduction[0] + Reduction[1] + Reduction[2] + Reduction[3];
     }
 
 #endif
@@ -586,7 +598,7 @@ Return Value:
                 MLAS_FLOAT32X4 Reduction = MlasLoadFloat32x4(ReductionInput++);
 
                 while (ReductionInput < ReductionInputEnd) {
-                    Reduction = PoolingType::Reduce(Reduction, MlasLoadFloat32x4(ReductionInput++));
+                  Reduction = PoolingType::Reduce(Reduction, MlasLoadFloat32x4(ReductionInput++));
                 }
 
                 if (PoolingKind == MlasAveragePoolingExcludePad) {
@@ -600,15 +612,14 @@ Return Value:
                     if (OutputWidthRemaining < 4) {
 
                         if (OutputWidthRemaining >= 2) {
+                          MlasStoreLowHalfFloat32x4(Output, Reduction);
 
-                            MlasStoreLowHalfFloat32x4(Output, Reduction);
-
-                            if (OutputWidthRemaining > 2) {
-                                MlasStoreLaneFloat32x4<2>(Output + 2, Reduction);
+                          if (OutputWidthRemaining > 2) {
+                            MlasStoreLaneFloat32x4<2>(Output + 2, Reduction);
                             }
 
                         } else {
-                            MlasStoreLaneFloat32x4<0>(Output, Reduction);
+                          MlasStoreLaneFloat32x4<0>(Output, Reduction);
                         }
 
                         Output += OutputWidthRemaining;
@@ -624,11 +635,11 @@ Return Value:
                 } else {
 
                     if (OutputWidthRemaining == 1) {
-                        MlasStoreLaneFloat32x4<0>(Output++, Reduction);
-                        break;
+                      MlasStoreLaneFloat32x4<0>(Output++, Reduction);
+                      break;
                     }
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_TARGET_CPU_ONLY)
                     MlasStoreLaneFloat32x4<0>(Output, Reduction);
                     MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #elif defined(MLAS_SSE2_INTRINSICS)
@@ -1000,7 +1011,7 @@ Return Value:
                             break;
                         }
 
-#if defined(MLAS_NEON_INTRINSICS)
+#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_TARGET_CPU_ONLY)
                         MlasStoreLaneFloat32x4<0>(Output, Reduction);
                         MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #elif defined(MLAS_SSE2_INTRINSICS)
@@ -1081,7 +1092,7 @@ Return Value:
         // Reduce the vector to a single float value.
         //
 
-#if defined(MLAS_NEON64_INTRINSICS)
+#if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_TARGET_CPU_ONLY)
 
         float ReductionValue = PoolingType::ReduceFloat32x4(Reduction);
 
@@ -1295,7 +1306,6 @@ Return Value:
     PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
 
     if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
-
         PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
 
     } else if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
@@ -1314,9 +1324,11 @@ Return Value:
             ReductionBufferRemaining = 0;
         }
 
+#if !defined(MLAS_TARGET_CPU_ONLY)
         if (ReductionBufferRemaining >= int64_t(WorkBlock.InputShape[Dimensions - 1])) {
             PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
         }
+#endif
     }
 
 #ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL

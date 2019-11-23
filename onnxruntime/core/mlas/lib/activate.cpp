@@ -143,7 +143,7 @@ struct MLAS_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
         __m128 Selection = _mm_cmple_ps(ZeroFloat32x4, Value);
         return _mm_or_ps(_mm_and_ps(Value, Selection), _mm_andnot_ps(Selection, ValueTimesAlpha));
 #else
-#error Unsupported architecture.
+        return (Value > ZeroFloat32x4 ? ValueTimesAlpha : Value);
 #endif
     }
 
@@ -244,6 +244,7 @@ Return Value:
 
         BiasAddition.LoadNext(Bias);
 
+#if !defined(MLAS_TARGET_CPU_ONLY)
         if (n >= 4) {
 
             do {
@@ -255,6 +256,7 @@ Return Value:
 
             } while (n >= 4);
         }
+#endif
 
         while (n > 0) {
 

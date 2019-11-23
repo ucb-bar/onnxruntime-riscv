@@ -324,10 +324,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     # TODO: fix jemalloc build so it does not conflict with onnxruntime shared lib builds. (e.g. onnxuntime_pybind)
     # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [cmake_path, cmake_dir,
+                 "-DBUILD_SHARED_LIBS=OFF",
+                 '-DCMAKE_EXE_LINKER_FLAGS=-latomic -static',
+                 "-DCMAKE_SYSTEM_NAME=RISCV",
                  "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
                  "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
                  "-Donnxruntime_DEV_MODE=" + ("OFF" if args.android else "ON"),
-                 "-DPYTHON_EXECUTABLE=" + sys.executable,
                  "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
                  "-Donnxruntime_USE_NSYNC=" + ("OFF" if is_windows() or not args.use_nsync else "ON"),
                  "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
@@ -342,7 +344,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
                  "-Donnxruntime_USE_MKLDNN=" + ("ON" if args.use_mkldnn else "OFF"),
                  "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
-                 "-Donnxruntime_USE_GEMMLOWP=" + ("ON" if args.use_gemmlowp else "OFF"),
+                 "-Donnxruntime_USE_GEMMLOWP=" + "ON",
                  "-Donnxruntime_USE_NGRAPH=" + ("ON" if args.use_ngraph else "OFF"),
                  "-Donnxruntime_USE_OPENVINO=" + ("ON" if args.use_openvino else "OFF"),
                  "-Donnxruntime_USE_OPENVINO_MYRIAD=" + ("ON" if args.use_openvino == "MYRIAD_FP16" else "OFF"),
@@ -367,7 +369,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_BUILD_x86=" + ("ON" if args.x86 else "OFF"),
                   # nGraph and TensorRT providers currently only supports full_protobuf option.
                  "-Donnxruntime_USE_FULL_PROTOBUF=" + ("ON" if args.use_full_protobuf or args.use_ngraph or args.use_tensorrt or args.build_server or args.gen_doc else "OFF"),
-                 "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
+                 "-Donnxruntime_DISABLE_CONTRIB_OPS=" + "ON",
                  "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
                  # enable pyop if it is nightly build
                  "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops or (args.config != 'Debug' and bool(os.getenv('NIGHTLY_BUILD') == '1')) else "OFF"),
@@ -793,37 +795,7 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64) and not is_windows():
-        raise BuildError('Currently only support building protoc for Windows host while cross-compiling for ARM/ARM64 arch')
-
-    log.info("Building protoc for host to be used in cross-compiled build process")
-    protoc_build_dir = os.path.join(os.getcwd(), build_dir, 'host_protoc')
-    os.makedirs(protoc_build_dir, exist_ok=True)
-    # Generate step
-    cmd_args = [cmake_path,
-                os.path.join(source_dir, 'cmake', 'external', 'protobuf', 'cmake'),
-                '-Dprotobuf_BUILD_TESTS=OFF',
-                '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
-                '-Dprotobuf_BUILD_SHARED_LIBS=OFF']
-    if is_windows():
-        cmd_args += ['-T',
-                'host=x64',
-                '-G',
-                args.cmake_generator]
-    run_subprocess(cmd_args, cwd= protoc_build_dir)
-    # Build step
-    cmd_args = [cmake_path,
-                "--build", protoc_build_dir,
-                "--config", "Release",
-                "--target", "protoc"]
-    run_subprocess(cmd_args)
-
-    # Absolute protoc path is needed for cmake
-    expected_protoc_path = os.path.join(protoc_build_dir, 'Release', 'protoc.exe') if is_windows() else os.path.join(protoc_build_dir, 'protoc')
-    if not os.path.exists(expected_protoc_path):
-        raise BuildError("Couldn't build protoc for host. Failing build.")
-
-    return expected_protoc_path
+    return "/scratch/pranavprakash/onnxruntime/bin/protoc"
 
 def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
@@ -918,54 +890,7 @@ def main():
     log.info("Build started")
     if (args.update):
         cmake_extra_args = []
-        path_to_protoc_exe = None
-        if(is_windows()):
-          if (args.x86):
-            cmake_extra_args = ['-A','Win32','-T','host=x64','-G', args.cmake_generator]
-          elif (args.arm or args.arm64):
-            # Cross-compiling for ARM(64) architecture
-            # First build protoc for host to use during cross-compilation
-            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
-            if args.arm:
-                cmake_extra_args = ['-A', 'ARM']
-            else:
-                cmake_extra_args = ['-A', 'ARM64']
-            cmake_extra_args += ['-G', args.cmake_generator]
-            # Cannot test on host build machine for cross-compiled builds (Override any user-defined behaviour for test if any)
-            if args.test:
-                log.info("Cannot test on host build machine for cross-compiled ARM(64) builds. Will skip test running after build.")
-                args.test = False
-          else:
-            toolset = 'host=x64'
-            if (args.msvc_toolset):
-                toolset += ',version=' + args.msvc_toolset
-            if (args.cuda_version):
-                toolset += ',cuda=' + args.cuda_version
-
-            cmake_extra_args = ['-A','x64','-T', toolset, '-G', args.cmake_generator]
-        if args.android:
-            # Cross-compiling for Android
-            path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
-        if is_ubuntu_1604():
-            if (args.arm or args.arm64):
-                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
-            install_ubuntu_deps(args)
-            if not is_docker():
-                install_python_deps()
-        if (args.enable_pybind and is_windows()):
-            install_python_deps(args.numpy_version)
-        if (not args.skip_submodule_sync):
-            update_submodules(source_dir)
-
-        if args.enable_onnx_tests or args.download_test_data:
-            if args.download_test_data:
-                if not args.test_data_url or not args.test_data_checksum:
-                   raise UsageError("The test_data_url and test_data_checksum arguments are required.")
-            setup_test_data(build_dir, configs, args.test_data_url, args.test_data_checksum, args.azure_sas_key)
-
-        if args.path_to_protoc_exe:
-            path_to_protoc_exe = args.path_to_protoc_exe
-
+        path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
         generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, tensorrt_home, path_to_protoc_exe, configs, cmake_extra_defines,
                             args, cmake_extra_args)
 

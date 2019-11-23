@@ -85,64 +85,64 @@ Return Value:
 
 --*/
 {
-    while (N >= 4) {
+#if !defined(MLAS_TARGET_CPU_ONLY)
+  while (N >= 4) {
+    MLAS_FLOAT32X4 Value = MlasLoadFloat32x4(Input);
 
-        MLAS_FLOAT32X4 Value = MlasLoadFloat32x4(Input);
+    Value = MlasMaximumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.LowerRange), Value);
+    Value = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.UpperRange), Value);
 
-        Value = MlasMaximumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.LowerRange), Value);
-        Value = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasLogisticConstants.UpperRange), Value);
+    MLAS_FLOAT32X4 ValueSquared = MlasMultiplyFloat32x4(Value, Value);
 
-        MLAS_FLOAT32X4 ValueSquared = MlasMultiplyFloat32x4(Value, Value);
+    MLAS_FLOAT32X4 p;
+    p = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_9),
+                                 MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_7));
+    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_5));
+    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_3));
+    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_1));
+    p = MlasMultiplyFloat32x4(p, Value);
 
-        MLAS_FLOAT32X4 p;
-        p = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_9),
-            MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_7));
-        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_5));
-        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_3));
-        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.alpha_1));
-        p = MlasMultiplyFloat32x4(p, Value);
+    MLAS_FLOAT32X4 q;
+    q = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_10),
+                                 MlasBroadcastFloat32x4(MlasLogisticConstants.beta_8));
+    q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_6));
+    q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_4));
+    q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_2));
+    q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_0));
 
-        MLAS_FLOAT32X4 q;
-        q = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_10),
-            MlasBroadcastFloat32x4(MlasLogisticConstants.beta_8));
-        q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_6));
-        q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_4));
-        q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_2));
-        q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasLogisticConstants.beta_0));
+    MlasStoreFloat32x4(Output, MlasAddFloat32x4(MlasDivideFloat32x4(p, q), MlasBroadcastFloat32x4(0.5f)));
 
-        MlasStoreFloat32x4(Output, MlasAddFloat32x4(MlasDivideFloat32x4(p, q), MlasBroadcastFloat32x4(0.5f)));
+    Input += 4;
+    Output += 4;
+    N -= 4;
+  }
+#endif
 
-        Input += 4;
-        Output += 4;
-        N -= 4;
-    }
+  while (N > 0) {
+    float Value = *Input++;
 
-    while (N > 0) {
+    Value = (std::min)(MlasLogisticConstants.UpperRange, (std::max)(MlasLogisticConstants.LowerRange, Value));
 
-        float Value = *Input++;
+    float ValueSquared = Value * Value;
 
-        Value = (std::min)(MlasLogisticConstants.UpperRange, (std::max)(MlasLogisticConstants.LowerRange, Value));
+    float p;
+    p = ValueSquared * MlasLogisticConstants.alpha_9 + MlasLogisticConstants.alpha_7;
+    p = p * ValueSquared + MlasLogisticConstants.alpha_5;
+    p = p * ValueSquared + MlasLogisticConstants.alpha_3;
+    p = p * ValueSquared + MlasLogisticConstants.alpha_1;
+    p = p * Value;
 
-        float ValueSquared = Value * Value;
+    float q;
+    q = ValueSquared * MlasLogisticConstants.beta_10 + MlasLogisticConstants.beta_8;
+    q = q * ValueSquared + MlasLogisticConstants.beta_6;
+    q = q * ValueSquared + MlasLogisticConstants.beta_4;
+    q = q * ValueSquared + MlasLogisticConstants.beta_2;
+    q = q * ValueSquared + MlasLogisticConstants.beta_0;
 
-        float p;
-        p = ValueSquared * MlasLogisticConstants.alpha_9 + MlasLogisticConstants.alpha_7;
-        p = p * ValueSquared + MlasLogisticConstants.alpha_5;
-        p = p * ValueSquared + MlasLogisticConstants.alpha_3;
-        p = p * ValueSquared + MlasLogisticConstants.alpha_1;
-        p = p * Value;
+    *Output++ = (p / q) + 0.5f;
 
-        float q;
-        q = ValueSquared * MlasLogisticConstants.beta_10 + MlasLogisticConstants.beta_8;
-        q = q * ValueSquared + MlasLogisticConstants.beta_6;
-        q = q * ValueSquared + MlasLogisticConstants.beta_4;
-        q = q * ValueSquared + MlasLogisticConstants.beta_2;
-        q = q * ValueSquared + MlasLogisticConstants.beta_0;
-
-        *Output++ = (p / q) + 0.5f;
-
-        N -= 1;
-    }
+    N -= 1;
+  }
 }
 
 void
