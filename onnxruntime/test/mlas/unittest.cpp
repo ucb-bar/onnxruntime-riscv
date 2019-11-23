@@ -20,6 +20,7 @@ Abstract:
 #include <limits>
 #include <memory>
 #include <mlas.h>
+#include "almostequal.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -1892,26 +1893,26 @@ public:
         // N.B. The test data includes values at the edge of Tanh/Logistic boundaries.
         //    Identity,     Relu,         LeakyRelu,    Tanh,         Logistic,     Clip,
         static const AliasedValue TestData[20][6] = {
-            { {0x00000001}, {0x00000001}, {0x00000001}, {0x00000000}, {0x3f000000}, {0x00000001}, }, // positive denormal
-            { {0x80000001}, {0x00000000}, {0x80000000}, {0x80000000}, {0x3f000000}, {0x00000000}, }, // negative denormal
-            { {0x7ff00002}, {0x7ff00002}, {0x7ff00002}, {0x7ff00002}, {0x7ff00002}, {0x7ff00002}, }, // positive NaN
-            { {0xfff00002}, {0xfff00002}, {0xfff00002}, {0xfff00002}, {0xfff00002}, {0xfff00002}, }, // negative NaN
-            { {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}, {0x3f000000}, {0x00000000}, }, // 0.0f
-            { {0x80000000}, {0x80000000}, {0x80000000}, {0x80000000}, {0x3f000000}, {0x80000000}, }, // -0.0f
-            { {0x3e800000}, {0x3e800000}, {0x3e800000}, {0x3e7acbf5}, {0x3f0feacc}, {0x3e800000}, }, // 0.25f
-            { {0xbe800000}, {0x00000000}, {0xbd4ccccd}, {0xbe7acbf5}, {0x3ee02a67}, {0x00000000}, }, // -0.25f
-            { {0x40800000}, {0x40800000}, {0x40800000}, {0x3f7fd40a}, {0x3f7b6541}, {0x40800000}, }, // 4.0f
-            { {0xc0800000}, {0x00000000}, {0xbf4ccccd}, {0xbf7fd40a}, {0x3c9357e0}, {0x00000000}, }, // -4.0f
-            { {0x41200000}, {0x41200000}, {0x41200000}, {0x3f800000}, {0x3f7ffd06}, {0x40c00000}, }, // 10.0f
-            { {0xc1200000}, {0x00000000}, {0xc0000000}, {0xbf800000}, {0x383e6000}, {0x00000000}, }, // -10.0f
-            { {0xc18866eb}, {0x00000000}, {0xc05a3e45}, {0xbf800000}, {0x33000000}, {0x00000000}, }, // -17.0502529144f
-            { {0xc18869bb}, {0x00000000}, {0xc05a42c5}, {0xbf800000}, {0x33c00000}, {0x00000000}, }, // -17.0516262054f
-            { {0xc18852a8}, {0x00000000}, {0xc05a1dda}, {0xbf800000}, {0x00000000}, {0x00000000}, }, // -17.0403594971f
-            { {0xc18844aa}, {0x00000000}, {0xc05a0777}, {0xbf800000}, {0x00000000}, {0x00000000}, }, // -17.0335273743f
-            { {0x418866eb}, {0x418866eb}, {0x418866eb}, {0x3f800000}, {0x3f800000}, {0x40c00000}, }, // +17.0502529144f
-            { {0x418869bb}, {0x418869bb}, {0x418869bb}, {0x3f800000}, {0x3f7ffffe}, {0x40c00000}, }, // +17.0516262054f
-            { {0x418852a8}, {0x418852a8}, {0x418852a8}, {0x3f800000}, {0x3f800000}, {0x40c00000}, }, // +17.0403594971f
-            { {0x418844aa}, {0x418844aa}, {0x418844aa}, {0x3f800000}, {0x3f800000}, {0x40c00000}, }, // +17.0335273743f
+            { {0x00000001}, {0x00000001}, {0x00000001}, {0x00000000}, {0x3f000000}, {0x00000001}, },  // positive denormal
+            { {0x80000001}, {0x00000000}, {0x80000000}, {0x80000000}, {0x3f000000}, {0x00000000}, },  // negative denormal
+            { {0x7ff00002}, {0x7ff00002}, {0x7ff00002}, {0xbf800000}, {0xb3800000}, {0x7ff00002}, },  // positive NaN
+            { {0xfff00002}, {0xfff00002}, {0x7fc00000}, {0xbf800000}, {0xb3800000}, {0xfff00002}, },  // negative NaN
+            { {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}, {0x3f000000}, {0x00000000}, },  // 0.0f
+            { {0x80000000}, {0x80000000}, {0x80000000}, {0x80000000}, {0x3f000000}, {0x80000000}, },  // -0.0f
+            { {0x3e800000}, {0x3e800000}, {0x3e800000}, {0x3e7acbf5}, {0x3f0feacc}, {0x3e800000}, },  // 0.25f
+            { {0xbe800000}, {0x00000000}, {0xbd4ccccd}, {0xbe7acbf5}, {0x3ee02a67}, {0x00000000}, },  // -0.25f
+            { {0x40800000}, {0x40800000}, {0x40800000}, {0x3f7fd40a}, {0x3f7b6541}, {0x40800000}, },  // 4.0f
+            { {0xc0800000}, {0x00000000}, {0xbf4ccccd}, {0xbf7fd40a}, {0x3c9357e0}, {0x00000000}, },  // -4.0f
+            { {0x41200000}, {0x41200000}, {0x41200000}, {0x3f800000}, {0x3f7ffd06}, {0x40c00000}, },  // 10.0f
+            { {0xc1200000}, {0x00000000}, {0xc0000000}, {0xbf800000}, {0x383e8000}, {0x00000000}, },  // -10.0f
+            { {0xc18866eb}, {0x00000000}, {0xc05a3e45}, {0xbf800000}, {0x33c00000}, {0x00000000}, },  // -17.0502529144f
+            { {0xc18869bb}, {0x00000000}, {0xc05a42c5}, {0xbf800000}, {0x33c00000}, {0x00000000}, },  // -17.0516262054f
+            { {0xc18852a8}, {0x00000000}, {0xc05a1dda}, {0xbf800000}, {0x33000000}, {0x00000000}, },  // -17.0403594971f
+            { {0xc18844aa}, {0x00000000}, {0xc05a0777}, {0xbf800000}, {0x00000000}, {0x00000000}, },  // -17.0335273743f
+            { {0x418866eb}, {0x418866eb}, {0x418866eb}, {0x3f800000}, {0x3f7ffffe}, {0x40c00000}, },  // +17.0502529144f
+            { {0x418869bb}, {0x418869bb}, {0x418869bb}, {0x3f800000}, {0x3f7ffffe}, {0x40c00000}, },  // +17.0516262054f
+            { {0x418852a8}, {0x418852a8}, {0x418852a8}, {0x3f800000}, {0x3f800000}, {0x40c00000}, },  // +17.0403594971f
+            { {0x418844aa}, {0x418844aa}, {0x418844aa}, {0x3f800000}, {0x3f800000}, {0x40c00000}, },  // +17.0335273743f
         };
 
         MLAS_ACTIVATION Activation;
@@ -1940,8 +1941,9 @@ public:
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
-                if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
-                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i].u, TestData[i][kind].u);
+                if (!AlmostEquals(Buffer[i].f, TestData[i][kind].f)) {
+                  printf("mismatch in vectorized activation kind=%d i=%d input=%f (%08x) expected=%f (%08x) got=%f (%08x)\n", kind, i,
+                         TestData[i][0].f, TestData[i][0].u, TestData[i][kind].f, TestData[i][kind].u, Buffer[i].f, Buffer[i].u);
                 }
             }
 
@@ -1956,8 +1958,10 @@ public:
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
-                if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
-                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", kind, i, Buffer[i].u, TestData[i][kind].u);
+
+                if (!AlmostEquals(Buffer[i].f, TestData[i][kind].f)) {
+                  printf("mismatch in scalar activation kind=%d i=%d input=%f (%08x) expected=%f (%08x) got=%f (%08x)\n", kind, i,
+                         TestData[i][0].f, TestData[i][0].u, TestData[i][kind].f, TestData[i][kind].u, Buffer[i].f, Buffer[i].u);
                 }
             }
         }
