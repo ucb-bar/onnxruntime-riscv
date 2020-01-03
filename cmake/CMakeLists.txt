@@ -55,6 +55,7 @@ option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" O
 option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
 option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
+option(onnxruntime_USE_SYSTOLIC "Whether to use Systolic to accelerate matmul" OFF)
 option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
@@ -507,6 +508,10 @@ endif()
 
 if(onnxruntime_USE_GEMMLOWP)
   add_definitions(-DUSE_GEMMLOWP=1)
+endif()
+
+if(onnxruntime_USE_SYSTOLIC)
+  add_definitions(-DUSE_SYSTOLIC=1)
 endif()
 
 if (onnxruntime_USE_MKLML)

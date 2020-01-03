@@ -114,7 +114,11 @@ else()
     endif()
   endif()
 
-  if(ARM)
+  if(onnxruntime_USE_SYSTOLIC)
+    set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/systolic/systolic.cpp
+    )
+  elseif(ARM)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
 
     set(mlas_platform_srcs

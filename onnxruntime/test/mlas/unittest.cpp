@@ -1975,6 +1975,117 @@ public:
     }
 };
 
+#ifdef USE_SYSTOLIC
+class MlasSystolicMatmulTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<int8_t> BufferA;
+    MatrixGuardBuffer<int8_t> BufferB;
+    MatrixGuardBuffer<int8_t> BufferC;
+    MatrixGuardBuffer<int8_t> BufferCReference;
+
+    inline int8_t saturate(int32_t num, int shift) {
+        const int divisor = 1 << shift;
+        int32_t abs = num > 0 ? num : -num;
+        int32_t shifted = (abs + (divisor/2)) / divisor;
+        if (num < 0)
+            num = -shifted;
+        else
+            num = shifted;
+        // Clip result
+        return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+    }
+
+    void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int shift) {
+        for (int i = 0; i < dimI; i++) {
+            for (int j = 0; j < dimJ; j++) {
+                int32_t res = 0;
+                for (int k = 0; k < dimK; k++) {
+                    res += in1[i * dimK + k] * in2[k * dimJ + j];
+                }
+                out[i * dimJ + j] = saturate(res, shift);
+            }
+        }
+    }
+
+    void NaiveCPUMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int divisor) {
+        bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
+        if (!isPowerOf2) {
+            throw std::runtime_error("Divisor passed to systolic matmul must be power of 2");
+        }
+        int shift = sizeof(int)*8 - __builtin_clz(divisor) - 1;
+        return mymatmul(dimI, dimJ, dimK, in1, in2, out, shift);
+    }
+
+
+    void Test(size_t M, size_t N, size_t K, int divisor, int tolerance) 
+    {
+        printf("Testing...\n");
+        const int8_t* A = BufferA.GetBuffer(K * M);
+        const int8_t* B = BufferB.GetBuffer(N * K);
+        int8_t* C = BufferC.GetBuffer(N * M);
+        int8_t* CReference = BufferCReference.GetBuffer(N * M);
+
+        std::fill_n(C, M * N, -1);
+        std::fill_n(CReference, M * N, -1);
+
+        SystolicMultiplyi8i8_i8(M, N, K, A, B, C, divisor);
+        NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor);
+
+        for (size_t f = 0; f < M * N; f++) {
+            if (abs(C[f] - CReference[f]) > tolerance) {
+                printf("A matrix:\n");
+                for (size_t m = 0; m < M; m++) {
+                    for (size_t k = 0; k < K; k++) {
+                        printf("%d ", A[m * K + k]);
+                    }
+                    printf("\n");
+                }
+                printf("B matrix:\n");
+                for (size_t k = 0; k < K; k++) {
+                    for (size_t n = 0; n < N; n++) {
+                        printf("%d ", A[k * N + n]);
+                    }
+                    printf("\n");
+                }
+                printf("C matrix:\n");
+                for (size_t m = 0; m < M; m++) {
+                    for (size_t n = 0; n < N; n++) {
+                        printf("%d ", C[m * N + n]);
+                    }
+                    printf("\n");
+                }
+                printf("C_ref matrix:\n");
+                for (size_t m = 0; m < M; m++) {
+                    for (size_t n = 0; n < N; n++) {
+                        printf("%d ", CReference[m*N + n]);
+                    }
+                    printf("\n");
+                }
+
+                printf("mismatch M=%zd, N=%zd, K=%zd, divisor=%d. Diff=%d!\n", M, N, K, divisor, abs(C[f] - CReference[f]) );
+                return;
+            }
+        }
+    }
+public:
+    void ExecuteShort(void) override
+    {
+        // Should match precisely for exact multiples of systolic size
+        Test(16, 16, 16, 1, 0);
+        Test(1*16, 2*16, 3*16, 1, 0);
+
+        // Should match preicsely for exact multiples with divisor (right shift)
+        Test(16, 16, 16, 4, 0);
+        Test(1*16, 2*16, 3*16, 4, 0);
+    }
+
+    void ExecuteLong(void) override
+    {
+    }
+};
+#endif
+
 int
 #if defined(_WIN32)
 __cdecl
@@ -1984,6 +2095,11 @@ main(
     )
 {
     for (int i = 0; i != 2; ++i) {
+
+#ifdef USE_SYSTOLIC
+        printf("Systolic Matmul tests.\n");
+        onnxruntime::make_unique<MlasSystolicMatmulTest>()->ExecuteShort();
+#endif
 
         printf("SGEMM tests.\n");
         onnxruntime::make_unique<MlasFgemmTest<float>>()->ExecuteShort();
