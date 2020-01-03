@@ -69,7 +69,7 @@ void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, co
   }
 
   int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
-  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, NULL, out, NO_ACTIVATION, shift, 0, 0, CPU);
+  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, NULL, out, NO_ACTIVATION, shift, 0, 0, OS);
 
   // for (int i = 0; i < dimI; i++) {
   //   for (int j = 0; j < dimJ; j++) {
