@@ -56,6 +56,9 @@ Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) c
   auto y_scale_data = *(y_scale->template Data<float>());
 
   const float real_multiplier = (a_scale_data * b_scale_data) / y_scale_data;
+
+  ORT_ENFORCE(real_multiplier <= 1, "Gemmlowp only handle real_multiplier <= 1");
+
   int32_t integer_multiplier;
   int right_shift;
   QuantizeMultiplier(real_multiplier, &integer_multiplier, &right_shift);
