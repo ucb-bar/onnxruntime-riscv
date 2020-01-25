@@ -55,7 +55,7 @@
  * Elements are accumulated internally into acc_t (int32) and subsequently rounded/saturated to elem_t (int8).
  * The given divisor *must* be a power of 2.
  * 
- * Note that due to Systolic limitations, portions of the matrix will be quantized twice so results might differ from naive CPU impl
+ * Note that due to Systolic limitations, if arbitrary dimension then portions of the matrix will be quantized twice so results might differ from naive CPU impl
  * Rounding behavior of Systolic currently differs from standard "round to evens" usd by numpy/ONNX
  */
 void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, const elem_t* in2, elem_t* out, int divisor) {
@@ -69,7 +69,7 @@ void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, co
   }
 
   int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
-  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, NULL, out, NO_ACTIVATION, shift, 0, 0, OS);
+  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, NULL, out, NO_ACTIVATION, shift, 0, 0, CPU);
 
   // for (int i = 0; i < dimI; i++) {
   //   for (int j = 0; j < dimJ; j++) {

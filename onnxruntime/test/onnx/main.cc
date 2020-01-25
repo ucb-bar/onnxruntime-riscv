@@ -36,7 +36,7 @@ void usage() {
       "\t-r [repeat]: Specifies the number of times to repeat\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
-      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
+      "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'systolic', 'cuda', 'mkldnn', 'tensorrt', 'ngraph', "
       "'openvino', 'nuphar' or 'acl'. "
       "Default: 'cpu'.\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -101,6 +101,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_nnapi = false;
   bool enable_dml = false;
   bool enable_acl = false;
+  bool enable_systolic = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_DISABLE_ALL;
   bool user_graph_optimization_level_set = false;
@@ -151,6 +152,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             // do nothing
           } else if (!CompareCString(optarg, ORT_TSTR("cuda"))) {
             enable_cuda = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("systolic"))) {
+            enable_systolic = true;
           } else if (!CompareCString(optarg, ORT_TSTR("mkldnn"))) {
             enable_mkl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
@@ -346,6 +349,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ACL(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "ACL is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_systolic) {
+#ifdef USE_SYSTOLIC
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(sf, enable_cpu_mem_arena ? 1 : 0));
+#else
+      fprintf(stderr, "Systolic is not supported in this build");
       return -1;
 #endif
     }

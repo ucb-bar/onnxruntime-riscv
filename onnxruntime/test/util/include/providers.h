@@ -34,3 +34,6 @@
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
 #endif
+#ifdef USE_SYSTOLIC
+#include "core/providers/systolic/systolic_provider_factory.h"
+#endif

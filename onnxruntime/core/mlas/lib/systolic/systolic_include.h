@@ -642,6 +642,9 @@ static void __attribute__((unused)) tiled_matmul_option(size_t DIM_I, size_t DIM
                                                         elem_t* C,
                                                         int act, int shift, int relu6_shift, int full_bias_width,
                                                         enum tiled_matmul_type_t tiled_matmul_type) {
+  if (tiled_matmul_type == CPU) {
+    printf("NOTE: Using systolic CPU matmul emulation. Set type to OS for native\n");
+  }
   // const int partition_rows = BANK_NUM * BANK_ROWS / 2;
   // const int mats_in_partition = partition_rows / DIM;
   // const int mats_in_acc = ACC_ROWS / DIM;

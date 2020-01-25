@@ -18,6 +18,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const char* device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Systolic(int use_arena);
+
 
 namespace test {
 
@@ -94,6 +96,15 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena) {
 #ifdef USE_ACL
   return CreateExecutionProviderFactory_ACL(enable_arena)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(enable_arena);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultSystolicExecutionProvider(bool enable_arena) {
+#ifdef USE_SYSTOLIC
+  return CreateExecutionProviderFactory_Systolic(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;

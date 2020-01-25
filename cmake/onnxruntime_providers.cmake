@@ -76,6 +76,10 @@ if(onnxruntime_USE_ACL)
   set(PROVIDERS_ACL onnxruntime_providers_acl)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
 endif()
+if(onnxruntime_USE_SYSTOLIC)
+  set(PROVIDERS_SYSTOLIC onnxruntime_providers_systolic)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES systolic)
+endif()
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
 set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -466,6 +470,23 @@ if (onnxruntime_USE_ACL)
   target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${ACL_INCLUDE_DIR})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+
+# Reference https://github.com/microsoft/onnxruntime/commit/358b517d49af60890bb1901f2d621d0943ad70f5#diff-59b1f660e7a801f54f1415df9dec89ab
+if (onnxruntime_USE_SYSTOLIC)
+  file(GLOB_RECURSE onnxruntime_providers_systolic_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/systolic/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/systolic/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_systolic_cc_srcs})
+  add_library(onnxruntime_providers_systolic ${onnxruntime_providers_systolic_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_systolic onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf)
+  add_dependencies(onnxruntime_providers_systolic ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_systolic PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_systolic PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/systolic  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_systolic PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
