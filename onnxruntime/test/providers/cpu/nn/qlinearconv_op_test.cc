@@ -36,6 +36,34 @@ void Quantize(float scale, uint8_t zero_point,
   }
 }
 
+TEST(ConvTest, QLinearConvSimple2DTest) {
+  OpTester test("QLinearConv", 10);
+
+  vector<uint8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
+  vector<int64_t> X_shape = {1, 1, 5, 5};
+
+  vector<uint8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  vector<int64_t> W_shape = {1, 1, 4, 4};
+
+  vector<uint8_t> expected_vals = {9, 8, 8, 10};
+  vector<int64_t> Y_shape = {1, 1, 2, 2};
+
+  test.AddInput<uint8_t>("x", X_shape, X);
+  test.AddInput<float>("x_scale", {}, {1});
+  test.AddInput<uint8_t>("x_zero_point", {}, {0});
+
+  test.AddInput<uint8_t>("w", W_shape, W);
+  test.AddInput<float>("w_scale", {}, {1});
+  test.AddInput<uint8_t>("w_zero_point", {}, {0});
+
+  test.AddInput<float>("y_scale", {}, {128});
+  test.AddInput<uint8_t>("y_zero_point", {}, {0});
+
+  test.AddOutput<uint8_t>("y", Y_shape, expected_vals);
+
+  test.Run();
+}
+
 TEST(ConvTest, QLinearConv2DTest) {
   OpTester test("QLinearConv", 10);
 

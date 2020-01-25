@@ -76,6 +76,44 @@ void GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, 
 
 }  // namespace onnxruntime
 
+inline void GemmlowpDebug(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
+                        const int lhs_offset, const int rhs_offset, const int result_offset,
+                        int m, int n, int k, int32_t int_multiplier, int32_t right_shift, const int32_t* bias) {
+
+  printf("lhs matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < k; j++) {
+      printf("%d ", (int) lhs_data[i * k + j]);
+    }
+    printf("\n");
+  }
+
+  printf("rhs matrix\n");
+  for (int i = 0; i < k; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%d ", (int) rhs_data[i * n + j]);
+    }
+    printf("\n");
+  }
+
+  printf("out matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%d ", (int) result_data[i * n + j]);
+    }
+    printf("\n");
+  }
+
+  printf("m, n, k: %d %d %d\n", m, n, k);
+  printf("lhs_offset: %d\n", lhs_offset);
+  printf("rhs_offset: %d\n", rhs_offset);
+  printf("result_offset: %d\n", result_offset);
+
+  printf("int_multiplier: %d\n", int_multiplier);
+  printf("right_shift: %d\n", right_shift);
+  printf("bias: %d\n", bias == nullptr ? 0 : *bias);
+}
+
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
