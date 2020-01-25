@@ -371,6 +371,7 @@ void Im2col<T, StorageOrder::NCHW>::operator()(const T* data_im, int64_t channel
 
 template struct Im2col<float, StorageOrder::NCHW>;
 template struct Im2col<uint8_t, StorageOrder::NCHW>;
+template struct Im2col<int8_t, StorageOrder::NCHW>;
 
 template <>
 void Im2col<float, StorageOrder::NHWC>::operator()(const float* data_im, int64_t channels, int64_t height,
