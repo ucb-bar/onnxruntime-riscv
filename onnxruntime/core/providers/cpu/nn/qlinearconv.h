@@ -8,6 +8,7 @@
 #include "core/util/gemmlowp_common.h"
 
 namespace onnxruntime {
+template <typename T1, typename T2, typename T3>
 class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {

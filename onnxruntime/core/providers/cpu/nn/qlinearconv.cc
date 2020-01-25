@@ -7,19 +7,21 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearConv,
     kOnnxDomain,
     10,
+    uint8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv);
+    QLinearConv<uint8_t, uint8_t, uint8_t>);
 
-Status QLinearConv::Compute(OpKernelContext* context) const {
+template<>
+Status QLinearConv<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(3);
 
