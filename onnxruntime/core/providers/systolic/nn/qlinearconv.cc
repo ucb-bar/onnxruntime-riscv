@@ -71,8 +71,9 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
   const Tensor* bias = nullptr;
   if (num_inputs == 9) {
     bias = context->Input<Tensor>(8);
+    ORT_ENFORCE(bias->Shape()[0] == static_cast<int>(W->Shape()[0] / conv_attrs_.group), "Bias must be 1D vector of size M");
   }
-  ORT_ENFORCE(bias == nullptr, "Systolic cannot handle bias in conv");
+  //ORT_ENFORCE(bias == nullptr, "Systolic cannot handle bias in conv");
 
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
@@ -166,28 +167,36 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
             *input_offset->template Data<int8_t>());
       }
 
-      const int32_t* applied_bias = bias == nullptr ? nullptr : bias->template Data<int32_t>() + group_id * bias_offset;
-      ORT_UNUSED_PARAMETER(applied_bias); // we currently don't handle it. Maybe in future...
+      int32_t* broadcast_bias = nullptr;
 
+      if (bias) {
+        Eigen::Matrix<int32_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> matrix_bias;
+        matrix_bias.resize(static_cast<int>(M / conv_attrs_.group), static_cast<int>(output_image_size));
+        ConstEigenVectorMap<int32_t> splatted(bias->template Data<int32_t>() + group_id * bias_offset, static_cast<int>(M / conv_attrs_.group));
+        matrix_bias.colwise() = splatted;
+        broadcast_bias = matrix_bias.data();
+      }
+      
       SystolicMultiplyi8i8_i8(static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
                               static_cast<int>(kernel_dim),
                               W->template Data<int8_t>() + group_id * W_offset,
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
-                              result_scale_data_rounded);
-      GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
-                        col_buffer_data,
-                        Ydata + group_id * Y_offset,
-                        *filter_offset->template Data<int8_t>(),
-                        *input_offset->template Data<int8_t>(),
-                        *result_offset->template Data<int8_t>(),
-                        static_cast<int>(M / conv_attrs_.group),
-                        static_cast<int>(output_image_size),
-                        static_cast<int>(kernel_dim),
-                        1,
-                        result_scale_data_rounded,
-                        bias == nullptr ? nullptr : bias->template Data<int32_t>() + group_id * bias_offset);
+                              result_scale_data_rounded, broadcast_bias);
+
+      // GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
+      //                   col_buffer_data,
+      //                   Ydata + group_id * Y_offset,
+      //                   *filter_offset->template Data<int8_t>(),
+      //                   *input_offset->template Data<int8_t>(),
+      //                   *result_offset->template Data<int8_t>(),
+      //                   static_cast<int>(M / conv_attrs_.group),
+      //                   static_cast<int>(output_image_size),
+      //                   static_cast<int>(kernel_dim),
+      //                   1,
+      //                   result_scale_data_rounded,
+      //                   broadcast_bias);
     }
 
     Xdata += X_offset * conv_attrs_.group;

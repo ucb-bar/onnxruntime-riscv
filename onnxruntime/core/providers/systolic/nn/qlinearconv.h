@@ -57,7 +57,16 @@ inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
 
   printf("int_multiplier: %d\n", int_multiplier);
   printf("right_shift: %d\n", right_shift);
-  printf("bias: %d\n", bias == nullptr ? 0 : *bias);
+  if (bias) {
+    printf("bias:\n");
+    for (int i = 0; i < m; i++) {
+      for (int j = 0; j < n; j++) {
+        printf("%d ", bias[i*n + j]);
+      }
+      printf("\n");
+    }
+  }
+  
 }
 
 

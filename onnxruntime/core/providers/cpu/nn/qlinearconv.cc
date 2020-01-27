@@ -166,6 +166,18 @@ Status QLinearConv<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* context)
                               integer_multiplier,
                               right_shift,
                               bias == nullptr ? nullptr : bias->template Data<int32_t>() + group_id * bias_offset);
+      // GemmlowpDebug(W->template Data<uint8_t>() + group_id * W_offset,
+      //                         col_buffer_data,
+      //                         Ydata + group_id * Y_offset,
+      //                         *filter_offset->template Data<uint8_t>(),
+      //                         *input_offset->template Data<uint8_t>(),
+      //                         *result_offset->template Data<uint8_t>(),
+      //                         static_cast<int>(M / conv_attrs_.group),
+      //                         static_cast<int>(output_image_size),
+      //                         static_cast<int>(kernel_dim),
+      //                         integer_multiplier,
+      //                         right_shift,
+      //                         bias == nullptr ? nullptr : bias->template Data<int32_t>() + group_id * bias_offset);
     }
 
     Xdata += X_offset * conv_attrs_.group;

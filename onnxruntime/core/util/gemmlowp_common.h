@@ -111,7 +111,13 @@ inline void GemmlowpDebug(const uint8_t* lhs_data, const uint8_t* rhs_data, uint
 
   printf("int_multiplier: %d\n", int_multiplier);
   printf("right_shift: %d\n", right_shift);
-  printf("bias: %d\n", bias == nullptr ? 0 : *bias);
+  if (bias) {
+    printf("bias:\n");
+    for (int i = 0; i < m; i++) {
+      printf("%d ", (int) bias[i]);
+    }
+  }
+
 }
 
 #ifdef __GNUC__
