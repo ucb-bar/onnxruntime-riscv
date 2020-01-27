@@ -166,8 +166,9 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
             *input_offset->template Data<int8_t>());
       }
 
-      const int32_t* applied_bias = nullptr ? nullptr : bias->template Data<int32_t>() + group_id * bias_offset;
+      const int32_t* applied_bias = bias == nullptr ? nullptr : bias->template Data<int32_t>() + group_id * bias_offset;
       ORT_UNUSED_PARAMETER(applied_bias); // we currently don't handle it. Maybe in future...
+
       SystolicMultiplyi8i8_i8(static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
                               static_cast<int>(kernel_dim),
@@ -175,6 +176,18 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
                               result_scale_data_rounded);
+      GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
+                        col_buffer_data,
+                        Ydata + group_id * Y_offset,
+                        *filter_offset->template Data<int8_t>(),
+                        *input_offset->template Data<int8_t>(),
+                        *result_offset->template Data<int8_t>(),
+                        static_cast<int>(M / conv_attrs_.group),
+                        static_cast<int>(output_image_size),
+                        static_cast<int>(kernel_dim),
+                        1,
+                        result_scale_data_rounded,
+                        bias == nullptr ? nullptr : bias->template Data<int32_t>() + group_id * bias_offset);
     }
 
     Xdata += X_offset * conv_attrs_.group;
