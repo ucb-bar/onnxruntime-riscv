@@ -1983,6 +1983,7 @@ private:
     MatrixGuardBuffer<int8_t> BufferB;
     MatrixGuardBuffer<int8_t> BufferC;
     MatrixGuardBuffer<int8_t> BufferCReference;
+    MatrixGuardBuffer<int32_t> BufferBias;
 
     inline int8_t saturate(int32_t num, int shift) {
         const int divisor = 1 << shift;
@@ -1996,25 +1997,25 @@ private:
         return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
     }
 
-    void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int shift) {
+    void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int shift, const int32_t* bias = nullptr) {
         for (int i = 0; i < dimI; i++) {
             for (int j = 0; j < dimJ; j++) {
                 int32_t res = 0;
                 for (int k = 0; k < dimK; k++) {
                     res += in1[i * dimK + k] * in2[k * dimJ + j];
                 }
-                out[i * dimJ + j] = saturate(res, shift);
+                out[i * dimJ + j] = saturate(res + (bias != nullptr ? bias[i * dimJ + j] : 0), shift);
             }
         }
     }
 
-    void NaiveCPUMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int divisor) {
+    void NaiveCPUMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int divisor, const int32_t* bias = nullptr) {
         bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
         if (!isPowerOf2) {
             throw std::runtime_error("Divisor passed to systolic matmul must be power of 2");
         }
         int shift = sizeof(int)*8 - __builtin_clz(divisor) - 1;
-        return mymatmul(dimI, dimJ, dimK, in1, in2, out, shift);
+        return mymatmul(dimI, dimJ, dimK, in1, in2, out, shift, bias);
     }
 
 
@@ -2023,14 +2024,15 @@ private:
         printf("Testing...\n");
         const int8_t* A = BufferA.GetBuffer(K * M);
         const int8_t* B = BufferB.GetBuffer(N * K);
+        const int32_t* Bias = BufferBias.GetBuffer(N * M);
         int8_t* C = BufferC.GetBuffer(N * M);
         int8_t* CReference = BufferCReference.GetBuffer(N * M);
 
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        SystolicMultiplyi8i8_i8(M, N, K, A, B, C, divisor);
-        NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor);
+        SystolicMultiplyi8i8_i8(M, N, K, A, B, C, divisor, Bias);
+        NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor, Bias);
 
         for (size_t f = 0; f < M * N; f++) {
             if (abs(C[f] - CReference[f]) > tolerance) {

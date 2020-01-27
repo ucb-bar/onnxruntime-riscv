@@ -58,7 +58,7 @@
  * Note that due to Systolic limitations, if arbitrary dimension then portions of the matrix will be quantized twice so results might differ from naive CPU impl
  * Rounding behavior of Systolic currently differs from standard "round to evens" usd by numpy/ONNX
  */
-void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, const elem_t* in2, elem_t* out, int divisor) {
+void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, const elem_t* in2, elem_t* out, int divisor, const int32_t* bias) {
   printf("Called into systolic matmul!\n");
   bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
   if (!isPowerOf2) {
@@ -69,7 +69,7 @@ void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, co
   }
 
   int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
-  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, NULL, out, NO_ACTIVATION, shift, 0, 0, CPU);
+  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, bias, out, NO_ACTIVATION, shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, CPU);
 
   // for (int i = 0; i < dimI; i++) {
   //   for (int j = 0; j < dimJ; j++) {

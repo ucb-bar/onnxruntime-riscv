@@ -588,20 +588,20 @@ static void matmul_cpu(size_t DIM_I, size_t DIM_J, size_t DIM_K,
         C[i * strideC + j + 2] = saturate(result[0][2], D, i * strideD + j + 2, act, shift, relu6_shift, full_bias_width);
         C[i * strideC + j + 3] = saturate(result[0][3], D, i * strideD + j + 3, act, shift, relu6_shift, full_bias_width);
 
-        C[(i + 1) * strideC + j] = saturate(result[1][0], D, i * strideD + j, act, shift, relu6_shift, full_bias_width);
-        C[(i + 1) * strideC + j + 1] = saturate(result[1][1], D, i * strideD + j + 1, act, shift, relu6_shift, full_bias_width);
-        C[(i + 1) * strideC + j + 2] = saturate(result[1][2], D, i * strideD + j + 2, act, shift, relu6_shift, full_bias_width);
-        C[(i + 1) * strideC + j + 3] = saturate(result[1][3], D, i * strideD + j + 3, act, shift, relu6_shift, full_bias_width);
+        C[(i + 1) * strideC + j] = saturate(result[1][0], D, (i + 1) * strideD + j, act, shift, relu6_shift, full_bias_width);
+        C[(i + 1) * strideC + j + 1] = saturate(result[1][1], D, (i + 1) * strideD + j + 1, act, shift, relu6_shift, full_bias_width);
+        C[(i + 1) * strideC + j + 2] = saturate(result[1][2], D, (i + 1) * strideD + j + 2, act, shift, relu6_shift, full_bias_width);
+        C[(i + 1) * strideC + j + 3] = saturate(result[1][3], D, (i + 1) * strideD + j + 3, act, shift, relu6_shift, full_bias_width);
 
-        C[(i + 2) * strideC + j] = saturate(result[2][0], D, i * strideD + j, act, shift, relu6_shift, full_bias_width);
-        C[(i + 2) * strideC + j + 1] = saturate(result[2][1], D, i * strideD + j + 1, act, shift, relu6_shift, full_bias_width);
-        C[(i + 2) * strideC + j + 2] = saturate(result[2][2], D, i * strideD + j + 2, act, shift, relu6_shift, full_bias_width);
-        C[(i + 2) * strideC + j + 3] = saturate(result[2][3], D, i * strideD + j + 3, act, shift, relu6_shift, full_bias_width);
+        C[(i + 2) * strideC + j] = saturate(result[2][0], D, (i + 2) * strideD + j, act, shift, relu6_shift, full_bias_width);
+        C[(i + 2) * strideC + j + 1] = saturate(result[2][1], D, (i + 2) * strideD + j + 1, act, shift, relu6_shift, full_bias_width);
+        C[(i + 2) * strideC + j + 2] = saturate(result[2][2], D, (i + 2) * strideD + j + 2, act, shift, relu6_shift, full_bias_width);
+        C[(i + 2) * strideC + j + 3] = saturate(result[2][3], D, (i + 2) * strideD + j + 3, act, shift, relu6_shift, full_bias_width);
 
-        C[(i + 3) * strideC + j] = saturate(result[3][0], D, i * strideD + j, act, shift, relu6_shift, full_bias_width);
-        C[(i + 3) * strideC + j + 1] = saturate(result[3][1], D, i * strideD + j + 1, act, shift, relu6_shift, full_bias_width);
-        C[(i + 3) * strideC + j + 2] = saturate(result[3][2], D, i * strideD + j + 2, act, shift, relu6_shift, full_bias_width);
-        C[(i + 3) * strideC + j + 3] = saturate(result[3][3], D, i * strideD + j + 3, act, shift, relu6_shift, full_bias_width);
+        C[(i + 3) * strideC + j] = saturate(result[3][0], D, (i + 3) * strideD + j, act, shift, relu6_shift, full_bias_width);
+        C[(i + 3) * strideC + j + 1] = saturate(result[3][1], D, (i + 3) * strideD + j + 1, act, shift, relu6_shift, full_bias_width);
+        C[(i + 3) * strideC + j + 2] = saturate(result[3][2], D, (i + 3) * strideD + j + 2, act, shift, relu6_shift, full_bias_width);
+        C[(i + 3) * strideC + j + 3] = saturate(result[3][3], D, (i + 3) * strideD + j + 3, act, shift, relu6_shift, full_bias_width);
       }
     }
   } else {
