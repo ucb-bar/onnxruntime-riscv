@@ -48,6 +48,30 @@
 // 	}
 // }
 
+inline int8_t saturate(int32_t num, int shift) {
+    const int divisor = 1 << shift;
+    int32_t abs = num > 0 ? num : -num;
+    int32_t shifted = (abs + (divisor/2)) / divisor;
+    if (num < 0)
+        num = -shifted;
+    else
+        num = shifted;
+    // Clip result
+    return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+}
+
+inline void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int shift, const int32_t* bias = nullptr) {
+    for (int i = 0; i < dimI; i++) {
+        for (int j = 0; j < dimJ; j++) {
+            int32_t res = 0;
+            for (int k = 0; k < dimK; k++) {
+                res += in1[i * dimK + k] * in2[k * dimJ + j];
+            }
+            out[i * dimJ + j] = saturate(res + (bias != nullptr ? bias[i * dimJ + j] : 0), shift);
+        }
+    }
+}
+
 /**
  * Perform a matmul and subsequent quantization.
  * Switch between TILED_OS and TILED_CPU
@@ -64,11 +88,14 @@ void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, co
   if (!isPowerOf2) {
     throw std::runtime_error("Divisor passed to systolic matmul must be power of 2");
   }
+  int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
   if (dimI % DIM != 0 || dimJ % DIM != 0 || dimK % DIM != 0) {
-    throw std::runtime_error("Matrix dimensions must be multiple of systolic size");
+    printf("Matrix dimensions (%d, %d, %d) not multiple of systolic size. Falling back to naive CPU\n", dimI, dimJ, dimK);
+    mymatmul(dimI, dimJ, dimK, in1, in2, out, shift, bias);
+    return;
   }
 
-  int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
+  printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
   tiled_matmul_option(dimI, dimJ, dimK, in1, in2, bias, out, NO_ACTIVATION, shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, CPU);
 
   // for (int i = 0; i < dimI; i++) {
