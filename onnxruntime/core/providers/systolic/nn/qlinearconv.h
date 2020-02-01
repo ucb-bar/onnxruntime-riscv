@@ -42,13 +42,14 @@ inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
     printf("\n");
   }
 
-  printf("out matrix\n");
-  for (int i = 0; i < m; i++) {
-    for (int j = 0; j < n; j++) {
-      printf("%d ", (int) result_data[i * n + j]);
-    }
-    printf("\n");
-  }
+  ORT_UNUSED_PARAMETER(result_data);
+  // printf("out matrix\n");
+  // for (int i = 0; i < m; i++) {
+  //   for (int j = 0; j < n; j++) {
+  //     printf("%d ", (int) result_data[i * n + j]);
+  //   }
+  //   printf("\n");
+  // }
 
   printf("m, n, k: %d %d %d\n", m, n, k);
   printf("lhs_offset: %d\n", lhs_offset);
