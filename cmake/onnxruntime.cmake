@@ -39,7 +39,7 @@ if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -dead_strip")
   else()
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections")
+    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${SYMBOL_FILE}")
@@ -58,7 +58,7 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_DNNL}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_TENSORRT}

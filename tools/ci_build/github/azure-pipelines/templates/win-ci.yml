@@ -14,7 +14,7 @@ parameters:
   MsbuildArguments: '/m'
   EnvSetupScript: 'setup_env.bat'
   CudaVersion: ''
-  AgentPool: 'Win-CPU'
+  AgentPool: 'Win-CPU-2019'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime
 jobs:
@@ -33,6 +33,15 @@ jobs:
     CUDA_VERSION: ${{ parameters.CudaVersion }}
 
   steps:
+    - powershell: |
+        if($env:TELEMETRYGUID)
+        {
+          $length = $env:TELEMETRYGUID.length
+          $fileContent = "#define ENABLE_TELEMETRY`n#define TraceLoggingOptionMicrosoftTelemetry() \
+            TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+          New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force       
+        }
+      displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
     - template: set-test-data-variables-step.yml
     - template: windows-build-tools-setup-steps.yml
       parameters:
@@ -204,8 +213,8 @@ jobs:
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
       - template: compliance.yml
 
-    - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-      displayName: 'Component Detection'
-      condition: succeeded()
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
     - template: clean-agent-build-directory-step.yml

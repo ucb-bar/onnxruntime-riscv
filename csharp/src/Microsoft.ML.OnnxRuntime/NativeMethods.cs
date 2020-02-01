@@ -412,9 +412,9 @@ namespace Microsoft.ML.OnnxRuntime
         [DllImport(nativeLib, CharSet = charSet)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CPU(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 
-#if USE_MKLDNN
+#if USE_DNNL
         [DllImport(nativeLib, CharSet = charSet)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Mkldnn(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Dnnl(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
 #endif
 
 #if USE_CUDA
@@ -591,7 +591,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// \param len total data length, not including the trailing '\0' chars.
         public delegate IntPtr /*(OrtStatus*)*/ DOrtFillStringTensor(
                                                         IntPtr /* OrtValue */ value,
-                                                        string[] /* const char* const* */s,
+                                                        IntPtr[] /* const char* const* */s,
                                                         UIntPtr /* size_t */ s_len);
         public static DOrtFillStringTensor OrtFillStringTensor;
 

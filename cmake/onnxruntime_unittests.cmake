@@ -25,7 +25,10 @@ function(AddTest)
   endif(_UT_DEPENDS)
 
   add_executable(${_UT_TARGET} ${_UT_SOURCES})
-
+  if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    #TODO: fix the warnings, they are dangerous
+    target_compile_options(${_UT_TARGET} PRIVATE "/wd4244")
+  endif()
   source_group(TREE ${TEST_SRC_DIR} FILES ${_UT_SOURCES})
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -129,10 +132,10 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     "${TEST_SRC_DIR}/contrib_ops/*.cc")
 endif()
 
-if(onnxruntime_USE_AUTOML)
+if(onnxruntime_USE_FEATURIZERS)
   list(APPEND onnxruntime_test_providers_src_patterns
-    "${TEST_SRC_DIR}/automl_ops/*.h"
-    "${TEST_SRC_DIR}/automl_ops/*.cc")
+    "${TEST_SRC_DIR}/featurizers_ops/*.h"
+    "${TEST_SRC_DIR}/featurizers_ops/*.cc")
 endif()
 
 file(GLOB onnxruntime_test_providers_src CONFIGURE_DEPENDS
@@ -202,8 +205,8 @@ if(onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
 endif()
 
-if(onnxruntime_USE_MKLDNN)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_mkldnn)
+if(onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl)
 endif()
 
 if(onnxruntime_USE_NGRAPH)
@@ -218,8 +221,8 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
-if(onnxruntime_USE_AUTOML)
-   list(APPEND onnxruntime_test_providers_dependencies automl_featurizers)
+if(onnxruntime_USE_FEATURIZERS)
+   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
 endif()
 
 if(onnxruntime_USE_DML)
@@ -255,11 +258,16 @@ if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)
   include(onnxruntime_unittests_internal.cmake)
 endif()
 
+if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+  set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+endif()
+
 set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
+    ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     ${PROVIDERS_CUDA}
-    ${PROVIDERS_MKLDNN}
+    ${PROVIDERS_DNNL}
     ${PROVIDERS_TENSORRT}
     ${PROVIDERS_NGRAPH}
     ${PROVIDERS_OPENVINO}
@@ -314,8 +322,8 @@ onnxruntime_add_include_to_target(onnxruntime_test_utils_for_framework onnxrunti
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnxruntime_test_utils_for_framework PRIVATE USE_FULL_PROTOBUF=1)
 endif()
-if (onnxruntime_USE_MKLDNN)
-  target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_MKLDNN=1)
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime_test_utils_for_framework PUBLIC USE_DNNL=1)
 endif()
 add_dependencies(onnxruntime_test_utils_for_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils_for_framework PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -329,8 +337,8 @@ onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_framework g
 if (onnxruntime_USE_FULL_PROTOBUF)
   target_compile_definitions(onnxruntime_test_utils PRIVATE USE_FULL_PROTOBUF=1)
 endif()
-if (onnxruntime_USE_MKLDNN)
-  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_MKLDNN=1)
+if (onnxruntime_USE_DNNL)
+  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
 endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
@@ -419,15 +427,13 @@ endif()  # SingleUnitTestProject
 
 # standalone test for inference session without environment
 # the normal test executables set up a default runtime environment, which we don't want here
-if(NOT ipo_enabled)
-  #TODO: figure out why this test doesn't work with gcc LTO
 AddTest(
   TARGET onnxruntime_test_framework_session_without_environment_standalone
   SOURCES "${TEST_SRC_DIR}/framework/inference_session_without_environment/inference_session_without_environment_standalone_test.cc" "${TEST_SRC_DIR}/framework/test_main.cc"
   LIBS  onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS}
   DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
 )
-endif()
+
 
 #
 # onnxruntime_ir_graph test data
@@ -442,11 +448,11 @@ add_custom_command(
   ${TEST_DATA_SRC}
   ${TEST_DATA_DES})
 if(WIN32)
-  if (onnxruntime_USE_MKLDNN)
-    list(APPEND onnx_test_libs mkldnn)
+  if (onnxruntime_USE_DNNL)
+    list(APPEND onnx_test_libs dnnl)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${MKLDNN_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
+      COMMAND ${CMAKE_COMMAND} -E copy ${DNNL_DLL_PATH} $<TARGET_FILE_DIR:${test_data_target}>
       )
   endif()
   if (onnxruntime_USE_MKLML)
@@ -482,16 +488,23 @@ if(WIN32)
 endif()
 
 add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
+add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
 if(WIN32)
-    target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100")
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267")  
+else()
+  if(HAS_UNUSED_PARAMETER)
+    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
+  endif()
+  if(HAS_UNUSED_VARIABLE)
+    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-variable")
+  endif()
+  if(HAS_UNUSED_BUT_SET_VARIABLE)    
+    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-but-set-variable")
+  endif()
 endif()
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-if(NOT WIN32)
-  if(HAS_UNUSED_PARAMETER)
-    set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/tml.pb.cc PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-  endif()
-endif()
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -518,6 +531,8 @@ set(onnx_test_runner_common_srcs
   ${onnx_test_runner_src_dir}/sync_api.cc
   ${onnx_test_runner_src_dir}/callback.h
   ${onnx_test_runner_src_dir}/callback.cc
+  ${onnx_test_runner_src_dir}/pb_helper.h
+  ${onnx_test_runner_src_dir}/pb_helper.cc
   ${onnx_test_runner_src_dir}/mem_buffer.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.h
   ${onnx_test_runner_src_dir}/tensorprotoutils.cc)
@@ -532,6 +547,10 @@ if(WIN32)
 endif()
 
 add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
+if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    #TODO: fix the warnings, they are dangerous
+    target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
+endif()
 onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework onnxruntime_test_utils onnx onnx_proto)
 add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT} ${REPO_ROOT}/cmake/external/re2)
@@ -541,9 +560,7 @@ set(onnx_test_libs
   onnxruntime_test_utils
   ${ONNXRUNTIME_TEST_LIBS}
   onnx_test_data_proto
-  re2)
-
-list(APPEND onnx_test_libs ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf) # test code uses delimited parsing and hence needs to link with the full protobuf
+  re2 ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   list(APPEND onnx_test_libs onnxruntime_language_interop onnxruntime_pyop)
@@ -617,7 +634,7 @@ endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs onnxruntime_test_utils onnx_test_runner_common onnxruntime_common re2
-          onnx_test_data_proto onnx_proto libprotobuf ${GETOPT_LIB_WIDE} onnxruntime ${onnxruntime_EXTERNAL_LIBRARIES}
+          onnx_test_data_proto onnx_proto protobuf::libprotobuf ${GETOPT_LIB_WIDE} onnxruntime ${onnxruntime_EXTERNAL_LIBRARIES}
           ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(onnxruntime_USE_NSYNC)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
@@ -700,87 +717,6 @@ if (onnxruntime_BUILD_SHARED_LIB)
   )
 endif()
 
-if (onnxruntime_BUILD_SERVER)
-  file(GLOB onnxruntime_test_server_src
-    "${TEST_SRC_DIR}/server/unit_tests/*.cc"
-    "${TEST_SRC_DIR}/server/unit_tests/*.h"
-  )
-
-  file(GLOB onnxruntime_integration_test_server_src
-    "${TEST_SRC_DIR}/server/integration_tests/*.py"
-  )
-  if(NOT WIN32)
-    if(HAS_UNUSED_PARAMETER)
-      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/json_handling_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/converter_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/util_tests.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/prediction_service_impl_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-      set_source_files_properties("${TEST_SRC_DIR}/server/unit_tests/executor_test.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-    endif()
-  endif()
-  
-  add_library(onnxruntime_test_utils_for_server ${onnxruntime_test_server_src})
-  onnxruntime_add_include_to_target(onnxruntime_test_utils_for_server onnxruntime_test_utils_for_framework gtest gmock onnx onnx_proto server_proto server_grpc_proto)
-  add_dependencies(onnxruntime_test_utils_for_server onnxruntime_server_lib onnxruntime_server_http_core_lib Boost ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${Boost_INCLUDE_DIR} ${REPO_ROOT}/cmake/external/re2 ${CMAKE_CURRENT_BINARY_DIR}/onnx ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/http ${ONNXRUNTIME_ROOT}/server/http/core  ${ONNXRUNTIME_ROOT}/server/grpc ${ONNXRUNTIME_ROOT}/server ${ONNXRUNTIME_ROOT}/server/core PRIVATE ${ONNXRUNTIME_ROOT})
- if (onnxruntime_USE_OPENVINO)
-   message(${OPENVINO_INCLUDE_DIR})
-   target_include_directories(onnxruntime_test_utils_for_server PUBLIC ${OPENVINO_INCLUDE_DIR} ${OPENVINO_TBB_INCLUDE_DIR})
- endif()
-  if(UNIX)
-    target_compile_options(onnxruntime_test_utils_for_server PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-  endif()
-  target_link_libraries(onnxruntime_test_utils_for_server ${Boost_LIBRARIES} spdlog::spdlog server_grpc_proto)
-
-
-  AddTest(
-    TARGET onnxruntime_server_tests
-    SOURCES ${onnxruntime_test_server_src}
-    LIBS ${onnxruntime_test_server_libs} server_proto server_grpc_proto onnxruntime_server_lib ${onnxruntime_test_providers_libs}
-    DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
-  )
-
-  onnxruntime_protobuf_generate(
-          APPEND_PATH IMPORT_DIRS ${REPO_ROOT}/cmake/external/protobuf/src ${ONNXRUNTIME_ROOT}/server/protobuf ${ONNXRUNTIME_ROOT}/core/protobuf
-          PROTOS ${ONNXRUNTIME_ROOT}/server/protobuf/predict.proto ${ONNXRUNTIME_ROOT}/server/protobuf/onnx-ml.proto
-          LANGUAGE python
-          TARGET onnxruntime_server_tests
-          OUT_VAR server_test_py)
-          
-  set(grpc_py "${CMAKE_CURRENT_BINARY_DIR}/prediction_service_pb2_grpc.py")
-
-  add_custom_command(
-    TARGET onnxruntime_server_tests
-    COMMAND $<TARGET_FILE:protobuf::protoc>
-    ARGS 
-      --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
-      --plugin=protoc-gen-grpc="${_GRPC_PY_PLUGIN_EXECUTABLE}"
-      -I ${grpc_proto_path}
-      "${grpc_proto}"
-    DEPENDS "${grpc_proto}"
-    COMMENT "Running ${_GRPC_PY_PLUGIN_EXECUTABLE} on ${grpc_proto}"
-    )
-
-  add_custom_command(
-    TARGET onnxruntime_server_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/server_test
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_integration_test_server_src}
-      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
-      COMMAND ${CMAKE_COMMAND} -E copy
-      ${CMAKE_CURRENT_BINARY_DIR}/onnx_ml_pb2.py
-      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${CMAKE_CURRENT_BINARY_DIR}/predict_pb2.py
-      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${grpc_py}
-      ${CMAKE_CURRENT_BINARY_DIR}/server_test/
-  )
-
-endif()
-
 #some ETW tools
 if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
     add_executable(generate_perf_report_from_etl ${ONNXRUNTIME_ROOT}/tool/etw/main.cc ${ONNXRUNTIME_ROOT}/tool/etw/eparser.h ${ONNXRUNTIME_ROOT}/tool/etw/eparser.cc ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.h ${ONNXRUNTIME_ROOT}/tool/etw/TraceSession.cc)
@@ -802,7 +738,6 @@ list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
-
 add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
@@ -816,3 +751,38 @@ else()
   # need to ignore the linker warning 4199, due to some global linker flags failing here
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+
+if (onnxruntime_BUILD_JAVA)
+    message(STATUS "Running Java tests")
+    # Build and run tests
+    set(onnxruntime4j_test_src
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/InferenceTest.java
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/TestHelpers.java
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/OnnxMl.java
+        ${REPO_ROOT}/java/src/test/java/ai/onnxruntime/UtilTest.java
+        )
+
+    # Create test directories
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/java-tests/")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/java-tests/results")
+
+    # Download test dependencies
+    if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar)
+        message("Downloading JUnit 5")
+        file(DOWNLOAD https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.5.2/junit-platform-console-standalone-1.5.2.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar EXPECTED_HASH SHA1=8d937d2b461018a876836362b256629f4da5feb1)
+    endif()
+
+    if (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar)
+        message("Downloading protobuf-java 3.10.0")
+        file(DOWNLOAD https://repo1.maven.org/maven2/com/google/protobuf/protobuf-java/3.10.0/protobuf-java-3.10.0.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar EXPECTED_HASH SHA1=410b61dd0088aab4caa05739558d43df248958c9)
+    endif()
+
+    # Build the test jar
+    add_jar(onnxruntime4j_test SOURCES ${onnxruntime4j_test_src} VERSION ${ORT_VERSION} INCLUDE_JARS ${onnxruntime_jar_name} ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar)
+
+    add_dependencies(onnxruntime4j_test onnxruntime4j_jni onnxruntime4j)
+    get_property(onnxruntime_test_jar_name TARGET onnxruntime4j_test PROPERTY JAR_FILE)
+
+    # Run the tests with JUnit's console launcher
+    add_test(NAME java-api COMMAND ${Java_JAVA_EXECUTABLE} -jar ${CMAKE_CURRENT_BINARY_DIR}/java-tests/junit-platform-console-standalone-1.5.2.jar -cp ${CMAKE_CURRENT_BINARY_DIR}/java-tests/protobuf-java-3.10.0.jar -cp ${onnxruntime_test_jar_name} -cp ${onnxruntime_jar_binaries_platform} --scan-class-path --fail-if-no-tests --reports-dir=${CMAKE_CURRENT_BINARY_DIR}/java-tests/results --disable-banner WORKING_DIRECTORY ${REPO_ROOT})
+endif()

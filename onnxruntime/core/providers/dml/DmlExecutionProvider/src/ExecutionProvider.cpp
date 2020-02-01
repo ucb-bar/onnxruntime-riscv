@@ -45,7 +45,7 @@ namespace Dml
 
     static void CreateDmlKernelRegistry(
         _Outptr_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
-        _Outptr_ std::shared_ptr<const GraphNodeFactoryMap>* graphNodeFactoryMap)
+        _Outptr_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
     {
         ComPtr<AbiCustomRegistry> abiRegistry = wil::MakeOrThrow<AbiCustomRegistry>();
         Dml::RegisterDmlOperators(abiRegistry.Get());
@@ -54,7 +54,7 @@ namespace Dml
         
         auto customRegistry = *abiRegistry->GetRegistries().begin();
         *registry = customRegistry->GetKernelRegistry();
-        *graphNodeFactoryMap = abiRegistry->GetGraphNodeFactoryMap();
+        *internalRegInfoMap = abiRegistry->GetInternalRegInfoMap();
     }
 
     ExecutionProvider::ExecutionProvider(
@@ -176,7 +176,7 @@ namespace Dml
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 		
-        CreateDmlKernelRegistry(&m_kernelRegistry, &m_graphNodeFactoryMap);
+        CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -493,7 +493,14 @@ namespace Dml
     {
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSuppportedDeviceDataTypeMask();
-        return PartitionGraph(graph, *m_graphNodeFactoryMap, registries, deviceDataTypeMask, m_kernelRegistry.get(), partitionKernelPrefix);
+
+        return PartitionGraph(graph, 
+            *m_internalRegInfoMap,
+            registries, 
+            deviceDataTypeMask, 
+            m_kernelRegistry.get(), 
+            partitionKernelPrefix
+        );
     }
 
     Status ExecutionProviderImpl::CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const
@@ -667,6 +674,12 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
+    std::shared_ptr<const winrt::Windows::AI::MachineLearning::implementation::InternalRegistrationInfoMap> 
+    ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
+    {
+        return m_internalRegInfoMap;
+    }
+
     std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetGpuAllocator()
     {
         return m_allocator;
@@ -746,12 +759,6 @@ namespace Dml
     {
         ComPtr<AllocationInfo> allocInfo;
         allocInfo.Attach(static_cast<AllocationInfo*>(ptr));
-    }
-
-    onnxruntime::common::Status RegisterDmlGraphTransformer(onnxruntime::InferenceSession* session, std::shared_ptr<onnxruntime::KernelRegistry> dmlRegistry)
-    {
-        auto graphTransformer = std::make_unique<Dml::GraphTransformer>(std::string(onnxruntime::kDmlExecutionProvider), dmlRegistry);
-        return session->RegisterGraphTransformer(std::move(graphTransformer), onnxruntime::TransformerLevel::Level1);
     }
 
 } // namespace Dml

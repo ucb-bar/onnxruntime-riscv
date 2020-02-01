@@ -10,32 +10,6 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
-// Get values of integer tensor from initializer, and append them to a vector.
-static bool LoadIntegerTensor(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data) {
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
-    return false;
-  }
-
-  auto init_const = onnxruntime::make_unique<Initializer>(*tensor_proto);
-  const auto data_type = tensor_proto->data_type();
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    const int64_t* val = init_const->data<int64_t>();
-    data.reserve(data.size() + init_const->size());
-    data.insert(data.end(), val, val + init_const->size());
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    const int32_t* val = init_const->data<int32_t>();
-    data.reserve(data.size() + init_const->size());
-    for (int64_t i = 0; i < init_const->size(); i++) {
-      data.push_back(static_cast<int64_t>(val[i]));
-    }
-  } else {
-    return false;
-  }
-
-  return true;
-}
-
 Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -98,7 +72,7 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   }
   const Node& concat = *p_concat;
 
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(concat, "Concat", {1, 4, 11})) {
     return false;
   }
 
@@ -109,8 +83,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
 
   // path 1: [Root] --> Shape --> Gather(indices=0) --> Unsqueeze (axes=0) --> Concat [input 0]
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, 0, "Unsqueeze", {1}, kOnnxDomain},
-      {0, 0, "Gather", {1}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
       {0, 0, "Shape", {1}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
@@ -140,8 +114,8 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
 
   // path 2: [Root] --> Shape --> Gather(indices=1) --> Unsqueeze (axes=0) --> Concat [input 1]
   std::vector<graph_utils::EdgeEndToMatch> parent_path2 {
-      {0, 1, "Unsqueeze", {1}, kOnnxDomain},
-      {0, 0, "Gather", {1}, kOnnxDomain},
+      {0, 1, "Unsqueeze", {1, 11}, kOnnxDomain},
+      {0, 0, "Gather", {1, 11}, kOnnxDomain},
       {0, 0, "Shape", {1}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(concat, true, parent_path2, edges, logger)) {
@@ -173,12 +147,12 @@ bool ReshapeFusion::Fuse_Subgraph1(Node& reshape, Graph& graph, const logging::L
   // We do not check whether the initializer is constant.
   // Some model uses constant initializer and some does not.
   // Here we assume that no one will override the initializer using graph input.
-  if (!LoadIntegerTensor(graph, *(concat.InputDefs()[2]), shape_value)) {
+  if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[2]), shape_value)) {
     return false;
   }
 
   if (concat_input_count > 3) {
-    if (!LoadIntegerTensor(graph, *(concat.InputDefs()[3]), shape_value)) {
+    if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[3]), shape_value)) {
       return false;
     }
   }

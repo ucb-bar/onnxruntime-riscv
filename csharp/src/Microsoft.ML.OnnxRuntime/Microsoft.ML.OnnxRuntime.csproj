@@ -79,8 +79,8 @@
           CopyToOutputDirectory="Always"
           Visible="false"
     />
-    <None Include="$(NativeBuildOutputDir)\mkldnn.dll"
-          Condition="Exists('$(NativeBuildOutputDir)\mkldnn.dll')"
+    <None Include="$(NativeBuildOutputDir)\dnnl.dll"
+          Condition="Exists('$(NativeBuildOutputDir)\dnnl.dll')"
           PackagePath="\runtimes\win-$(TargetArchitecture)\native"
           Pack="true"
           CopyToOutputDirectory="Always"
@@ -173,7 +173,7 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0-beta-63127-02" PrivateAssets="All"/>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All"/>
     <PackageReference Include="System.Memory" Version="4.5.3" />
   </ItemGroup>
 

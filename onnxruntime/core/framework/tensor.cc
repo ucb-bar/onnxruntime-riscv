@@ -7,17 +7,16 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/data_types.h"
 
-using namespace std;
 namespace onnxruntime {
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-               int64_t offset)
+               ptrdiff_t offset)
     : alloc_info_(alloc) {
   ORT_ENFORCE(p_type != nullptr);
   Init(p_type, shape, p_data, nullptr, offset);
 }
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, int64_t offset)
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, ptrdiff_t offset)
     : alloc_info_(allocator->Info()) {
   ORT_ENFORCE(p_type != nullptr);
   int64_t shape_size = shape.Size();
@@ -48,7 +47,7 @@ size_t Tensor::SizeInBytes() const {
   return ret;
 }
 
-void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, int64_t offset) {
+void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, ptrdiff_t offset) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
   dtype_ = p_type->AsPrimitiveDataType();
@@ -61,10 +60,10 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
   buffer_deleter_ = std::move(deleter);
   // for string tensors, if this tensor own the buffer (caller passed in the deleter)
   // do the placement new for strings on pre-allocated buffer.
-  if (buffer_deleter_ && utils::IsDataTypeString(dtype_)) {
-    auto* ptr = static_cast<string*>(p_data_);
+  if (buffer_deleter_ && IsDataTypeString()) {
+    auto* ptr = static_cast<std::string*>(p_data_);
     for (int64_t i = 0, n = shape_size; i < n; ++i) {
-      new (ptr + i) string();
+      new (ptr + i) std::string();
     }
   }
   byte_offset_ = offset;
@@ -110,11 +109,12 @@ Tensor::~Tensor() {
 
 void Tensor::ReleaseBuffer() {
   if (buffer_deleter_) {
-    // if current tensor is responsible for delete the buffer
-    // and it is a string tensor, need to explict call string's
-    // deconstructor.
-    if (utils::IsDataTypeString(dtype_)) {
-      auto* ptr = static_cast<string*>(p_data_);
+    // if current tensor is responsible for deleting the buffer
+    // and it is a string tensor, need to explicitly call string(s)
+    // __dtor(s).
+    if (IsDataTypeString()) {
+      using string = std::string;
+      auto* ptr = static_cast<std::string*>(p_data_);
       int64_t len = shape_.Size();
       for (int64_t i = 0; i < len; i++)
         ptr[i].~string();

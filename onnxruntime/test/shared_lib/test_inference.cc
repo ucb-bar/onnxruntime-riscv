@@ -40,7 +40,7 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
     session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, output_tensor, 1);
   else {
     ort_outputs = session_object.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), &output_name, 1);
-    ASSERT_EQ(ort_outputs.size(), 1);
+    ASSERT_EQ(ort_outputs.size(), 1u);
     output_tensor = &ort_outputs[0];
   }
 
@@ -75,9 +75,9 @@ void TestInference(Ort::Env& env, T model_uri,
     return;
 #endif
   } else if (provider_type == 2) {
-#ifdef USE_MKLDNN
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Mkldnn(session_options, 1));
-    std::cout << "Running simple inference with mkldnn provider" << std::endl;
+#ifdef USE_DNNL
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, 1));
+    std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return;
 #endif
@@ -164,7 +164,7 @@ TEST_F(CApiTest, dim_param) {
   auto in0_ttsi = in0.GetTensorTypeAndShapeInfo();
 
   auto num_input_dims = in0_ttsi.GetDimensionsCount();
-  ASSERT_GE(num_input_dims, 1);
+  ASSERT_GE(num_input_dims, 1u);
   // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
   int64_t dim_value = 0;
   const char* dim_param = nullptr;
@@ -176,7 +176,7 @@ TEST_F(CApiTest, dim_param) {
   auto out0 = session.GetOutputTypeInfo(0);
   auto out0_ttsi = out0.GetTensorTypeAndShapeInfo();
   auto num_output_dims = out0_ttsi.GetDimensionsCount();
-  ASSERT_EQ(num_output_dims, 1);
+  ASSERT_EQ(num_output_dims, 1u);
 
   out0_ttsi.GetDimensions(&dim_value, 1);
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
@@ -261,7 +261,7 @@ TEST_F(CApiTest, custom_op_handler) {
   TestInference<PATH_TYPE, float>(env_, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 }
 
-TEST_F(CApiTest, test_custom_op_library) {
+TEST_F(CApiTest, DISABLED_test_custom_op_library) {
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<Input> inputs(2);
@@ -366,7 +366,7 @@ TEST_F(CApiTest, create_tensor_with_data) {
   auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
   ASSERT_NE(tensor_info, nullptr);
-  ASSERT_EQ(1, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
 }
 
 TEST_F(CApiTest, override_initializer) {

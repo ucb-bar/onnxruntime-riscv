@@ -14,11 +14,6 @@
 #include "core/session/inference_session.h"
 #include "test/util/include/default_providers.h"
 
-#ifdef MICROSOFT_AUTOML
-#include "automl_ops/automl_featurizers.h"
-namespace dtf = Microsoft::Featurizer::DateTimeFeaturizer;
-#endif
-
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
@@ -246,12 +241,12 @@ void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& outp
   const auto& exp_seq = expected_data.data_.Get<TensorSeq>();
 
   // first ensure data types match
-  EXPECT_EQ(exp_seq.dtype, output_seq.dtype) << "Data types don't match: Expected: " << DataTypeImpl::ToString(exp_seq.dtype)
-                                             << " Output: " << output_seq.dtype << " provider_type: " << provider_type;
+  EXPECT_EQ(exp_seq.DataType(), output_seq.DataType()) << "Data types don't match: Expected: " << DataTypeImpl::ToString(exp_seq.DataType())
+                                             << " Output: " << output_seq.DataType() << " provider_type: " << provider_type;
 
   // check num of contained tensors
-  size_t expected_num_tensors = exp_seq.tensors.size();
-  size_t output_num_tensors = output_seq.tensors.size();
+  size_t expected_num_tensors = exp_seq.Size();
+  size_t output_num_tensors = output_seq.Size();
   EXPECT_EQ(expected_num_tensors, output_num_tensors) << "Mismatch in number of tensors in the sequence"
                                                       << " Expected: " << expected_num_tensors << " Output: "
                                                       << output_num_tensors << " provider_type: " << provider_type;
@@ -263,9 +258,9 @@ void Check<TensorSeq>(const OpTester::Data& expected_data, const TensorSeq& outp
     OrtValue temp_value;
     // Reason for null_deleter: we don't want the tensor destructor to be called as part of this OrtValue destructor
     // as we're creating this OrtValue only to reuse the Check functionality
-    temp_value.Init(const_cast<Tensor*>(&exp_seq.tensors[i]), DataTypeImpl::GetType<Tensor>(), null_deleter);
+    temp_value.Init(const_cast<Tensor*>(&exp_seq.Get(i)), DataTypeImpl::GetType<Tensor>(), null_deleter);
     OpTester::Data temp_data(NodeArg("dummy", nullptr), std::move(temp_value), optional<float>(), optional<float>());
-    Check(temp_data, output_seq.tensors[i], provider_type);
+    Check(temp_data, output_seq.Get(i), provider_type);
   }
 }
 
@@ -288,13 +283,8 @@ void CheckDispatch(MLDataType type, const OpTester::Data& expected_data, OrtValu
 }
 
 void Check(const OpTester::Data& expected_data, OrtValue& ort_value, const std::string& provider_type) {
-#ifdef MICROSOFT_AUTOML
-  CheckDispatch<dtf::TimePoint, VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
-                                                                                          provider_type);
-#else
   CheckDispatch<VectorMapStringToFloat, VectorMapInt64ToFloat, TensorSeq>(expected_data.data_.Type(), expected_data, ort_value,
                                                                           provider_type);
-#endif
 }
 
 void DebugTrap() {
@@ -460,7 +450,7 @@ void OpTester::ExecuteModel(Model& model, InferenceSession& session_object, Expe
     } else {
       if (expect_result == ExpectResult::kExpectFailure) {
         // Disable expected_failure_string checks for MKL-DNN and nGraph EP's
-        if (provider_type != kMklDnnExecutionProvider && provider_type != kNGraphExecutionProvider) {
+        if (provider_type != kDnnlExecutionProvider && provider_type != kNGraphExecutionProvider) {
           EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(expected_failure_string));
         }
       } else {
@@ -569,7 +559,7 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
-        kMklDnnExecutionProvider,
+        kDnnlExecutionProvider,
         kNGraphExecutionProvider,
         kNupharExecutionProvider,
         kBrainSliceExecutionProvider,
@@ -623,8 +613,8 @@ void OpTester::Run(SessionOptions so,  // Take the SessionOptions by value (i.e.
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
-        else if (provider_type == onnxruntime::kMklDnnExecutionProvider)
-          execution_provider = DefaultMkldnnExecutionProvider();
+        else if (provider_type == onnxruntime::kDnnlExecutionProvider)
+          execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kNGraphExecutionProvider)
           execution_provider = DefaultNGraphExecutionProvider();
         else if (provider_type == onnxruntime::kNupharExecutionProvider)

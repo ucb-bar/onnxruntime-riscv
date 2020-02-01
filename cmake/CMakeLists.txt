@@ -52,11 +52,11 @@ option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_NSYNC "Build with NSYNC support. This option only takes effect on Linux" OFF)
 option(onnxruntime_USE_EIGEN_FOR_BLAS "Use eign for blas" ON)
 option(onnxruntime_USE_NNAPI "Build with DNNLibrary for Android NNAPI support" OFF)
-option(onnxruntime_USE_MKLDNN "Build with MKL-DNN support" OFF)
-option(onnxruntime_USE_MKLML "Build MKL-DNN with MKL-ML binary dependency" OFF)
+option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
+option(onnxruntime_USE_MKLML "Build DNNL with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_GEMMLOWP "Build with gemmlowp for quantized gemm" OFF)
 option(onnxruntime_USE_SYSTOLIC "Whether to use Systolic to accelerate matmul" OFF)
-option(onnxruntime_USE_AUTOML "Build AutoML support" ON)
+option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -74,7 +74,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_BRAINSLICE "Build with BrainSlice" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
-option(onnxruntime_ENABLE_LTO "Enable link time optimization" ON)
+option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_BUILD_SERVER "Build ONNX Runtime Server" OFF)
 option(onnxruntime_USE_FULL_PROTOBUF "Use full protobuf" OFF)
@@ -85,6 +85,7 @@ option(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS "Dump node input shapes and output 
 option(onnxruntime_USE_DML "Build with DirectML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
+option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 #nsync tests failed on Mac Build
@@ -99,6 +100,13 @@ if(NOT WIN32)
   if(onnxruntime_ENABLE_INSTRUMENT)
     message(WARNING "Instrument is only supported on Windows now")
     set(onnxruntime_ENABLE_INSTRUMENT OFF)
+  endif()
+else()
+  check_cxx_compiler_flag(/d2FH4- HAS_D2FH4)
+  if (HAS_D2FH4)
+    message("Enabling /d2FH4-")
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /d2FH4-")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /d2FH4-")
   endif()
 endif()
 
@@ -120,19 +128,21 @@ if(onnxruntime_USE_OPENMP)
     set(onnxruntime_USE_OPENMP OFF)
   endif()
 endif()
+
 if(onnxruntime_ENABLE_LTO)
-  #TODO: figure out why nsync doesn't work
-  if(onnxruntime_USE_NSYNC)
-    message(WARNING "IPO is not supported when nsync is in use")
-    set(onnxruntime_ENABLE_LTO OFF)
-  else()
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)
     if(NOT ipo_enabled)
       message(WARNING "IPO is not supported by this compiler")
       set(onnxruntime_ENABLE_LTO OFF)
+    else()
+      if(UNIX)
+        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
+        set (CMAKE_LDFLAGS "${CMAKE_CXX_FLAGS} -flto")
+        set (CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+      endif()
     endif()
-  endif()
 endif()
 
 
@@ -184,7 +194,8 @@ if (MSVC)
     set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
   endif()
   #Always enable exception handling, even for Windows ARM
-  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")  
+  SET (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+  #TODO: the "/GL" switch should be controlled by onnxruntime_ENABLE_LTO
   if (NOT onnxruntime_USE_CUDA)
     SET (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     SET (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
@@ -209,12 +220,7 @@ else()
     string(APPEND CMAKE_C_FLAGS_RELEASE " -march=native -mtune=native")
     string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
     string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -march=native -mtune=native")
-  endif()
-  if(onnxruntime_BUILD_x86)
-    set (CMAKE_SYSTEM_PROCESSOR "x86")
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2 -mfpmath=sse -Wno-narrowing")
-  endif()
+  endif()  
 endif()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -266,17 +272,30 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
 
 
 # use protobuf as a submodule
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
+endif()
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
 set_target_properties(libprotobuf PROPERTIES FOLDER "External/Protobuf")
 set_target_properties(libprotobuf-lite PROPERTIES FOLDER "External/Protobuf")
-set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
-set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+if(TARGET libprotoc)
+  set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
+  add_executable(protobuf::protoc ALIAS protoc)
+endif()
+if(TARGET protoc)
+  set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
+endif()
 if (onnxruntime_USE_FULL_PROTOBUF)
   add_library(protobuf::libprotobuf ALIAS libprotobuf)
 else()
   add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
 endif()
-add_executable(protobuf::protoc ALIAS protoc)
+
+if(UNIX AND onnxruntime_ENABLE_LTO)
+  #https://github.com/protocolbuffers/protobuf/issues/5923
+  target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
+endif()
 include(protobuf_function.cmake)
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
@@ -326,7 +345,7 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -DGSL_UNEN
 
 include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn, jemalloc,
-# mkldnn/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
+# dnnl/mklml, openblas, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto protobuf::libprotobuf re2)
 
@@ -344,6 +363,11 @@ if (onnxruntime_USE_ACL)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES arm_compute acl arm_compute_graph arm_compute_core)
 endif()
 
+# MKLML
+if (onnxruntime_USE_DNNL OR onnxruntime_USE_MKLML)
+  include(dnnl)
+endif()
+
 # TVM
 if (onnxruntime_USE_TVM)
   if (onnxruntime_USE_CUDA)
@@ -353,11 +377,31 @@ if (onnxruntime_USE_TVM)
     set(USE_LLVM ON)
     add_definitions(-DUSE_TVM_WITH_LLVM)
   endif()
+  if (onnxruntime_USE_OPENMP)
+    set(USE_OPENMP "gnu")
+  endif()
+  if (onnxruntime_USE_MKLML)
+    set(USE_OPENMP "intel")
+    # make sure MKLML in ORT is used by TVM
+    if (WIN32)
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_IMPORT_LIB})
+    else()
+      set(OMP_LIBRARY ${MKLML_LIB_DIR}/${IOMP5MD_SHARED_LIB})
+    endif()
+  endif()
+
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
   set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
   set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
   set_target_properties(nnvm_compiler PROPERTIES FOLDER "External/tvm")
+
+  if (onnxruntime_USE_MKLML)
+    add_dependencies(tvm project_mklml)
+    add_dependencies(tvm_topi project_mklml)
+    add_dependencies(tvm_runtime project_mklml)
+    add_dependencies(nnvm_compiler project_mklml)
+  endif()
 
   set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
     ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
@@ -378,6 +422,14 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 
+if (APPLE)
+  #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single 
+  #parameter version of SetTotalBytesLimit(). The second parameter is ignored. 
+  #  coded_stream.SetTotalBytesLimit((2048LL << 20) - 1, 512LL << 20);
+  #TODO: fix the warning in ONNX and re-enable this flag
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated")
+  string(APPEND CMAKE_C_FLAGS " -Wno-deprecated")
+endif()
 # ONNX
 add_subdirectory(onnx)
 
@@ -397,11 +449,8 @@ if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
-    string(APPEND CMAKE_CXX_FLAGS
-      " /wd4503" # Decorated name length exceeded.
-      " /wd4127" # conditional expression is constant.
-      " /wd4146" # unary minus operator applied to unsigned type. Needed for Protobuf
-    )
+    #in order to fix this warning, we need C++17 so that we can use 'if constexpr'
+    string(APPEND CMAKE_CXX_FLAGS " /wd4127")
     if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         string(APPEND CMAKE_CXX_FLAGS
             " /analyze:WX- "
@@ -417,11 +466,11 @@ if (WIN32)
         string(APPEND CMAKE_CXX_FLAGS " /W3")
     else()
         string(APPEND CMAKE_CXX_FLAGS " /W4")
-    endif()
+    endif()    
 
-    # treat warning as error only on x64 platform.
-    # For x86 and cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
-    if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
+    # Treat warning as error if onnxruntime_DEV_MODE is ON
+    # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
+    if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
       # treat warnings as errors
       string(APPEND CMAKE_CXX_FLAGS " /WX")
       foreach(type EXE STATIC SHARED)
@@ -434,6 +483,7 @@ if (WIN32)
       foreach(type EXE SHARED)
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /OPT:REF,ICF,LBR")
         set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /INCREMENTAL:NO")
+        #TODO: the "/LTCG" switch should be controlled by onnxruntime_ENABLE_LTO
         if (NOT onnxruntime_USE_CUDA)
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
@@ -452,6 +502,7 @@ else()
   endif()
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-parameter HAS_UNUSED_PARAMETER)
+  check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
@@ -462,6 +513,7 @@ else()
   check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
   check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
+  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -476,7 +528,6 @@ else()
   if(HAS_DEPRECATED_COPY)
     #too many such errors in eigen and gemmlowp
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-deprecated-copy")
-    string(APPEND CMAKE_C_FLAGS_DEBUG " -Wno-deprecated-copy")
   endif()
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
@@ -502,10 +553,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_USE_MKLDNN OR onnxruntime_USE_MKLML)
-  include(mkldnn)
-endif()
-
 if(onnxruntime_USE_GEMMLOWP)
   add_definitions(-DUSE_GEMMLOWP=1)
 endif()
@@ -526,10 +573,10 @@ if (onnxruntime_USE_MKLML)
   link_directories(${MKLML_LIB_DIR})
 endif()
 
-if (onnxruntime_USE_MKLDNN)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES mkldnn)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_mkldnn)
-  link_directories(${MKLDNN_LIB_DIR})
+if (onnxruntime_USE_DNNL)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dnnl)
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES project_dnnl)
+  link_directories(${DNNL_LIB_DIR})
 endif()
 
 if (onnxruntime_USE_NGRAPH)
@@ -549,29 +596,29 @@ if(onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
-	if(onnxruntime_USE_OPENVINO_MYRIAD)
-		add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_GPU_FP32)
-		add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_GPU_FP16)
-		add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_CPU_FP32)
-		add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
-	endif()
-
-	if(onnxruntime_USE_OPENVINO_VAD_M)
-		add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    if(onnxruntime_USE_OPENVINO_MYRIAD)
+        add_definitions(-DOPENVINO_CONFIG_MYRIAD=1)
     endif()
 
-	if(onnxruntime_USE_OPENVINO_VAD_F)
-		add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
-	endif()
+    if(onnxruntime_USE_OPENVINO_GPU_FP32)
+        add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_GPU_FP16)
+        add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_CPU_FP32)
+        add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_VAD_M)
+        add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
+    endif()
+
+    if(onnxruntime_USE_OPENVINO_VAD_F)
+        add_definitions(-DOPENVINO_CONFIG_VAD_F=1)
+    endif()
 
 endif()
 
@@ -684,10 +731,10 @@ include(onnxruntime_optimizer.cmake)
 include(onnxruntime_session.cmake)
 include(onnxruntime_mlas.cmake)
 
-if(onnxruntime_USE_AUTOML)
-  add_definitions(-DMICROSOFT_AUTOML)
-  # Build shared featurizer library
-  include(onnxruntime_automl_featurizers.cmake)
+if(onnxruntime_USE_FEATURIZERS)
+  add_definitions(-DML_FEATURIZERS)
+  # Fetch and build featurizers
+  include(external/featurizers.cmake)
 endif()
 
 if(WIN32)
@@ -712,6 +759,11 @@ endif()
 
 if (onnxruntime_BUILD_SERVER)
   include(onnxruntime_server.cmake)
+endif()
+
+if (onnxruntime_BUILD_JAVA)
+  message(STATUS "Java Build is enabled")
+  include(onnxruntime_java.cmake)
 endif()
 
 # some of the tests rely on the shared libs to be
@@ -744,3 +796,4 @@ if (onnxruntime_BUILD_CSHARP)
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
   include(onnxruntime_csharp.cmake)
 endif()
+
