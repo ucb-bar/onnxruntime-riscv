@@ -728,7 +728,7 @@ def build_python_wheel(source_dir, build_dir, configs, use_cuda, use_ngraph, use
         run_subprocess(args, cwd=cwd)
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    return "/scratch/pranavprakash/onnxruntime/bin/protoc"
+    return "/scratch/pranavprakash/onnxruntime/bin/protoc3_11_2"
 
 def generate_documentation(source_dir, build_dir, configs):
     operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
