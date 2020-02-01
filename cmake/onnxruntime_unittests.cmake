@@ -379,7 +379,7 @@ if (SingleUnitTestProject)
   # the default logger tests conflict with the need to have an overall default logger
   # so skip in this type of
   target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
-
+  target_link_libraries(onnxruntime_test_all PRIVATE atomic)
   if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
     target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
@@ -433,6 +433,8 @@ AddTest(
   LIBS  onnxruntime_test_utils ${ONNXRUNTIME_TEST_LIBS}
   DEPENDS ${onnxruntime_EXTERNAL_DEPENDENCIES}
 )
+
+target_link_libraries(onnxruntime_test_framework_session_without_environment_standalone PRIVATE atomic)
 
 
 #
@@ -570,6 +572,7 @@ add_executable(onnx_test_runner ${onnx_test_runner_src_dir}/main.cc)
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
+target_link_libraries(onnx_test_runner PRIVATE atomic)
 
 if (onnxruntime_USE_TVM)
   if (WIN32)
@@ -661,6 +664,8 @@ if (onnxruntime_USE_TVM)
   endif()
 endif()
 
+target_link_libraries(onnxruntime_perf_test PRIVATE atomic)
+
 # Opaque API test can not be a part of the shared lib tests since it is using
 # C++ internals apis to register custom type, kernel and schema. It also can not
 # a part of providers unit tests since it requires its own environment.
@@ -676,6 +681,9 @@ AddTest(
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(opaque_api_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
+
+target_link_libraries(opaque_api_test PRIVATE atomic)
+
 
 
 # shared lib
@@ -736,6 +744,7 @@ if(onnxruntime_USE_NSYNC)
 endif()
 list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
 target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
+target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
 add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc)
