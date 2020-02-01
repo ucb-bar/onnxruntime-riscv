@@ -8,13 +8,13 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Setup RISCV environment variables. Ensure that riscv/esp-tools GCC is in your path.
 export CXX=riscv64-unknown-linux-gnu-g++
 export CC=riscv64-unknown-linux-gnu-gcc
-export CXXFLAGS="-march=rv64imafdc -mabi=lp64"
+export CXXFLAGS="-march=rv64imafdc -mabi=lp64d"
 
 # On first build, it will fail on linking binary, complaining about missing atomics (this is despite having -latomic).
 # Rebuilding fixes this for some reason. This started happening after the version bump subsequent to commit 4db932, as there were some CMake file changes in those commits.
 
 #requires python3.6 or higher
-python3 $DIR/tools/ci_build/build.py --arm --build_dir=build "$@"
+python3 $DIR/tools/ci_build/build.py --arm --disable_contrib_ops --build_dir=build "$@"
 
 # Statically link lpthread, latomic, lrt into the test-runner binary so we can run using riscv userspace qemu
 cd build/Debug
