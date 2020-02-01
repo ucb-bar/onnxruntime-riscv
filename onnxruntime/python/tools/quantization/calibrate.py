@@ -33,18 +33,26 @@ def augment_graph(model):
     quantization_candidates = ['Conv', 'MatMul']
     added_nodes = []
     added_outputs = []
+    i = 0
     for node in model.graph.node:
         if node.op_type in quantization_candidates:
             input_name = node.output[0]
             # Adding ReduceMin nodes
-            reduce_min_name = node.name + '_ReduceMin'
+            if node.name == "":
+                reduce_min_name = str(i)  + '_ReduceMin'
+                i += 1
+            else:
+                reduce_min_name = node.name + '_ReduceMin'
             reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
                             [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
             added_nodes.append(reduce_min_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
-            reduce_max_name = node.name + '_ReduceMax'
+            if node.name == "":
+                reduce_max_name = str(i) + '_ReduceMax'
+            else:
+                reduce_max_name = node.name + '_ReduceMax'
             reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
                             [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
             added_nodes.append(reduce_max_node)
@@ -117,9 +125,9 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
         if rmin < 0:
             rmin = 0
 
-    scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
-    initial_zero_point = (0 - rmin) / scale
-    zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
+    max_range = max(abs(rmin), abs(rmax))
+    scale = (np.float32(max_range)*2) / 254
+    zero_point = np.int8(0)
 
     zp_and_scale.append(zero_point)
     zp_and_scale.append(scale)
