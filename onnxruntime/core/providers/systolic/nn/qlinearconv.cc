@@ -186,14 +186,28 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
             *input_offset->template Data<int8_t>());
       }
 
-      int32_t* broadcast_bias = nullptr;
+      std::unique_ptr<int32_t[]> broadcast_bias(nullptr);
 
       if (bias) {
-        Eigen::Matrix<int32_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> matrix_bias;
-        matrix_bias.resize(static_cast<int>(M / conv_attrs_.group), static_cast<int>(output_image_size));
-        ConstEigenVectorMap<int32_t> splatted(bias->template Data<int32_t>() + group_id * bias_offset, static_cast<int>(M / conv_attrs_.group));
-        matrix_bias.colwise() = splatted;
-        broadcast_bias = matrix_bias.data();
+        // for (int i = 0; i <  static_cast<int>(M / conv_attrs_.group); i++) {
+        //   printf("%d ", (bias->template Data<int32_t>() + group_id * bias_offset)[i]);
+        // }
+        // printf("\n");
+        int dimI = static_cast<int>(M / conv_attrs_.group);
+        int dimJ = static_cast<int>(output_image_size);
+        std::unique_ptr<int[]> matrix_bias(new int[dimI * dimJ]);
+        const int32_t* bias_data = bias->template Data<int32_t>() + group_id * bias_offset;
+        for (int i = 0; i < dimI; i++) {
+          std::fill(&matrix_bias.get()[i * dimJ], &matrix_bias.get()[i * dimJ + dimJ], bias_data[i]);
+        }
+        broadcast_bias = std::move(matrix_bias);
+
+
+        // Eigen::Matrix<int32_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> matrix_bias;
+        // matrix_bias.resize(static_cast<int>(M / conv_attrs_.group), static_cast<int>(output_image_size));
+        // ConstEigenVectorMap<int32_t> splatted(, static_cast<int>(M / conv_attrs_.group));
+        // matrix_bias.colwise() = splatted;
+        // broadcast_bias = matrix_bias.data();
       }
       
       SystolicMultiplyi8i8_i8(static_cast<int>(M / conv_attrs_.group),
@@ -202,7 +216,7 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
                               W->template Data<int8_t>() + group_id * W_offset,
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
-                              right_shift, broadcast_bias);
+                              right_shift, broadcast_bias.get());
 
       // GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
       //                   col_buffer_data,
