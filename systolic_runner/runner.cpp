@@ -12,6 +12,13 @@
 
 #include "tensor_helper.h"
 
+unsigned long long read_cycles()
+{
+    unsigned long long cycles;
+    asm volatile ("rdcycle %0" : "=r" (cycles));
+    return cycles;
+}
+
 int main(int argc, char* argv[]) {
   //*************************************************************************
   // initialize  enviroment...one enviroment per process
@@ -40,7 +47,7 @@ int main(int argc, char* argv[]) {
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
 
-  const char* model_path = "/scratch/pranavprakash/onnxruntime/quantize_new/quantization/vgg16/vgg16.onnx";
+  const char* model_path = "/scratch/pranavprakash/onnxruntime/quantize_new/quantization/bvlc_alexnet/model_int8_quant.onnx";
 
   printf("Using Onnxruntime C++ API\n");
   Ort::Session session(env, model_path, session_options);
@@ -100,7 +107,7 @@ int main(int argc, char* argv[]) {
                                              // use OrtGetTensorShapeElementCount() to get official size!
 
   printf("Loading image\n");
-  std::vector<const char*> output_node_names = {"vgg0_dense2_fwd"};
+  std::vector<const char*> output_node_names = {"gpu_0/softmax_1"}; // prob_1
 
 
 	int dimX, dimY, numChannels;
@@ -111,9 +118,16 @@ int main(int argc, char* argv[]) {
 	
 	for (int i = 0; i < 224; i++) {
 		for (int j = 0; j < 224; j++) {
-			input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
-			input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;
-			input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.225)/0.225;	
+      unsigned char r = *(data++);
+      unsigned char g = *(data++);
+      unsigned char b = *(data++);
+			input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
+			input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
+			input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;	
+      
+			// input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
+			// input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;
+			// input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.225)/0.225;	
 		}
 	}
   printf("First few image values %f %f %f\n", input_tensor_values[0], input_tensor_values[1], input_tensor_values[2]);
@@ -127,8 +141,12 @@ int main(int argc, char* argv[]) {
   Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size, input_node_dims.data(), 4);
   assert(input_tensor.IsTensor());
 
+  auto pre_inference_cycles = read_cycles();
+
   // score model & input tensor, get back output tensor
   auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
+  auto post_inference_cycles = read_cycles();
+
   assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
 
   // Get pointer to output tensor float values
@@ -143,8 +161,8 @@ int main(int argc, char* argv[]) {
   }
 
   // score the model, and print scores for first 5 classes
-  for (int i = 0; i < 5; i++)
-    printf("Score for class [%d] =  %f\n", i, floatarr[i]);
+  // for (int i = 0; i < 5; i++)
+  //   printf("Score for class [%d] =  %f\n", i, floatarr[i]);
 
   // Results should be as below...
   // Score for class[0] = 0.000045
@@ -152,6 +170,6 @@ int main(int argc, char* argv[]) {
   // Score for class[2] = 0.000125
   // Score for class[3] = 0.001180
   // Score for class[4] = 0.001317
-  printf("Done!\n");
+  printf("Done! Inference took %llu cycles \n", (post_inference_cycles - pre_inference_cycles));
   return 0;
 }

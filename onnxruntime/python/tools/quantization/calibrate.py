@@ -125,9 +125,9 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
         if rmin < 0:
             rmin = 0
 
-    max_range = max(abs(rmin), abs(rmax))
-    scale = (np.float32(max_range)*2) / 254
-    zero_point = np.int8(0)
+    scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
+    initial_zero_point = (0 - rmin) / scale
+    zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
 
     zp_and_scale.append(zero_point)
     zp_and_scale.append(scale)

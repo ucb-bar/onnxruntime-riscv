@@ -14,11 +14,11 @@
 namespace onnxruntime {
 
 void inline QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, int* right_shift) {
-  if (fp_multiplier == 1) {
-    *integer_multiplier = 1;
-    *right_shift = 0;
-    return;
-  }
+  // if (fp_multiplier == 1) {
+  //   *integer_multiplier = 1;
+  //   *right_shift = 0;
+  //   return;
+  // }
   auto* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
   auto current_exponent = (*fp_as_bits >> 23);
   // bring multiplier in [.5,1) range and calculate the shift
@@ -76,9 +76,10 @@ void GemmlowpMultiplyu8u8_s32(const uint8_t* lhs_data, const uint8_t* rhs_data, 
 
 }  // namespace onnxruntime
 
-inline void GemmlowpDebug(const uint8_t* lhs_data, const uint8_t* rhs_data, uint8_t* result_data,
+template<typename T>
+inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
                         const int lhs_offset, const int rhs_offset, const int result_offset,
-                        int m, int n, int k, int32_t int_multiplier, int32_t right_shift, const int32_t* bias) {
+                        int m, int n, int k, float real_multiplier, const int32_t* bias) {
 
   printf("lhs matrix\n");
   for (int i = 0; i < m; i++) {
@@ -109,16 +110,19 @@ inline void GemmlowpDebug(const uint8_t* lhs_data, const uint8_t* rhs_data, uint
   printf("rhs_offset: %d\n", rhs_offset);
   printf("result_offset: %d\n", result_offset);
 
-  printf("int_multiplier: %d\n", int_multiplier);
-  printf("right_shift: %d\n", right_shift);
+  printf("int_multiplier: %f\n", real_multiplier);
   if (bias) {
     printf("bias:\n");
     for (int i = 0; i < m; i++) {
-      printf("%d ", (int) bias[i]);
+      for (int j = 0; j < n; j++) {
+        printf("%d ", bias[i*n + j]);
+      }
+      printf("\n");
     }
   }
-
+  
 }
+
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

@@ -96,7 +96,7 @@ void SystolicMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const elem_t* in1, co
   }
 
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
-  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, bias, out, NO_ACTIVATION, shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, CPU);
+  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, bias, out, NO_ACTIVATION, shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, OS);
 
   // for (int i = 0; i < dimI; i++) {
   //   for (int j = 0; j < dimJ; j++) {

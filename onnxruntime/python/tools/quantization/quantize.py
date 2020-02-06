@@ -1281,8 +1281,8 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         ]
     '''
     if nbits == 8:
-        input_qType = onnx_proto.TensorProto.INT8
-        weight_qType = onnx_proto.TensorProto.INT8
+        input_qType = onnx_proto.TensorProto.UINT8
+        weight_qType = onnx_proto.TensorProto.UINT8
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)

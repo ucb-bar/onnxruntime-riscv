@@ -235,12 +235,12 @@ static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const void* D, 
   // TODO this should be overlapped with the next "Move-in D"
   // Move-out C
   if (C != NULL) {
-    printf("  Enter mvout loop\n");
+    //printf("  Enter mvout loop\n");
 
     matmul_config_st(C_row_len * sizeof(elem_t));
     for (size_t i = 0; i < I; i++) {
       for (size_t j = 0; j < J; j++) {
-        printf("    i: %lu, j: %lu\n", i, j);
+        //printf("    i: %lu, j: %lu\n", i, j);
 
         elem_t* const C_dram_addr = C + (i * C_row_len + j) * DIM;
         const uint32_t C_sp_addr = C_sp_addr_start + (i * J + j) * DIM;
@@ -430,7 +430,7 @@ static void tiled_matmul_os(size_t DIM_I, size_t DIM_J, size_t DIM_K,
   for (size_t i0 = 0; i0 < I0; i0++)
     for (size_t j0 = 0; j0 < J0; j0++)
       for (size_t k0 = 0; k0 < K0; k0++) {
-        printf("i0: %lu, j0: %lu, k0: %lu\n", i0, j0, k0);
+        //printf("i0: %lu, j0: %lu, k0: %lu\n", i0, j0, k0);
 
         int first_mvin = i0 == 0 && j0 == 0 && k0 == 0;
         int last_mvout = (i0 == I0 - 1) && (j0 == J0 - 1) && (k0 == K0 - 1);

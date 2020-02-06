@@ -24,7 +24,7 @@ class QLinearConv : public OpKernel {
 template<typename T>
 inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
                         const int lhs_offset, const int rhs_offset, const int result_offset,
-                        int m, int n, int k, int32_t int_multiplier, int32_t right_shift, const int32_t* bias) {
+                        int m, int n, int k, float real_multiplier, const int32_t* bias) {
 
   printf("lhs matrix\n");
   for (int i = 0; i < m; i++) {
@@ -55,8 +55,7 @@ inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
   printf("rhs_offset: %d\n", rhs_offset);
   printf("result_offset: %d\n", result_offset);
 
-  printf("int_multiplier: %d\n", int_multiplier);
-  printf("right_shift: %d\n", right_shift);
+  printf("int_multiplier: %f\n", real_multiplier);
   if (bias) {
     printf("bias:\n");
     for (int i = 0; i < m; i++) {

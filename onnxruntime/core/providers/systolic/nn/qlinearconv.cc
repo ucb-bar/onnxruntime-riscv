@@ -23,6 +23,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv<int8_t, int8_t, int8_t>);
 
+
 int nearestPowerOfTwo(int n)
 {
     int v = n; 
@@ -38,6 +39,37 @@ int nearestPowerOfTwo(int n)
     int x = v >> 1; // previous power of 2
 
     return (v - n) > (n - x) ? x : v;
+}
+
+#define ROUNDING_RIGHT_SHIFT(x, shift) \
+    ({((x) >> (shift)) + \
+        (((shift) == 0 ? 0 : (((x) >> ((shift)-1)) & 1)) & \
+             ((((shift) <= 1 ? 0 : ((x) & ((1 << ((shift)-1)) - 1))) != 0) | (((x) >> (shift)) & 1)));})
+
+inline int8_t saturate(int32_t num, int shift) {
+    num = ROUNDING_RIGHT_SHIFT(num, shift);
+    // const int divisor = 1 << shift;
+    // int32_t abs = num > 0 ? num : -num;
+    // int32_t shifted = (abs + (divisor/2)) / divisor;
+    // if (num < 0)
+    //     num = -shifted;
+    // else
+    //     num = shifted;
+    // Clip result
+    return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+}
+
+inline void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, float real_multiplier, const int32_t* bias = nullptr) {
+    printf("Called my matmul\n");
+    for (int i = 0; i < dimI; i++) {
+        for (int j = 0; j < dimJ; j++) {
+            int32_t res = 0;
+            for (int k = 0; k < dimK; k++) {
+                res += in1[i * dimK + k] * in2[k * dimJ + j];
+            }
+            out[i * dimJ + j] = saturate(real_multiplier * (res + (bias != nullptr ? bias[i * dimJ + j] : 0)), 0);
+        }
+    }
 }
 
 template <>
@@ -81,7 +113,16 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
   auto result_scale_data = *(result_scale->template Data<float>());
 
 
-  unsigned int right_shift = nearestPowerOfTwo(result_scale_data / (input_scale_data * filter_scale_data));
+  ORT_ENFORCE(result_scale_data != 0, "result_scale_data cannot be 0");
+  ORT_ENFORCE(filter_scale_data != 0, "filter_scale_data cannot be 0");
+  ORT_ENFORCE(input_scale_data != 0, "input_scale_data cannot be 0");
+
+  const float real_multiplier = (input_scale_data * filter_scale_data) / result_scale_data;
+  // int32_t integer_multiplier;
+  // int right_shift;
+  //QuantizeMultiplier(real_multiplier, &integer_multiplier, &right_shift);
+  
+  //unsigned int right_shift = nearestPowerOfTwo(result_scale_data / (input_scale_data * filter_scale_data));
 
   // ORT_ENFORCE(result_scale_data - (int)result_scale_data <= 1E-5, "Systolic can only handle integer divisors for result scale");
   // int result_scale_data_rounded = (int)result_scale_data;
@@ -209,27 +250,66 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
         // matrix_bias.colwise() = splatted;
         // broadcast_bias = matrix_bias.data();
       }
-      
-      SystolicMultiplyi8i8_i8(static_cast<int>(M / conv_attrs_.group),
+
+
+      if (false && static_cast<int>(M / conv_attrs_.group) % 16 == 0 && static_cast<int>(output_image_size) % 16 == 0 && static_cast<int>(kernel_dim) % 16 == 0) {
+        printf("Using systolic accelerated matmul for %s with input_scale %f, filter_scale %f, result_scale %f\n", Node().Name().c_str(), input_scale_data, filter_scale_data, result_scale_data);
+        unsigned int right_shift = nearestPowerOfTwo(result_scale_data / (input_scale_data * filter_scale_data));
+        printf("Right shift: %d", right_shift);
+        SystolicMultiplyi8i8_i8(static_cast<int>(M / conv_attrs_.group),
+                        static_cast<int>(output_image_size),
+                        static_cast<int>(kernel_dim),
+                        W->template Data<int8_t>() + group_id * W_offset,
+                        col_buffer_data,
+                        Ydata + group_id * Y_offset,
+                        right_shift, broadcast_bias.get());
+
+      } else {
+        printf("Using cpu accelerated matmul for %s with input_scale %f, filter_scale %f, result_scale %f\n", Node().Name().c_str(), input_scale_data, filter_scale_data, result_scale_data);
+        mymatmul(static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
                               static_cast<int>(kernel_dim),
                               W->template Data<int8_t>() + group_id * W_offset,
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
-                              right_shift, broadcast_bias.get());
+                              real_multiplier, broadcast_bias.get());
 
-      // GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
-      //                   col_buffer_data,
-      //                   Ydata + group_id * Y_offset,
-      //                   *filter_offset->template Data<int8_t>(),
-      //                   *input_offset->template Data<int8_t>(),
-      //                   *result_offset->template Data<int8_t>(),
-      //                   static_cast<int>(M / conv_attrs_.group),
-      //                   static_cast<int>(output_image_size),
-      //                   static_cast<int>(kernel_dim),
-      //                   1,
-      //                   result_scale_data_rounded,
-      //                   broadcast_bias);
+      }
+
+      int8_t mx = col_buffer_data[0];
+      int8_t mn = mx;
+      for (int i = 0; i < static_cast<int>(kernel_dim) * static_cast<int>(output_image_size); i++) {
+        mx = std::max(mx, col_buffer_data[i]);
+        mn = std::min(mn, col_buffer_data[i]);
+      }
+      printf("max/min of input %d %d whose node is %s\n", mx, mn, Node().Name().c_str());
+
+      mx = (Ydata + group_id * Y_offset)[0];
+      mn = mx;
+      for (int i = 0; i < static_cast<int>(M / conv_attrs_.group) * static_cast<int>(output_image_size); i++) {
+        mx = std::max(mx, (Ydata + group_id * Y_offset)[i]);
+        mn = std::min(mn, (Ydata + group_id * Y_offset)[i]);
+      }
+
+      printf("max/min of output %d %d whose node is %s\n", mx, mn, Node().Name().c_str());
+
+
+
+      // if (Node().Name() == "vgg0_conv0_fwd_quant") {
+      //   GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
+      //                     col_buffer_data,
+      //                     Ydata + group_id * Y_offset,
+      //                     *filter_offset->template Data<int8_t>(),
+      //                     *input_offset->template Data<int8_t>(),
+      //                     *result_offset->template Data<int8_t>(),
+      //                     static_cast<int>(M / conv_attrs_.group),
+      //                     static_cast<int>(output_image_size),
+      //                     static_cast<int>(kernel_dim),
+      //                     real_multiplier,
+      //                     broadcast_bias.get());
+      // }
+
+
     }
 
     Xdata += X_offset * conv_attrs_.group;

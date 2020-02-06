@@ -21,6 +21,31 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>()),
     QLinearMatMul<int8_t, int8_t, int8_t>);
 
+inline int8_t saturate(int32_t num, int shift) {
+    const int divisor = 1 << shift;
+    int32_t abs = num > 0 ? num : -num;
+    int32_t shifted = (abs + (divisor/2)) / divisor;
+    if (num < 0)
+        num = -shifted;
+    else
+        num = shifted;
+    // Clip result
+    return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+}
+
+inline void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, float real_multiplier, const int32_t* bias = nullptr) {
+    printf("Called my matmul\n");
+    for (int i = 0; i < dimI; i++) {
+        for (int j = 0; j < dimJ; j++) {
+            int32_t res = 0;
+            for (int k = 0; k < dimK; k++) {
+                res += in1[i * dimK + k] * in2[k * dimJ + j];
+            }
+            out[i * dimJ + j] = saturate(real_multiplier * (res + (bias != nullptr ? bias[i * dimJ + j] : 0)), 0);
+        }
+    }
+}
+
 template <>
 Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);
@@ -61,23 +86,25 @@ Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) cons
               "QLinearMatmul : result scale must be a scalar or 1D tensor of size 1");
 
   auto a_scale_data = *(a_scale->template Data<float>());
-  ORT_ENFORCE(a_scale_data == 1, "Systolic can only handle scale of 1 for a");
+  //ORT_ENFORCE(a_scale_data == 1, "Systolic can only handle scale of 1 for a");
   auto b_scale_data = *(b_scale->template Data<float>());
-  ORT_ENFORCE(b_scale_data == 1, "Systolic can only handle scale of 1 for b");
+ // ORT_ENFORCE(b_scale_data == 1, "Systolic can only handle scale of 1 for b");
   auto y_scale_data = *(y_scale->template Data<float>());
 
-  ORT_ENFORCE(y_scale_data - (int)y_scale_data <= 1E-5, "Systolic can only handle integer divisors for y scale");
-  int y_scale_data_rounded = (int)y_scale_data;
-  ORT_ENFORCE(y_scale_data_rounded && !(y_scale_data_rounded & (y_scale_data_rounded - 1)), "Systolic can only handle power of 2 divisor for y scale");
+ // ORT_ENFORCE(y_scale_data - (int)y_scale_data <= 1E-5, "Systolic can only handle integer divisors for y scale");
+ //int y_scale_data_rounded = (int)y_scale_data;
+  //ORT_ENFORCE(y_scale_data_rounded && !(y_scale_data_rounded & (y_scale_data_rounded - 1)), "Systolic can only handle power of 2 divisor for y scale");
+
+  const float real_multiplier = (a_scale_data * b_scale_data) / y_scale_data;
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    SystolicMultiplyi8i8_i8(static_cast<int>(helper.M()),
+    mymatmul(static_cast<int>(helper.M()),
                             static_cast<int>(helper.N()),
                             static_cast<int>(helper.K()),
                             a->template Data<int8_t>() + helper.LeftOffsets()[i],
                             b->template Data<int8_t>() + helper.RightOffsets()[i],
                             y->template MutableData<int8_t>() + helper.OutputOffsets()[i],
-                            y_scale_data_rounded);
+                            real_multiplier);
   }
 
   return Status::OK();
