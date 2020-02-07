@@ -14,11 +14,6 @@
 namespace onnxruntime {
 
 void inline QuantizeMultiplier(float fp_multiplier, std::int32_t* integer_multiplier, int* right_shift) {
-  if (fp_multiplier == 1) {
-    *integer_multiplier = 1;
-    *right_shift = 0;
-    return;
-  }
   auto* fp_as_bits = reinterpret_cast<uint32_t*>(&fp_multiplier);
   auto current_exponent = (*fp_as_bits >> 23);
   // bring multiplier in [.5,1) range and calculate the shift
