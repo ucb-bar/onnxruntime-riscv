@@ -403,7 +403,7 @@ MlasNchwcPool(
 
 #ifdef USE_SYSTOLIC
 void SystolicMultiplyi8i8_i8
-MLASCALL(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int shift, const int32_t* bias = nullptr);
+MLASCALL(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int divisor, float real_multiplier, const int32_t* bias = nullptr);
 #endif
 //
 // Linear quantization routines.

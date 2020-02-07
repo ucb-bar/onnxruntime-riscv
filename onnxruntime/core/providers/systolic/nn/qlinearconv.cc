@@ -23,10 +23,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv<int8_t, int8_t, int8_t>);
 
-int nearestPowerOfTwo(int n)
+inline int nearestPowerOfTwo(int n)
 {
     int v = n; 
-
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -34,9 +33,7 @@ int nearestPowerOfTwo(int n)
     v |= v >> 8;
     v |= v >> 16;
     v++; // next power of 2
-
     int x = v >> 1; // previous power of 2
-
     return (v - n) > (n - x) ? x : v;
 }
 
@@ -75,13 +72,15 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
               "QLinearConv : result scale must be a scalar or 1D tensor of size 1");
 
   auto input_scale_data = *(input_scale->template Data<float>());
-  //ORT_ENFORCE(input_scale_data == 1, "Systolic can only handle scale of 1 for input");
   auto filter_scale_data = *(filter_scale->template Data<float>());
-  //ORT_ENFORCE(filter_scale_data == 1, "Systolic can only handle scale of 1 for filter");
   auto result_scale_data = *(result_scale->template Data<float>());
 
+  ORT_ENFORCE(result_scale_data != 0, "result_scale_data cannot be 0");
+  ORT_ENFORCE(filter_scale_data != 0, "filter_scale_data cannot be 0");
+  ORT_ENFORCE(input_scale_data != 0, "input_scale_data cannot be 0");
 
-  unsigned int right_shift = nearestPowerOfTwo(result_scale_data / (input_scale_data * filter_scale_data));
+  const float real_multiplier = (input_scale_data * filter_scale_data) / result_scale_data;
+  unsigned int rounded_divisor = nearestPowerOfTwo(result_scale_data / (input_scale_data * filter_scale_data));
 
   // ORT_ENFORCE(result_scale_data - (int)result_scale_data <= 1E-5, "Systolic can only handle integer divisors for result scale");
   // int result_scale_data_rounded = (int)result_scale_data;
@@ -216,7 +215,7 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
                               W->template Data<int8_t>() + group_id * W_offset,
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
-                              right_shift, broadcast_bias.get());
+                              rounded_divisor, real_multiplier, broadcast_bias.get());
 
       // GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
       //                   col_buffer_data,
