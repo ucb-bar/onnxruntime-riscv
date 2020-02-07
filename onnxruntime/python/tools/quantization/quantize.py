@@ -250,6 +250,7 @@ class ONNXQuantizer:
         self.fixed_qrange_int8_name = "fixed_quantization_range_int8"
         # For uint8 data-type, to compute zero point, we subtract rmin from 0 (represented by fixed_zero_name tensor)
         self.fixed_zero_name = "fixed_zero"
+        self.fixed_one_name = "fixed_one"
         # For int8 data-type, zero point is always zero (respresented by fixed_zero_point_name tensor)
         self.fixed_zero_zp_name = "fixed_zero_zp"
 
@@ -275,8 +276,8 @@ class ONNXQuantizer:
                     new_list += self._quantize_matmul(node, new_list)
                 elif node.op_type == 'Gather':
                     new_list += self._quantize_gather_ops(node, new_list)
-                elif node.op_type == 'Relu' or node.op_type == 'Clip':
-                    new_list +=self._handle_activation_ops(node, new_list)
+                # elif node.op_type == 'Relu' or node.op_type == 'Clip':
+                #     new_list +=self._handle_activation_ops(node, new_list)
                 else:
                     new_list +=self._handle_other_ops(node, new_list)
 
@@ -486,6 +487,7 @@ class ONNXQuantizer:
         abs_max_node = onnx.helper.make_node("Max", [reduce_min_abs_node.output[0], reduce_max_abs_node.output[0]],
             [abs_max_name + ":0"], abs_max_name)
         nodes_list.append(abs_max_node)
+
         #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
         _add_initializer_if_not_present(self.model.graph, self.fixed_qrange_int8_name,
             [_get_qrange_for_qType(qType)/2.0], [], onnx_proto.TensorProto.FLOAT)
@@ -634,6 +636,7 @@ class ONNXQuantizer:
             if data_found == True:
                 qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], 
                     [output_name], input_name + "_QuantizeLinear")
+                return [qlinear_node]
             else:
                 # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
                 if self.fuse_dynamic_quant and qType == onnx_proto.TensorProto.UINT8:

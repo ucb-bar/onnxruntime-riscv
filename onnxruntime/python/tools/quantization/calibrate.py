@@ -57,6 +57,23 @@ def augment_graph(model):
                             [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
             added_nodes.append(reduce_max_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
+
+
+    input_name = model.graph.input[0].name
+    reduce_min_name = "GraphData" + "_ReduceMin"
+    reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
+                    [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
+    added_nodes.append(reduce_min_node)
+    added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
+
+    # Adding ReduceMax nodes
+    reduce_max_name = "GraphData_ReduceMax"
+    reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
+                    [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
+    added_nodes.append(reduce_max_node)
+    added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
+
+
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
     return model
@@ -114,20 +131,24 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     # We update the output range min and max when next node is clip or relu
     # With this technique we can remove these 2 ops and
     # reduce the output range which in turn helps to improve accuracy
-    if next_node.op_type == 'Clip':
+    if next_node and next_node.op_type == 'Clip':
         clip_min = next_node.attribute[0].f
         clip_max = next_node.attribute[1].f
         if rmin < clip_min:
             rmin = clip_min
         if rmax > clip_max:
             rmax = clip_max
-    if next_node.op_type == 'Relu':
+    if next_node and next_node.op_type == 'Relu':
         if rmin < 0:
             rmin = 0
 
     max_range = max(abs(rmin), abs(rmax))
-    scale = (np.float32(max_range)*2) / 254
+    scale = (np.float32(max_range)) / 127
     zero_point = np.int8(0)
+
+    # scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
+    # initial_zero_point = (0 - rmin) / scale
+    # zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
 
     zp_and_scale.append(zero_point)
     zp_and_scale.append(scale)
@@ -164,6 +185,17 @@ def calculate_quantization_params(model, quantization_thresholds):
             node_thresholds = quantization_thresholds[node_output_name]
             node_params = calculate_scale_zeropoint(node, model.graph.node[index+1], node_thresholds[0], node_thresholds[1])
             quantization_params[node_output_name] = node_params
+        # elif "relu" in node_output_name and node_output_name.replace("relu", "conv") in quantization_params:
+        #     quantization_params[node_output_name] = quantization_params[node_output_name.replace("relu", "conv")]
+        # elif "pool" in node_output_name and node_output_name.replace("pool", "conv") in quantization_params:
+        #     quantization_params[node_output_name] = quantization_params[node_output_name.replace("pool", "conv")]
+
+
+    # graph_input = model.graph.input[0].name
+    # if graph_input in quantization_thresholds:
+    #     node_thresholds = quantization_thresholds[graph_input]
+    #     node_params = calculate_scale_zeropoint(None, None, node_thresholds[0], node_thresholds[1])
+    #     quantization_params[graph_input] = node_params
 
     return quantization_params
 
@@ -232,7 +264,9 @@ def main():
         inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)        
     print(inputs.shape)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
+    print(dict_for_quantization)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
+    print(quantization_params_dict)
     calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict)
     onnx.save(calibrated_quantized_model, output_model_path)
 
