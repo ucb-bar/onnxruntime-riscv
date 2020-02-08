@@ -3,6 +3,7 @@
 //
 
 #include <assert.h>
+#include <iostream>
 #include <vector>
 #include <systolic/systolic_provider_factory.h>
 #include <onnxruntime_cxx_api.h>
@@ -20,6 +21,8 @@ unsigned long long read_cycles()
 }
 
 int main(int argc, char* argv[]) {
+  setbuf(stdout, NULL);
+  printf("Loaded runner program\n");
   //*************************************************************************
   // initialize  enviroment...one enviroment per process
   // enviroment maintains thread pools and other state info
