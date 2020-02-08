@@ -110,26 +110,26 @@ int main(int argc, char* argv[]) {
   std::vector<const char*> output_node_names = {"prob_1"}; // gpu_0/softmax_1
 
 
-	int dimX, dimY, numChannels;
-	unsigned char *data = stbi_load("dog.jpg", &dimX, &dimY, &numChannels, 0);
+  int dimX, dimY, numChannels;
+  unsigned char *data = stbi_load("dog.jpg", &dimX, &dimY, &numChannels, 0);
   printf("Loaded Image: %d %d %d\n", dimX, dimY, numChannels);
-	
-	float *input_tensor_values = new float[input_tensor_size];
-	
-	for (int i = 0; i < 224; i++) {
-		for (int j = 0; j < 224; j++) {
+  
+  float *input_tensor_values = new float[input_tensor_size];
+  
+  for (int i = 0; i < 224; i++) {
+    for (int j = 0; j < 224; j++) {
       unsigned char r = *(data++);
       unsigned char g = *(data++);
       unsigned char b = *(data++);
-			input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
-			input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
-			input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;	
+      input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
+      input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
+      input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;  
       
-			// input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
-			// input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;
-			// input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.225)/0.225;	
-		}
-	}
+      // input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
+      // input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;
+      // input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.225)/0.225;  
+    }
+  }
   printf("First few image values %f %f %f\n", input_tensor_values[0], input_tensor_values[1], input_tensor_values[2]);
 
   // initialize input data with values in [0.0, 1.0]
@@ -153,7 +153,7 @@ int main(int argc, char* argv[]) {
   float* floatarr = output_tensors.front().GetTensorMutableData<float>();
 
   printf("Element count %d\n", output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount());
-  min_pq topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
+  auto topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
   while (!topK.empty()) {
     std::pair<float, int> val = topK.top();
     printf("%f %d\n", val.first, val.second);
