@@ -3,9 +3,11 @@
 
 #include "qlinearconv.h"
 #include "core/providers/systolic/systolic_fwd.h"
+#include "core/providers/systolic/helper/helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
+#include "core/providers/systolic/systolic_execution_provider.h"
 
 namespace onnxruntime {
 namespace systolic {
@@ -22,20 +24,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv<int8_t, int8_t, int8_t>);
-
-inline int nearestPowerOfTwo(int n)
-{
-    int v = n; 
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++; // next power of 2
-    int x = v >> 1; // previous power of 2
-    return (v - n) > (n - x) ? x : v;
-}
 
 template <>
 Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) const {
@@ -209,7 +197,8 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
         // broadcast_bias = matrix_bias.data();
       }
       
-      SystolicMultiplyi8i8_i8(static_cast<int>(M / conv_attrs_.group),
+      SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
+                              static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
                               static_cast<int>(kernel_dim),
                               W->template Data<int8_t>() + group_id * W_offset,

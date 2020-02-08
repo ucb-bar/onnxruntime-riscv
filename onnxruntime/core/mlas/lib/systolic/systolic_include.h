@@ -618,9 +618,9 @@ static void matmul_cpu(size_t DIM_I, size_t DIM_J, size_t DIM_K,
 }
 
 // General matmul which can be run with different dataflows, or on the CPU
-enum tiled_matmul_type_t { OS,
-                           WS,
-                           CPU };
+enum tiled_matmul_type_t { CPU,
+                           OS,
+                           WS };
 
 // TODO add support for non-divisible tiling factors
 static size_t tiling_factor(const size_t dimension, const size_t max_tile_factor) {
@@ -642,9 +642,19 @@ static void __attribute__((unused)) tiled_matmul_option(size_t DIM_I, size_t DIM
                                                         elem_t* C,
                                                         int act, int shift, int relu6_shift, int full_bias_width,
                                                         enum tiled_matmul_type_t tiled_matmul_type) {
-  if (tiled_matmul_type == CPU) {
-    printf("NOTE: Using systolic CPU matmul emulation. Set type to OS for native\n");
+  
+  switch(tiled_matmul_type) {
+    case CPU:
+      printf("NOTE: Using systolic CPU emulation.\n");
+      break;
+    case OS:
+      printf("NOTE: Using systolic OS mode.\n");
+      break;
+    case WS:
+      printf("NOTE: Using systolic WS mode.\n");
+      break;
   }
+  
   // const int partition_rows = BANK_NUM * BANK_ROWS / 2;
   // const int mats_in_partition = partition_rows / DIM;
   // const int mats_in_acc = ACC_ROWS / DIM;

@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
   // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
   // session (we also need to include cuda_provider_factory.h above which defines it)
   // #include "cuda_provider_factory.h"
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(session_options, 1));
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(session_options, /*use_arena=*/ 1, /*accelerator_mode=*/ 2));
 
   // Sets graph optimization level
   // Available levels are

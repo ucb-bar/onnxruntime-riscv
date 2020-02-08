@@ -5,6 +5,8 @@
 #include "core/providers/systolic/systolic_fwd.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
+#include "core/providers/systolic/systolic_execution_provider.h"
+#include "core/providers/systolic/helper/helper.h"
 
 namespace onnxruntime {
 namespace systolic {
@@ -20,20 +22,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>()),
     QLinearMatMul<int8_t, int8_t, int8_t>);
-
-inline int nearestPowerOfTwo(int n)
-{
-    int v = n; 
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++; // next power of 2
-    int x = v >> 1; // previous power of 2
-    return (v - n) > (n - x) ? x : v;
-}
 
 template <>
 Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) const {
@@ -87,7 +75,8 @@ Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) cons
   unsigned int rounded_divisor = nearestPowerOfTwo(y_scale_data / (a_scale_data * b_scale_data));
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    SystolicMultiplyi8i8_i8(static_cast<int>(helper.M()),
+    SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
+                            static_cast<int>(helper.M()),
                             static_cast<int>(helper.N()),
                             static_cast<int>(helper.K()),
                             a->template Data<int8_t>() + helper.LeftOffsets()[i],

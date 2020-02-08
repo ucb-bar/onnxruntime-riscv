@@ -50,4 +50,9 @@ std::shared_ptr<KernelRegistry> SystolicExecutionProvider::GetKernelRegistry() c
 std::unique_ptr<IDataTransfer> SystolicExecutionProvider::GetDataTransfer() const {
   return onnxruntime::make_unique<CPUDataTransfer>();
 }
+
+char SystolicExecutionProvider::GetAcceleratorMode() const {
+  return provider_info_.accelerator_mode;
+}
+
 }  // namespace onnxruntime

@@ -1984,6 +1984,7 @@ private:
     MatrixGuardBuffer<int8_t> BufferC;
     MatrixGuardBuffer<int8_t> BufferCReference;
     MatrixGuardBuffer<int32_t> BufferBias;
+    bool use_os_acceleration_;
 
     inline int8_t saturate(int32_t num, int shift) {
         const int divisor = 1 << shift;
@@ -2031,7 +2032,7 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        SystolicMultiplyi8i8_i8(M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
+        SystolicMultiplyi8i8_i8(use_os_acceleration_, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
         NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor, Bias);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -2085,6 +2086,9 @@ public:
     void ExecuteLong(void) override
     {
     }
+
+    MlasSystolicMatmulTest(bool use_os_acceleration) : use_os_acceleration_(use_os_acceleration) {}
+
 };
 #endif
 
@@ -2093,14 +2097,15 @@ int
 __cdecl
 #endif
 main(
-    void
+    int argc, char *argv[]  __attribute__((unused))
     )
 {
+
     for (int i = 0; i != 2; ++i) {
 
 #ifdef USE_SYSTOLIC
         printf("Systolic Matmul tests.\n");
-        onnxruntime::make_unique<MlasSystolicMatmulTest>()->ExecuteShort();
+        onnxruntime::make_unique<MlasSystolicMatmulTest>(argc > 1)->ExecuteShort();
 #endif
 
         printf("SGEMM tests.\n");

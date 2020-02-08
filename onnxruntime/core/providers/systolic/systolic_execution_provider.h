@@ -14,9 +14,10 @@ constexpr const char* SYSTOLIC = "Systolic";
 // Information needed to construct Systolic execution providers.
 struct SystolicExecutionProviderInfo {
   bool create_arena{true};
+  char accelerator_mode{0};
 
-  explicit SystolicExecutionProviderInfo(bool use_arena)
-      : create_arena(use_arena) {}
+  explicit SystolicExecutionProviderInfo(bool use_arena, char accelerator_mode)
+      : create_arena(use_arena), accelerator_mode(accelerator_mode) {}
 
   SystolicExecutionProviderInfo() = default;
 };
@@ -28,7 +29,7 @@ using FuseRuleFn = std::function<void(const onnxruntime::GraphViewer&,
 class SystolicExecutionProvider : public IExecutionProvider {
  public:
   explicit SystolicExecutionProvider(const SystolicExecutionProviderInfo& info)
-      : IExecutionProvider{onnxruntime::kSystolicExecutionProvider} {
+      : IExecutionProvider{onnxruntime::kSystolicExecutionProvider}, provider_info_(info) {
     DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
                                                 [](int) {
                                                   auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator);
@@ -64,8 +65,10 @@ class SystolicExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+  char GetAcceleratorMode() const;
 
  private:
   std::vector<FuseRuleFn> fuse_rules_;
+  SystolicExecutionProviderInfo provider_info_;
 };
 }  // namespace onnxruntime
