@@ -1,8 +1,10 @@
 #include <queue>
-typedef std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>, std::greater<std::pair<float, int>>> min_pq;
+template <typename T>
+using min_pq = std::priority_queue<std::pair<T, int>, std::vector<std::pair<T, int>>, std::greater<std::pair<T, int>>> ;
 
-min_pq getTopK(float* arr, int length, int k) {
-    min_pq pq;
+template <typename T>
+min_pq<T> getTopK(T* arr, int length, size_t k) {
+    min_pq<T> pq;
     for (int i = 0; i < length; i++) {
         if (pq.size() <= k) {
             pq.push(std::make_pair(arr[i], i));

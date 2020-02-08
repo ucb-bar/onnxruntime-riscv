@@ -12,6 +12,7 @@
 #include "stb_image.h"
 
 #include "tensor_helper.h"
+#include "cmd_args.h"
 
 unsigned long long read_cycles()
 {
@@ -23,6 +24,8 @@ unsigned long long read_cycles()
 int main(int argc, char* argv[]) {
   setbuf(stdout, NULL);
   printf("Loaded runner program\n");
+
+  cxxopts::ParseResult cmd = parse(argc, argv);
   //*************************************************************************
   // initialize  enviroment...one enviroment per process
   // enviroment maintains thread pools and other state info
@@ -31,12 +34,16 @@ int main(int argc, char* argv[]) {
   // initialize session options if needed
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
-  session_options.EnableProfiling("profile.prof");
+  if (cmd.count("trace")) {
+    session_options.EnableProfiling(cmd["trace"].as<std::string>().c_str());
+  }
+  
+  printf("Using systolic in mode %d\n", cmd["execution"].as<int>());
 
   // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
   // session (we also need to include cuda_provider_factory.h above which defines it)
   // #include "cuda_provider_factory.h"
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(session_options, /*use_arena=*/ 1, /*accelerator_mode=*/ 0));
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(session_options, /*use_arena=*/ 1, /*accelerator_mode=*/ (char) cmd["execution"].as<int>()));
 
   // Sets graph optimization level
   // Available levels are
@@ -51,7 +58,7 @@ int main(int argc, char* argv[]) {
   // using squeezenet version 1.3
   // URL = https://github.com/onnx/models/tree/master/squeezenet
 
-  const char* model_path = "/scratch/pranavprakash/onnxruntime/quantize_new/quantization/bvlc_alexnet/model_int8_quant.onnx";
+  const char* model_path = cmd["model"].as<std::string>().c_str();
 
   printf("Using Onnxruntime C++ API\n");
   Ort::Session session(env, model_path, session_options);
@@ -67,12 +74,11 @@ int main(int argc, char* argv[]) {
                                          // Otherwise need vector<vector<>>
 
   printf("Number of inputs = %zu\n", num_input_nodes);
-
   // iterate over all input nodes
-  for (int i = 0; i < num_input_nodes; i++) {
+  for (size_t i = 0; i < num_input_nodes; i++) {
     // print input node names
     char* input_name = session.GetInputName(i, allocator);
-    printf("Input %d : name=%s\n", i, input_name);
+    printf("Input %ld : name=%s, ", i, input_name);
     input_node_names[i] = input_name;
 
     // print input node types
@@ -80,13 +86,20 @@ int main(int argc, char* argv[]) {
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
     ONNXTensorElementDataType type = tensor_info.GetElementType();
-    printf("Input %d : type=%d\n", i, type);
+    printf("type=%d, ", type);
 
     // print input shapes/dims
     input_node_dims = tensor_info.GetShape();
-    printf("Input %d : num_dims=%zu\n", i, input_node_dims.size());
-    for (int j = 0; j < input_node_dims.size(); j++)
-      printf("Input %d : dim %d=%jd\n", i, j, input_node_dims[j]);
+    printf("num_dims=%zu: [", input_node_dims.size());
+    for (size_t j = 0; j < input_node_dims.size(); j++) {
+      printf("%jd, ", input_node_dims[j]);
+    }
+    printf("]\n");
+  }
+
+  if (num_input_nodes > 1) {
+    printf("ERROR: Graph has multiple input nodes defined.\n");
+    return 1;
   }
 
   // Results should be...
@@ -99,6 +112,36 @@ int main(int argc, char* argv[]) {
   // Input 0 : dim 2 = 224
   // Input 0 : dim 3 = 224
 
+  size_t num_output_nodes = session.GetOutputCount();
+  printf("Number of outputs = %zu\n", num_output_nodes);
+  std::vector<const char*> output_node_names(num_output_nodes);
+  for (size_t i = 0; i < num_output_nodes; i++) {
+    // print input node names
+    char* output_name = session.GetOutputName(i, allocator);
+    printf("Output %ld : name=%s, ", i, output_name);
+    output_node_names[i] = output_name;
+
+    // print input node types
+    Ort::TypeInfo type_info = session.GetOutputTypeInfo(i);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+
+    ONNXTensorElementDataType type = tensor_info.GetElementType();
+    printf("type=%d, ", type);
+
+    // print input shapes/dims
+    std::vector<int64_t> output_node_dims = tensor_info.GetShape();
+    printf("num_dims=%zu: [", output_node_dims.size());
+    for (size_t j = 0; j < output_node_dims.size(); j++) {
+      printf("%jd, ", output_node_dims[j]);
+    }
+    printf("]\n");
+  }
+
+  if (output_node_names.size() > 1) {
+    printf("ERROR: Graph has multiple output nodes defined. Please specify an output manually.\n");
+    return 1;
+  }
+  
   //*************************************************************************
   // Similar operations to get output node information.
   // Use OrtSessionGetOutputCount(), OrtSessionGetOutputName()
@@ -111,27 +154,40 @@ int main(int argc, char* argv[]) {
                                              // use OrtGetTensorShapeElementCount() to get official size!
 
   printf("Loading image\n");
-  std::vector<const char*> output_node_names = {"prob_1"}; // gpu_0/softmax_1
-
 
   int dimX, dimY, numChannels;
-  unsigned char *data = stbi_load("dog.jpg", &dimX, &dimY, &numChannels, 0);
-  printf("Loaded Image: %d %d %d\n", dimX, dimY, numChannels);
+  unsigned char *data = stbi_load(cmd["image"].as<std::string>().c_str(), &dimX, &dimY, &numChannels, 0);
+
+  if (data == nullptr) {
+    printf("Could not load image\n");
+    return 1;
+  }
+  printf("Image dimensions: %d %d %d\n", dimX, dimY, numChannels);
+  if (numChannels != 3) {
+    printf("Loaded image has more than 3 channels. Use JPG instead of PNG\n");
+    return 1;
+  }
+
   
   float *input_tensor_values = new float[input_tensor_size];
+
+  bool caffePreprocess = cmd["preprocess"].as<std::string>() == "caffe";
   
   for (int i = 0; i < 224; i++) {
     for (int j = 0; j < 224; j++) {
       unsigned char r = *(data++);
       unsigned char g = *(data++);
       unsigned char b = *(data++);
-      input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
-      input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
-      input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;  
-      
-      // input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
-      // input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;
-      // input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.225)/0.225;  
+
+      if (caffePreprocess) {
+        input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
+        input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
+        input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;  
+      } else {
+        input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
+        input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;
+        input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.225)/0.225;  
+      }
     }
   }
   printf("First few image values %f %f %f\n", input_tensor_values[0], input_tensor_values[1], input_tensor_values[2]);
@@ -156,7 +212,7 @@ int main(int argc, char* argv[]) {
   // Get pointer to output tensor float values
   float* floatarr = output_tensors.front().GetTensorMutableData<float>();
 
-  printf("Element count %d\n", output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount());
+  printf("Element count %ld. Top 5 classes:\n", output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount());
   auto topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
   while (!topK.empty()) {
     std::pair<float, int> val = topK.top();
