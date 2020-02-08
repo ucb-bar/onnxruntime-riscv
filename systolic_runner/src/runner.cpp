@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
 
   if (num_input_nodes > 1) {
     printf("ERROR: Graph has multiple input nodes defined.\n");
-    return 1;
+    return -1;
   }
 
   // Results should be...
@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
 
   if (output_node_names.size() > 1) {
     printf("ERROR: Graph has multiple output nodes defined. Please specify an output manually.\n");
-    return 1;
+    return -1;
   }
   
   //*************************************************************************
@@ -160,12 +160,12 @@ int main(int argc, char* argv[]) {
 
   if (data == nullptr) {
     printf("Could not load image\n");
-    return 1;
+    return -1;
   }
   printf("Image dimensions: %d %d %d\n", dimX, dimY, numChannels);
   if (numChannels != 3) {
     printf("Loaded image has more than 3 channels. Use JPG instead of PNG\n");
-    return 1;
+    return -1;
   }
 
   
