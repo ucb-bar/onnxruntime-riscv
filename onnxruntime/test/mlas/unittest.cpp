@@ -92,6 +92,7 @@ public:
 #endif
 
             if (_BaseBuffer == nullptr) {
+                printf("Failed to allocate base buffer memory.\n");
                 throw std::bad_alloc();
             }
 
@@ -106,7 +107,12 @@ public:
             }
 #else
             if (mprotect(_BaseBuffer, BytesToAllocate, PROT_READ | PROT_WRITE) != 0) {
-                throw std::bad_alloc();
+                printf("Failed to protect guard region. Retrying without guard enabled.\n");
+                _BaseBuffer = mmap(0, _BaseBufferSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                if (_BaseBuffer == nullptr) {
+                    printf("Failed to allocate base buffer memory.\n");
+                    throw std::bad_alloc();
+                }
             }
 #endif
 
@@ -1976,6 +1982,12 @@ public:
 };
 
 #ifdef USE_SYSTOLIC
+
+#define ROUNDING_RIGHT_SHIFT(x, shift) \
+    ({((x) >> (shift)) + \
+        (((shift) == 0 ? 0 : (((x) >> ((shift)-1)) & 1)) & \
+             ((((shift) <= 1 ? 0 : ((x) & ((1 << ((shift)-1)) - 1))) != 0) | (((x) >> (shift)) & 1)));})
+
 class MlasSystolicMatmulTest : public MlasTestBase
 {
 private:
@@ -1984,16 +1996,10 @@ private:
     MatrixGuardBuffer<int8_t> BufferC;
     MatrixGuardBuffer<int8_t> BufferCReference;
     MatrixGuardBuffer<int32_t> BufferBias;
-    bool use_os_acceleration_;
+    char acceleration_type_;
 
     inline int8_t saturate(int32_t num, int shift) {
-        const int divisor = 1 << shift;
-        int32_t abs = num > 0 ? num : -num;
-        int32_t shifted = (abs + (divisor/2)) / divisor;
-        if (num < 0)
-            num = -shifted;
-        else
-            num = shifted;
+        num = ROUNDING_RIGHT_SHIFT(num, shift);
         // Clip result
         return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
     }
@@ -2032,7 +2038,7 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        SystolicMultiplyi8i8_i8(use_os_acceleration_, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
+        SystolicMultiplyi8i8_i8(acceleration_type_, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
         NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor, Bias);
 
         for (size_t f = 0; f < M * N; f++) {
@@ -2087,7 +2093,7 @@ public:
     {
     }
 
-    MlasSystolicMatmulTest(bool use_os_acceleration) : use_os_acceleration_(use_os_acceleration) {}
+    MlasSystolicMatmulTest(char acceleration_type) : acceleration_type_(acceleration_type) {}
 
 };
 #endif
@@ -2100,12 +2106,12 @@ main(
     int argc, char *argv[]  __attribute__((unused))
     )
 {
-
+    setbuf(stdout, NULL);
     for (int i = 0; i != 2; ++i) {
 
 #ifdef USE_SYSTOLIC
         printf("Systolic Matmul tests.\n");
-        onnxruntime::make_unique<MlasSystolicMatmulTest>(argc > 1)->ExecuteShort();
+        onnxruntime::make_unique<MlasSystolicMatmulTest>(argc - 1)->ExecuteShort();
 #endif
 
         printf("SGEMM tests.\n");

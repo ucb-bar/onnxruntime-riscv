@@ -49,13 +49,7 @@
 // }
 
 inline int8_t saturate(int32_t num, int shift) {
-    const int divisor = 1 << shift;
-    int32_t abs = num > 0 ? num : -num;
-    int32_t shifted = (abs + (divisor/2)) / divisor;
-    if (num < 0)
-        num = -shifted;
-    else
-        num = shifted;
+    num = ROUNDING_RIGHT_SHIFT(num, shift);
     // Clip result
     return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
 }

@@ -515,6 +515,11 @@ static void tiled_matmul_ws(size_t DIM_I, size_t DIM_J, size_t DIM_K,
   matmul_fence();
 }
 
+#define ROUNDING_RIGHT_SHIFT(x, shift) \
+    ({((x) >> (shift)) + \
+        (((shift) == 0 ? 0 : (((x) >> ((shift)-1)) & 1)) & \
+             ((((shift) <= 1 ? 0 : ((x) & ((1 << ((shift)-1)) - 1))) != 0) | (((x) >> (shift)) & 1)));})
+             
 inline elem_t saturate(acc_t num, const void* D, int pos, int act, int shift, int relu6_shift, int full_bias_width) {
   const int no_bias = D == NULL;
   acc_t result = num;
@@ -525,13 +530,7 @@ inline elem_t saturate(acc_t num, const void* D, int pos, int act, int shift, in
   }
 
   // Scale value down and round it
-  const int divisor = 1 << shift;
-  acc_t abs = result > 0 ? result : -result;
-  acc_t shifted = (abs + (divisor / 2)) / divisor;
-  if (result < 0)
-    result = -shifted;
-  else
-    result = shifted;
+  result = ROUNDING_RIGHT_SHIFT(result, shift);
 
   // Clip result
   result = result > elem_t_max ? elem_t_max : (result < elem_t_min ? elem_t_min : result);

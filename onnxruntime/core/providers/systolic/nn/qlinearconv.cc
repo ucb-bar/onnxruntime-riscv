@@ -216,8 +216,8 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
       //                   static_cast<int>(output_image_size),
       //                   static_cast<int>(kernel_dim),
       //                   1,
-      //                   result_scale_data_rounded,
-      //                   broadcast_bias);
+      //                   rounded_divisor,
+      //                   broadcast_bias.get());
     }
 
     Xdata += X_offset * conv_attrs_.group;
