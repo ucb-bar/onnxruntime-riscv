@@ -8,6 +8,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include "core/providers/systolic/systolic_execution_provider.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace systolic {
@@ -27,6 +28,10 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 template <>
 Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) const {
+
+  profiling::Profiler &profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
+  bool profiling_enabled = profiler.IsEnabled();
+
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(3);
 
@@ -138,6 +143,12 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+
+      TimePoint start_time;
+      if (profiling_enabled) {
+        start_time = profiler.StartTime();
+      }
+  
       if (kernel_rank == 2) {
         math::Im2col<int8_t, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
@@ -173,6 +184,14 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
             *input_offset->template Data<int8_t>());
       }
 
+      if (profiling_enabled) {
+        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                        Node().Name() + "_kernel_im2col_time",
+                                                        start_time,
+                                                        {{"op_name", KernelDef().OpName()}, {"sub_action", "im2col"}, {"provider", KernelDef().Provider()}});
+        start_time = profiler.StartTime();
+      }
+
       std::unique_ptr<int32_t[]> broadcast_bias(nullptr);
 
       if (bias) {
@@ -205,6 +224,13 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
                               rounded_divisor, real_multiplier, broadcast_bias.get());
+
+      if (profiling_enabled) {
+        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                                        Node().Name() + "_kernel_matmul_time",
+                                                        start_time,
+                                                        {{"op_name", KernelDef().OpName()}, {"sub_action", "matmul"}, {"provider", KernelDef().Provider()}});
+      }
 
       // GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
       //                   col_buffer_data,

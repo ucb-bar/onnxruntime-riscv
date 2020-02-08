@@ -60,6 +60,10 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
+  profiling::Profiler &GetProfiler() {
+    return session_state_.Profiler();
+  }
+
  private:
   const SessionState& session_state_;
   const bool& terminate_flag_;
