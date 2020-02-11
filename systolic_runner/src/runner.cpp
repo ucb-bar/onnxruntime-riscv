@@ -13,6 +13,9 @@
 
 #include "tensor_helper.h"
 #include "cmd_args.h"
+#include "labels.h"
+
+const char* imagenet_labels[1000] = IMAGENET_LABELS;
 
 unsigned long long read_cycles()
 {
@@ -216,7 +219,7 @@ int main(int argc, char* argv[]) {
   auto topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
   while (!topK.empty()) {
     std::pair<float, int> val = topK.top();
-    printf("%f %d\n", val.first, val.second);
+    printf("%f %s\n", val.first, imagenet_labels[val.second]);
     topK.pop();
   }
 
