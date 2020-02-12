@@ -28,8 +28,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 
 template <>
 Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) const {
-
-  profiling::Profiler &profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
+  profiling::Profiler& profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
   bool profiling_enabled = profiler.IsEnabled();
 
   const auto* X = context->Input<Tensor>(0);
@@ -143,12 +142,11 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-
       TimePoint start_time;
       if (profiling_enabled) {
         start_time = profiler.StartTime();
       }
-  
+
       if (kernel_rank == 2) {
         math::Im2col<int8_t, StorageOrder::NCHW>()(
             Xdata + group_id * X_offset,
@@ -186,9 +184,11 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
 
       if (profiling_enabled) {
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                        Node().Name() + "_kernel_im2col_time",
-                                                        start_time,
-                                                        {{"op_name", KernelDef().OpName()}, {"sub_action", "im2col"}, {"provider", KernelDef().Provider()}});
+                                       Node().Name() + "_kernel_im2col_time",
+                                       start_time,
+                                       {{"op_name", KernelDef().OpName()},
+                                        {"sub_action", "im2col"},
+                                        {"provider", KernelDef().Provider()}});
         start_time = profiler.StartTime();
       }
 
@@ -208,7 +208,6 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
         }
         broadcast_bias = std::move(matrix_bias);
 
-
         // Eigen::Matrix<int32_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> matrix_bias;
         // matrix_bias.resize(static_cast<int>(M / conv_attrs_.group), static_cast<int>(output_image_size));
         // ConstEigenVectorMap<int32_t> splatted(, static_cast<int>(M / conv_attrs_.group));
@@ -216,6 +215,23 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
         // broadcast_bias = matrix_bias.data();
       }
       
+      std::string dimension_string;
+      bool fitsSystolic = (static_cast<int>(M / conv_attrs_.group) % 16 == 0) && (static_cast<int>(output_image_size) % 16 == 0) &&
+                          (static_cast<int>(kernel_dim) % 16 == 0);
+
+      if (profiling_enabled) {
+        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                       Node().Name() + "_kernel_bias_splat_time",
+                                       start_time,
+                                       {{"op_name", KernelDef().OpName()},
+                                        {"sub_action", "bias splat"},
+                                        {"provider", KernelDef().Provider()}});
+        dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +
+                                       ", " + std::to_string(static_cast<int>(output_image_size)) + ", " +
+                                       std::to_string(static_cast<int>(kernel_dim));
+        start_time = profiler.StartTime();
+      }
+
       SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                               static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
@@ -224,12 +240,17 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
                               rounded_divisor, real_multiplier, broadcast_bias.get());
+                              
 
       if (profiling_enabled) {
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                                        Node().Name() + "_kernel_matmul_time",
-                                                        start_time,
-                                                        {{"op_name", KernelDef().OpName()}, {"sub_action", "matmul"}, {"provider", KernelDef().Provider()}});
+                                       Node().Name() + "_kernel_matmul_time",
+                                       start_time,
+                                       {{"op_name", KernelDef().OpName()},
+                                        {"sub_action", "matmul"},
+                                        {"dimensions", dimension_string},
+                                        {"fits_systolic", fitsSystolic ? "yes" : "no"},
+                                        {"provider", KernelDef().Provider()}});
       }
 
       // GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
@@ -253,5 +274,5 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
   return Status::OK();
 }
 
-} // namespace systolic
+}  // namespace systolic
 }  // namespace onnxruntime
