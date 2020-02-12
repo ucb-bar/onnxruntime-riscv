@@ -110,7 +110,7 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     node_names = [added_node_output_names[i].rpartition('_')[0] for i in range(0, len(added_node_output_names), 2)] # output names
 
     # Characterizing distribution of a node's values across test data sets
-    clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != list(merged_dict.keys())[0])
+    clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != node_output_names[0])
     if calib_mode == 'naive':
         pairs = [tuple([float(min(clean_merged_dict[added_node_output_names[i]])),
                 float(max(clean_merged_dict[added_node_output_names[i+1]]))])
