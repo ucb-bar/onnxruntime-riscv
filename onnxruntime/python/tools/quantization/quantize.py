@@ -382,7 +382,6 @@ class ONNXQuantizer:
         # Log entry for this quantized weight
         assert(weight.name not in self.quantized_value_map)
         quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType)
-        print("asdf: " + weight.name + str(quantized_value.qType))
         self.quantized_value_map[weight.name] = quantized_value
 
         return weight
@@ -431,7 +430,6 @@ class ONNXQuantizer:
         # Make entry for this quantized weight
         assert(weight.name not in self.quantized_value_map)
         quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType)
-        print("asdf2: " + weight.name + str(quantized_value.qType))
         self.quantized_value_map[weight.name] = quantized_value
 
         return weight
@@ -795,7 +793,6 @@ class ONNXQuantizer:
         
             assert(bias_name not in self.quantized_value_map)
             quantized_value = QuantizedValue(bias_name, quantized_bias_name, "", "", QuantizedValueType.Initializer, None, onnx_proto.TensorProto.INT32)
-            print("asdf3: " + bias_name + str(quantized_value.qType))
             self.quantized_value_map[bias_name] = quantized_value
 
         return quantized_bias_name
@@ -931,7 +928,6 @@ class ONNXQuantizer:
         # Prepare to remove this node
         quantized_value = self.quantized_value_map[node.input[0]]
 
-        print("asdf6: " + node.output[0] + str(quantized_value.qType))
         self.quantized_value_map[node.output[0]] = quantized_value
 
         return []
@@ -945,7 +941,6 @@ class ONNXQuantizer:
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(node.output[0], gather_new_output, scale_names[0], zero_point_names[0], QuantizedValueType.Input, qType=self.weight_qType)        
-        print("asdf7: " + node.output[0] + str(q_output.qType))
         self.quantized_value_map[node.output[0]] = q_output
 
         gather_original_output = node.output[0]
@@ -1119,7 +1114,6 @@ class ONNXQuantizer:
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(node.output[0], qlinear_conv_output, output_scale_name, output_zp_name, QuantizedValueType.Input, qType=self.weight_qType)        
-        print("asdf4: " + node.output[0] + str(q_output.qType))
         self.quantized_value_map[node.output[0]] = q_output
         
         return nodes
@@ -1165,7 +1159,6 @@ class ONNXQuantizer:
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(node.output[0], qlinear_matmul_output, output_scale_name, output_zp_name, QuantizedValueType.Input, qType=self.weight_qType)     
-        print("asdf5: " + node.output[0] + str(q_output.qType))   
         self.quantized_value_map[node.output[0]] = q_output
         
         return nodes
