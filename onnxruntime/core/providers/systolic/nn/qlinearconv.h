@@ -17,8 +17,16 @@ class QLinearConv : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-
   ConvAttributes conv_attrs_;
+  bool fused_relu_ = false;
+};
+
+template <typename T1, typename T2, typename T3>
+class FusedQLinearConvRelu : public QLinearConv<T1, T2, T3> {
+ public:
+  explicit FusedQLinearConvRelu(const OpKernelInfo& info) : QLinearConv<T1, T2, T3>(info) {
+    this->fused_relu_ = true;
+  }
 };
 
 } // namespace systolic

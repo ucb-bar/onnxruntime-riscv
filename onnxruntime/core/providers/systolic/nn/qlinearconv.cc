@@ -26,7 +26,20 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv<int8_t, int8_t, int8_t>);
 
-template <>
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    Fused_QLinearConv_Relu,
+    kOnnxDomain,
+    1,
+    int8_t,
+    kSystolicExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    FusedQLinearConvRelu<int8_t, int8_t, int8_t>);
+
+template<>
 Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) const {
   profiling::Profiler& profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
   bool profiling_enabled = profiler.IsEnabled();
@@ -232,8 +245,11 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
         start_time = profiler.StartTime();
       }
 
+      if (fused_relu_) {
+        printf("Using FUSED relu!!\n");
+      }
       SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
-                              /*relu= */ false,
+                              /*relu= */ fused_relu_,
                               static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
                               static_cast<int>(kernel_dim),
