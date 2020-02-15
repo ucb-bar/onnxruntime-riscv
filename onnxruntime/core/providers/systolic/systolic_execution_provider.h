@@ -35,6 +35,7 @@ class SystolicExecutionProvider : public IExecutionProvider {
                                                   auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator);
                                                   return onnxruntime::make_unique<TAllocator>(std::move(memory_info)); },
                                                 std::numeric_limits<size_t>::max()};
+    SetupFusedRules();
 
 #ifdef USE_JEMALLOC
 #if defined(USE_MIMALLOC)
@@ -51,8 +52,7 @@ class SystolicExecutionProvider : public IExecutionProvider {
 #if defined(__amd64__) || defined(_M_AMD64)
     if (info.create_arena) {
       InsertAllocator(CreateAllocator(device_info));
-    }
-    else
+    } else
 #endif
     {
       ORT_UNUSED_PARAMETER(info);
@@ -65,7 +65,13 @@ class SystolicExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const onnxruntime::GraphViewer& graph,
+      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+
   char GetAcceleratorMode() const;
+  void InsertFusedRules(FuseRuleFn rule);
+  void SetupFusedRules();
 
  private:
   std::vector<FuseRuleFn> fuse_rules_;

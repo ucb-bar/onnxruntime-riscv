@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
   //*************************************************************************
   // initialize  enviroment...one enviroment per process
   // enviroment maintains thread pools and other state info
-  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::Env env(ORT_LOGGING_LEVEL_INFO, "test");
 
   // initialize session options if needed
   Ort::SessionOptions session_options;

@@ -16,6 +16,9 @@
 #ifdef USE_DML
 #include "core/graph/dml_ops/dml_defs.h"
 #endif
+#ifdef USE_SYSTOLIC
+#include "core/providers/systolic/schema/schemas.h"
+#endif
 
 #include "core/platform/env.h"
 
@@ -59,6 +62,9 @@ Status Environment::Initialize() {
 #endif
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
+#endif
+#ifdef USE_SYSTOLIC
+      systolic::RegisterSystolicSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
       RegisterOnnxMLOperatorSetSchema();
