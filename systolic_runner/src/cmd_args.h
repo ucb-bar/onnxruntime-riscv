@@ -16,7 +16,8 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
         ("x,execution", "Systolic execution mode. Either 0, 1, or 2 (CPU, OS, WS).", cxxopts::value<int>(), "[0/1/2]");
 
     options.add_options("Optional")
-        ("t,trace", "Profiling trace output file", cxxopts::value<std::string>(), "[output path]");
+        ("t,trace", "Profiling trace output file", cxxopts::value<std::string>(), "[output path]")
+        ("d,debug", "Debug level", cxxopts::value<int>()->default_value("3"), "[0-5, with 0 being most verbose]");
 
     options.add_options("Info")
         ("h,help", "Print help");
