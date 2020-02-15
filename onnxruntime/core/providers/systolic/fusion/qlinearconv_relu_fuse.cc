@@ -33,7 +33,15 @@ void qlinearconv_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, st
   ORT_UNUSED_PARAMETER(capabilites);
   LOGS_DEFAULT(INFO) << "Called into Systolic fuser";
   for (const auto& capability : capabilites) {
+    // Check that we haven't already fused this node
+    if (capability->sub_graph->nodes.size() != 1) {
+      continue;
+    }
     const Node* node = graph.GetNode(capability->sub_graph->nodes[0]);
+    if (node->OpType() != "QLinearConv") {
+      continue;
+    }
+
     // We can fuse if the only immediate downstream is a ReLU
     if (node->GetOutputEdgesCount() == 1 && node->OutputNodesBegin()->OpType() == "QLinearRelu") {
       auto next_node = node->OutputNodesBegin();
