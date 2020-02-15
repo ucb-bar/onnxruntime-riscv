@@ -245,9 +245,6 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
         start_time = profiler.StartTime();
       }
 
-      if (fused_relu_) {
-        printf("Using FUSED relu!!\n");
-      }
       SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                               /*relu= */ fused_relu_,
                               static_cast<int>(M / conv_attrs_.group),
@@ -265,6 +262,7 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
                                        start_time,
                                        {{"op_name", KernelDef().OpName()},
                                         {"sub_action", "matmul"},
+                                        {"relu_fused", fused_relu_ ? "yes" : "no"},
                                         {"dimensions", dimension_string},
                                         {"fits_systolic", fitsSystolic ? "yes" : "no"},
                                         {"provider", KernelDef().Provider()}});

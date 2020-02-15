@@ -7,7 +7,7 @@
 #include "systolic_fwd.h"
 #include "core/framework/compute_capability.h"
 
-#include "fusion/qlinearconv_relu_fuse.h"
+#include "fusion/fusion_ops.h"
 
 namespace onnxruntime {
 
