@@ -765,10 +765,15 @@ class ONNXQuantizer:
             self._dynamic_quantize_bias(node.input[0], weight_scale_name, bias_name, quantized_bias_name, new_node_list)
         else:
             # get scale for input
-            input_scale_name = self.quantized_value_map[node.input[0]].scale_name
-            inputscale_initializer = _find_by_name(input_scale_name, self.model.graph.initializer)
-            input_scale = self.find_weight_data(inputscale_initializer)        
+            if node.input[0] in self.quantized_value_map:
+                input_scale_name = self.quantized_value_map[node.input[0]].scale_name
+            elif node.input[0] in self.quantization_params:
+                _, input_scale_name, _, _, _ = self._get_quantization_params(node.input[0])
+            else:
+                raise ValueError("Expected {} to be in quantized value map for static quantization".format(node.input[0]))
 
+            inputscale_initializer = _find_by_name(input_scale_name, self.model.graph.initializer)
+            input_scale = self.find_weight_data(inputscale_initializer)
             # calcuate scale for bias
             bias_scale_name = node.input[2] + "_scale"
             bias_scale = input_scale * weight_scale

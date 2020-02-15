@@ -21,7 +21,19 @@ import re
 import subprocess
 import json
 
-def augment_graph(model):
+graph_input_name = None
+def get_graph_input_name(model):
+    global graph_input_name
+    if graph_input_name is None:
+        init = {i.name : 0 for i in model.graph.initializer}
+        inp = [i.name for i in model.graph.input if i.name not in init]
+        if len(inp) != 1:
+            raise ValueError("Multiple or no graph input found")
+        graph_input_name = inp[0]
+    return graph_input_name
+
+
+def augment_graph(model, static):
     '''
     Adds ReduceMin and ReduceMax nodes to all Conv and MatMul nodes in
     model and ensures their outputs are stored as part of the graph output
@@ -35,7 +47,7 @@ def augment_graph(model):
     added_outputs = []
     i = 0
     for node in model.graph.node:
-        if node.op_type in quantization_candidates:
+        if node.op_type in quantization_candidates or static:
             input_name = node.output[0]
             # Adding ReduceMin nodes
             if node.name == "":
@@ -59,15 +71,15 @@ def augment_graph(model):
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
 
 
-    input_name = model.graph.input[0].name
-    reduce_min_name = "GraphData" + "_ReduceMin"
+    input_name = get_graph_input_name(model)
+    reduce_min_name = input_name + "_ReduceMin"
     reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
                     [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
     added_nodes.append(reduce_min_node)
     added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
     # Adding ReduceMax nodes
-    reduce_max_name = "GraphData_ReduceMax"
+    reduce_max_name = input_name + "_ReduceMax"
     reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
                     [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
     added_nodes.append(reduce_max_node)
@@ -154,7 +166,7 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     zp_and_scale.append(scale)
     return zp_and_scale
 
-def calculate_quantization_params(model, quantization_thresholds):
+def calculate_quantization_params(model, quantization_thresholds, static):
     '''
         Given a model and quantization thresholds, calculates the quantization params.
     :param model: ModelProto to quantize
@@ -185,17 +197,15 @@ def calculate_quantization_params(model, quantization_thresholds):
             node_thresholds = quantization_thresholds[node_output_name]
             node_params = calculate_scale_zeropoint(node, model.graph.node[index+1], node_thresholds[0], node_thresholds[1])
             quantization_params[node_output_name] = node_params
-        # elif "relu" in node_output_name and node_output_name.replace("relu", "conv") in quantization_params:
-        #     quantization_params[node_output_name] = quantization_params[node_output_name.replace("relu", "conv")]
-        # elif "pool" in node_output_name and node_output_name.replace("pool", "conv") in quantization_params:
-        #     quantization_params[node_output_name] = quantization_params[node_output_name.replace("pool", "conv")]
 
-
-    # graph_input = model.graph.input[0].name
-    # if graph_input in quantization_thresholds:
-    #     node_thresholds = quantization_thresholds[graph_input]
-    #     node_params = calculate_scale_zeropoint(None, None, node_thresholds[0], node_thresholds[1])
-    #     quantization_params[graph_input] = node_params
+    if static:
+        graph_input_name = get_graph_input_name(model)
+        if graph_input_name in quantization_thresholds:
+            node_thresholds = quantization_thresholds[graph_input_name]
+            node_params = calculate_scale_zeropoint(None, None, node_thresholds[0], node_thresholds[1])
+            quantization_params[graph_input_name] = node_params
+        else:
+            raise ValueError("Graph input not found in quantization dict")
 
     return quantization_params
 
@@ -240,6 +250,7 @@ def main():
     parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
     parser.add_argument('--dataset_size', type=int, default=0, help="Number of images or tensors to load. Default is 0 which means all samples")
     parser.add_argument('--data_preprocess', type=str, required=True, choices=['preprocess_method1', 'preprocess_method2', 'None'], help="Refer to Readme.md for guidance on choosing this option.")
+    parser.add_argument('--static', required=True, type=lambda x: (str(x).lower() in ['true','1', 'yes']))
     args = parser.parse_args()
     model_path = args.model_path
     output_model_path = args.output_model_path
@@ -250,8 +261,10 @@ def main():
     # Generating augmented ONNX model
     augmented_model_path = 'augmented_model.onnx'
     model = onnx.load(model_path)
-    augmented_model = augment_graph(model)
+    augmented_model = augment_graph(model, static=args.static)
     onnx.save(augmented_model, augmented_model_path)
+    
+    print(args.static)
 
     # Conducting inference
     session = onnxruntime.InferenceSession(augmented_model_path, None)
@@ -265,9 +278,9 @@ def main():
     print(inputs.shape)
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     print(dict_for_quantization)
-    quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization)
+    quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization, static=args.static)
     print(quantization_params_dict)
-    calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict)
+    calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict, static=args.static)
     onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")
