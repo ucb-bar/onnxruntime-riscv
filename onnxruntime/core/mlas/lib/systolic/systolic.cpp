@@ -48,22 +48,27 @@
 // 	}
 // }
 
-inline int8_t saturate(int32_t num, int shift) {
-    num = ROUNDING_RIGHT_SHIFT(num, shift);
-    // Clip result
-    return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+inline int8_t saturate(int32_t num, int shift, bool relu) {
+  num = ROUNDING_RIGHT_SHIFT(num, shift);
+  // Clip result
+  num = num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+  if (relu) {
+    num = num < 0 ? 0 : num;
+  }
+  return num;
 }
 
-inline void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, float real_multiplier, const int32_t* bias = nullptr) {
-    for (int i = 0; i < dimI; i++) {
-        for (int j = 0; j < dimJ; j++) {
-            int32_t res = 0;
-            for (int k = 0; k < dimK; k++) {
-                res += in1[i * dimK + k] * in2[k * dimJ + j];
-            }
-            out[i * dimJ + j] = saturate(real_multiplier * (res + (bias != nullptr ? bias[i * dimJ + j] : 0)), 0);
-        }
+inline void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out,
+                     float real_multiplier, bool relu, const int32_t* bias = nullptr) {
+  for (int i = 0; i < dimI; i++) {
+    for (int j = 0; j < dimJ; j++) {
+      int32_t res = 0;
+      for (int k = 0; k < dimK; k++) {
+        res += in1[i * dimK + k] * in2[k * dimJ + j];
+      }
+      out[i * dimJ + j] = saturate(real_multiplier * (res + (bias != nullptr ? bias[i * dimJ + j] : 0)), 0, relu);
     }
+  }
 }
 
 /**
@@ -76,7 +81,8 @@ inline void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8
  * Note that due to Systolic limitations, if arbitrary dimension then portions of the matrix will be quantized twice so results might differ from naive CPU impl
  * Rounding behavior of Systolic currently differs from standard "round to evens" usd by numpy/ONNX
  */
-void SystolicMultiplyi8i8_i8(char accelerator_mode, int dimI, int dimJ, int dimK, const elem_t* in1, const elem_t* in2, elem_t* out, int divisor, float real_multiplier, const int32_t* bias) {
+void SystolicMultiplyi8i8_i8(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
+                                    const elem_t* in1, const elem_t* in2, elem_t* out, int divisor, float real_multiplier, const int32_t* bias) {
   printf("Called into systolic matmul!\n");
   bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
   if (!isPowerOf2) {
@@ -85,12 +91,13 @@ void SystolicMultiplyi8i8_i8(char accelerator_mode, int dimI, int dimJ, int dimK
   int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
   if (dimI % DIM != 0 || dimJ % DIM != 0 || dimK % DIM != 0) {
     printf("Matrix dimensions (%d, %d, %d) not multiple of systolic size. Falling back to naive CPU\n", dimI, dimJ, dimK);
-    mymatmul(dimI, dimJ, dimK, in1, in2, out, real_multiplier, bias);
+    mymatmul(dimI, dimJ, dimK, in1, in2, out, real_multiplier, relu, bias);
     return;
   }
 
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
-  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, bias, out, NO_ACTIVATION, shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, static_cast<tiled_matmul_type_t>(accelerator_mode));
+  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
+                      shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, static_cast<tiled_matmul_type_t>(accelerator_mode));
 
   // for (int i = 0; i < dimI; i++) {
   //   for (int j = 0; j < dimJ; j++) {

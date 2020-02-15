@@ -1998,35 +1998,41 @@ private:
     MatrixGuardBuffer<int32_t> BufferBias;
     char acceleration_type_;
 
-    inline int8_t saturate(int32_t num, int shift) {
+    inline int8_t saturate(int32_t num, int shift, bool relu) {
         num = ROUNDING_RIGHT_SHIFT(num, shift);
         // Clip result
-        return num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+        num = num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+        if (relu) {
+            num = num < 0 ? 0 : num;
+        }
+        return num;
     }
 
-    void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int shift, const int32_t* bias = nullptr) {
+    void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out,
+                  int shift, bool relu, const int32_t* bias = nullptr) {
         for (int i = 0; i < dimI; i++) {
             for (int j = 0; j < dimJ; j++) {
                 int32_t res = 0;
                 for (int k = 0; k < dimK; k++) {
                     res += in1[i * dimK + k] * in2[k * dimJ + j];
                 }
-                out[i * dimJ + j] = saturate(res + (bias != nullptr ? bias[i * dimJ + j] : 0), shift);
+                out[i * dimJ + j] = saturate(res + (bias != nullptr ? bias[i * dimJ + j] : 0), shift, relu);
             }
         }
     }
 
-    void NaiveCPUMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out, int divisor, const int32_t* bias = nullptr) {
+    void NaiveCPUMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out,
+                                 int divisor, bool relu, const int32_t* bias = nullptr) {
         bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
         if (!isPowerOf2) {
             throw std::runtime_error("Divisor passed to systolic matmul must be power of 2");
         }
         int shift = sizeof(int)*8 - __builtin_clz(divisor) - 1;
-        return mymatmul(dimI, dimJ, dimK, in1, in2, out, shift, bias);
+        return mymatmul(dimI, dimJ, dimK, in1, in2, out, shift, relu, bias);
     }
 
 
-    void Test(size_t M, size_t N, size_t K, int divisor, int tolerance) 
+    void Test(size_t M, size_t N, size_t K, int divisor, int tolerance, bool relu = false) 
     {
         printf("Testing...\n");
         const int8_t* A = BufferA.GetBuffer(K * M);
@@ -2038,8 +2044,8 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        SystolicMultiplyi8i8_i8(acceleration_type_, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
-        NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor, Bias);
+        SystolicMultiplyi8i8_i8(acceleration_type_, relu, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
+        NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor, relu, Bias);
 
         for (size_t f = 0; f < M * N; f++) {
             if (abs(C[f] - CReference[f]) > tolerance) {
@@ -2072,21 +2078,26 @@ private:
                     printf("\n");
                 }
 
-                printf("mismatch M=%zd, N=%zd, K=%zd, divisor=%d. Diff=%d!\n", M, N, K, divisor, abs(C[f] - CReference[f]) );
+                printf("mismatch M=%zd, N=%zd, K=%zd, divisor=%d, relu=%d. Diff=%d!\n", M, N, K, divisor, relu, abs(C[f] - CReference[f]) );
                 return;
             }
         }
     }
+    
 public:
     void ExecuteShort(void) override
     {
         // Should match precisely for exact multiples of systolic size
         Test(16, 16, 16, 1, 0);
         Test(1*16, 2*16, 3*16, 1, 0);
+        Test(16, 16, 16, 1, 0, /*relu= */ true);
+        Test(1*16, 2*16, 3*16, 1, 0, /*relu= */ true);
 
         // Should match preicsely for exact multiples with divisor (right shift)
         Test(16, 16, 16, 4, 0);
         Test(1*16, 2*16, 3*16, 4, 0);
+        Test(16, 16, 16, 4, 0, /*relu= */ true);
+        Test(1*16, 2*16, 3*16, 4, 0, /*relu= */ true);
     }
 
     void ExecuteLong(void) override

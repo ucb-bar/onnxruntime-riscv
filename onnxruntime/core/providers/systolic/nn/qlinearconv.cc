@@ -233,6 +233,7 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
       }
 
       SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
+                              /*relu= */ false,
                               static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
                               static_cast<int>(kernel_dim),
