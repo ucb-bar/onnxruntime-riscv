@@ -276,6 +276,8 @@ class ONNXQuantizer:
                     new_list += self._quantize_matmul(node, new_list)
                 elif node.op_type == 'Gather':
                     new_list += self._quantize_gather_ops(node, new_list)
+                elif node.op_type == 'Relu' and self.input_qType == onnx_proto.TensorProto.INT8 and node.input[0] in self.quantized_value_map:
+                    new_list += self._handle_int8_activation_ops(node, new_list)
                 # elif node.op_type == 'Relu' or node.op_type == 'Clip':
                 #     new_list +=self._handle_activation_ops(node, new_list)
                 else:
@@ -819,7 +821,7 @@ class ONNXQuantizer:
                      List of scale names used for input quantization,
                      List of new QuantizeLinear nodes created)
         '''
-        assert (node.op_type == "Conv" or node.op_type == "MatMul" or node.op_type == "Gather")
+        assert (node.op_type == "Conv" or node.op_type == "MatMul" or node.op_type == "Gather" or node.op_type == "Relu")
 
         quantized_input_names = []
         zero_point_names = []
@@ -910,6 +912,35 @@ class ONNXQuantizer:
         # Append the original node
         nodes.append(node)
         return nodes
+
+    def _handle_int8_activation_ops(self, node, new_node_list):
+        '''
+        Checks whether the give activation op can be removed from the graph. When mode is QLinearOps, 
+        the output quatization params are calculated based on outputs from activation nodes, 
+        therefore these nodes can be removed from the graph if they follow a quantized op.
+        
+            parameter node: Current node
+            parameter new_nodes_list: List of new nodes created before processing current node
+            return: List of new nodes created
+        '''
+        assert(node.op_type == "Relu" and self.input_qType == onnx_proto.TensorProto.INT8)
+        if self.mode is not QuantizationMode.QLinearOps:
+            return [node]
+
+        (quantized_input_names, zero_point_names, scale_names, nodes) = \
+            self._quantize_inputs(node, [0], new_node_list)
+        
+        # Verify that we are only handling case where parent is already quantized
+        assert(len(nodes) == 0)
+
+        q_input = self.quantized_value_map[node.input[0]]
+
+        new_out = node.output[0] + "_quantized"
+
+        qlinear_relu = onnx.helper.make_node("QLinearRelu", quantized_input_names, [new_out], node.name)
+        q_output = QuantizedValue(node.output[0], new_out, q_input.scale_name, q_input.zp_name, q_input.value_type, qType=q_input.qType)        
+        self.quantized_value_map[node.output[0]] = q_output
+        return [qlinear_relu]
 
     def _handle_activation_ops(self, node, new_node_list):
         '''
