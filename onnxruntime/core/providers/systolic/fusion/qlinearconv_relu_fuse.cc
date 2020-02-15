@@ -21,6 +21,7 @@ void qlinearconv_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, st
             meta_def->domain = "";
             meta_def->since_version = 1;
             meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+            meta_def->attributes = node->GetAttributes();
 
             node->ForEachWithIndex(node->InputDefs(), [&meta_def](const NodeArg& arg, size_t index) {
                 ORT_UNUSED_PARAMETER(index);
