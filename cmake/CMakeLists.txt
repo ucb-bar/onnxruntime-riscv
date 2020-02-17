@@ -528,6 +528,7 @@ else()
   if(HAS_DEPRECATED_COPY)
     #too many such errors in eigen and gemmlowp
     string(APPEND CMAKE_CXX_FLAGS_DEBUG " -Wno-deprecated-copy")
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -Wno-deprecated-copy")
   endif()
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")
