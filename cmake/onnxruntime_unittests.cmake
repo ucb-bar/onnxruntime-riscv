@@ -396,7 +396,6 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
   set(test_data_target onnxruntime_test_all)
 
-target_link_libraries(onnxruntime_test_framework_session_without_environment_standalone PRIVATE atomic)
 
 
 #
