@@ -47,14 +47,15 @@ ONNX_OPERATOR_KERNEL_EX(
 
 thread_local std::unique_ptr<CUDAExecutionProvider::PerThreadContextMap> CUDAExecutionProvider::per_thread_context_map_;
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(int device_id) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+  CURAND_CALL_THROW(curandCreateGenerator(&curand_generator_, CURAND_RNG_PSEUDO_DEFAULT));
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](int id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, std::numeric_limits<size_t>::max()});
+       [](OrtDevice::DeviceId id) { return onnxruntime::make_unique<CUDAAllocator>(id, CUDA); }, cuda_mem_limit});
   allocator_ = CreateAllocator(default_memory_info, device_id);
 }
 
@@ -73,10 +74,11 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
+  CURAND_CALL_THROW(curandDestroyGenerator(curand_generator_));
 }
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kCudaExecutionProvider}, device_id_(info.device_id), cuda_mem_limit_(info.cuda_mem_limit) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
 
   size_t free = 0;
@@ -85,16 +87,16 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
   DeviceAllocatorRegistrationInfo default_memory_info(
       {OrtMemTypeDefault,
-       [](int device_id) {
+       [](OrtDevice::DeviceId device_id) {
          return onnxruntime::make_unique<CUDAAllocator>(device_id, CUDA);
        },
-       total});
+       cuda_mem_limit_});
 
   InsertAllocator(CreateAllocator(default_memory_info, device_id_));
 
   DeviceAllocatorRegistrationInfo pinned_memory_info(
       {OrtMemTypeCPUOutput,
-       [](int device_id) {
+       [](OrtDevice::DeviceId device_id) {
          return onnxruntime::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
        },
        std::numeric_limits<size_t>::max()});
@@ -142,7 +144,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
     std::lock_guard<OrtMutex> lock(context_pool_mutex_);
     std::shared_ptr<PerThreadContext> ptc;
     if (retired_context_pool_.empty()) {
-      ptc = std::make_shared<PerThreadContext>(device_id_);
+      ptc = std::make_shared<PerThreadContext>(device_id_, cuda_mem_limit_);
     } else {
       ptc = retired_context_pool_.back();
       retired_context_pool_.pop_back();
@@ -1304,8 +1306,12 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
     const auto& node = *p_node;
     const KernelCreateInfo* cuda_kernel_def = nullptr;
-    if (!node.GetExecutionProviderType().empty() ||
-        !(cuda_kernel_def = GetKernelRegistry()->TryFindKernel(node, Type()))) {
+    if (!node.GetExecutionProviderType().empty()) {
+      defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
+      continue;
+    }
+    cuda_kernel_def = GetKernelRegistry()->TryFindKernel(node, Type());
+    if (cuda_kernel_def == nullptr) {
       // node is not in cuda exeuction provider if no kernel def found,
       // or if other execution provider already assigned to it
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
@@ -1336,35 +1342,39 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       // cast is not compute heavy, and may be placed outside
     }
 
+//Below rule only works for inference, for training, we can't do constant folding.
+//We need find a better solution.
+//Temporary disable the check here, the cost is all the cast will be on GPU now.
+#ifndef ENABLE_TRAINING
     if (!not_supported && !force_inside) {
       // Note that nodes with only inputs from initializer would not be place on CUDA
       // Ideally, those nodes should be eliminated in constant folding
       bool should_force_outside = true;
       bool all_inputs_are_initializers = true;
-      node.ForEachWithIndex(node.InputDefs(),
-                            [&](const NodeArg& def, size_t index) {
-                              // The input is not a initializer and the input is from CPU
-                              // or the input declared as CPU memory and is from CPU
-                              // in that case we should still keep the node on CUDA
-                              bool initializer_input = graph.IsConstantInitializer(def.Name(), /*check_outer_scope*/ true);
-                              bool input_is_on_cpu = defs_outside_cuda.count(&def) > 0;
-                              if ((!initializer_input && !input_is_on_cpu) ||
-                                  (input_is_on_cpu && cuda_kernel_def->kernel_def->IsInputOnCpu(index))) {
-                                should_force_outside = false;
-                              }
+      ORT_THROW_IF_ERROR(node.ForEachWithIndex(node.InputDefs(),
+                                               [&](const NodeArg& def, size_t index) {
+                                                 // The input is not a initializer and the input is from CPU
+                                                 // or the input declared as CPU memory and is from CPU
+                                                 // in that case we should still keep the node on CUDA
+                                                 bool initializer_input = graph.IsConstantInitializer(def.Name(), /*check_outer_scope*/ true);
+                                                 bool input_is_on_cpu = defs_outside_cuda.count(&def) > 0;
+                                                 if ((!initializer_input && !input_is_on_cpu) ||
+                                                     (input_is_on_cpu && cuda_kernel_def->kernel_def->IsInputOnCpu(index))) {
+                                                   should_force_outside = false;
+                                                 }
 
-                              if (!initializer_input) {
-                                all_inputs_are_initializers = false;
-                              }
-                              return Status::OK();
-                            });
+                                                 if (!initializer_input) {
+                                                   all_inputs_are_initializers = false;
+                                                 }
+                                                 return Status::OK();
+                                               }));
 
       // If all the inputs are initializers, we shouldn't force it to CPU
       if (should_force_outside && !all_inputs_are_initializers) {
         force_outside = true;
       }
     }
-
+#endif
     if (!force_inside && (not_supported || force_outside)) {
       defs_outside_cuda.insert(node.OutputDefs().cbegin(), node.OutputDefs().cend());
       if (not_supported) {
@@ -1374,13 +1384,13 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
     } else {
       // for nodes placed on CUDA, check if its output is on CPU
-      node.ForEachWithIndex(
+      ORT_THROW_IF_ERROR(node.ForEachWithIndex(
           node.OutputDefs(),
           [&](const NodeArg& def, size_t out_index) {
             if (cuda_kernel_def->kernel_def->OutputMemoryType(out_index) != OrtMemTypeDefault)
               defs_outside_cuda.insert(&def);
             return Status::OK();
-          });
+          }));
       std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
       sub_graph->nodes.push_back(node.Index());
       result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
