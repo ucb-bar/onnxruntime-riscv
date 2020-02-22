@@ -302,21 +302,5 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8WithRoundedShift) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider}); // Since we round, results won't match CPU
 }
 
-
-TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8CPUFallback) {
-  OpTester test("QLinearMatMul", 10);
-  test.AddInput<int8_t>("T1", {3, 3}, {-9, -4, -5, 4, -9, -4, -2, -3, -5});
-  test.AddInput<float>("a_scale", {}, {1.0f});
-  test.AddInput<int8_t>("a_zero_point", {}, {0});
-  test.AddInput<int8_t>("T2", {3, 3}, {8, 9, -8, 6, -4, 8, 8, -5, 5});
-  test.AddInput<float>("b_scale", {}, {1.0f});
-  test.AddInput<int8_t>("b_zero_point", {}, {0});
-  test.AddInput<float>("y_scale", {}, {13.2f});
-  test.AddInput<int8_t>("y_zero_point", {}, {0});
-  test.AddOutput<int8_t>("T3", {3, 3}, {-10, -3, 1, -4, 6, -9, -5, 1, -2});
-  test.Run();
-}
-
-
 }  // namespace test
 }  // namespace onnxruntime

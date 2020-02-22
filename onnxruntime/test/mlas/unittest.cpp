@@ -2089,16 +2089,24 @@ public:
     void ExecuteShort(void) override
     {
         // Should match precisely for exact multiples of systolic size
+        printf("Testing exact dimensions with no divisor\n");
         Test(16, 16, 16, 1, 0);
         Test(1*16, 2*16, 3*16, 1, 0);
         Test(16, 16, 16, 1, 0, /*relu= */ true);
         Test(1*16, 2*16, 3*16, 1, 0, /*relu= */ true);
 
         // Should match preicsely for exact multiples with divisor (right shift)
+        printf("Testing exact dimensions with divisor\n");
         Test(16, 16, 16, 4, 0);
         Test(1*16, 2*16, 3*16, 4, 0);
         Test(16, 16, 16, 4, 0, /*relu= */ true);
         Test(1*16, 2*16, 3*16, 4, 0, /*relu= */ true);
+
+        printf("Testing non-exact dimensions with divisor\n");
+        Test(3, 5, 7, 2, 0);
+        Test(89, 79, 83, 4, 0);
+        Test(18, 45, 337, 8, 0, /*relu= */ true);
+        Test(1697, 2029, 1319, 16, 0, /*relu= */ true);
     }
 
     void ExecuteLong(void) override
