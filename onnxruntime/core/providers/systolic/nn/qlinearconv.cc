@@ -24,7 +24,20 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv<int8_t, int8_t, int8_t>);
+    QLinearConv<StorageOrder::NCHW>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QLinearConv_nhwc,
+    kOnnxDomain,
+    10,
+    int8_t,
+    kSystolicExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QLinearConv<StorageOrder::NHWC>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     Fused_QLinearConv_Relu,
@@ -37,10 +50,23 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    FusedQLinearConvRelu<int8_t, int8_t, int8_t>);
+    FusedQLinearConvRelu<StorageOrder::NCHW>);
 
-template<>
-Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) const {
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    Fused_QLinearConv_Relu_nhwc,
+    kOnnxDomain,
+    1,
+    int8_t,
+    kSystolicExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    FusedQLinearConvRelu<StorageOrder::NHWC>);
+
+template<StorageOrder STORAGE_ORDER>
+Status QLinearConv<STORAGE_ORDER>::Compute(OpKernelContext* context) const {
   profiling::Profiler& profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
   bool profiling_enabled = profiler.IsEnabled();
 
@@ -160,8 +186,11 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
         start_time = profiler.StartTime();
       }
 
+      printf("Kernel rank: %lu\n", kernel_rank);
+      ORT_ENFORCE(kernel_rank == 2, "Cannot handle kernels with rank more than 2");
+    
       if (kernel_rank == 2) {
-        math::Im2col<int8_t, StorageOrder::NCHW>()(
+        math::Im2col<int8_t, STORAGE_ORDER>()(
             Xdata + group_id * X_offset,
             C / conv_attrs_.group,
             input_shape[0],
@@ -179,20 +208,20 @@ Status QLinearConv<int8_t, int8_t, int8_t>::Compute(OpKernelContext* context) co
             col_buffer_data,
             *input_offset->template Data<int8_t>());
       } else {
-        math::Im2colNd<int8_t, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
-            image_shape.GetDims().data(),
-            col_buffer_shape.data(),
-            C * input_image_size,
-            col_buffer_size,
-            kernel_shape.data(),
-            strides.data(),
-            dilations.data(),
-            pads.data(),
-            static_cast<int>(kernel_shape.size()),
-            col_buffer_data,
-            false,
-            *input_offset->template Data<int8_t>());
+        // math::Im2colNd<int8_t, STORAGE_ORDER>()(
+        //     Xdata + group_id * X_offset,
+        //     image_shape.GetDims().data(),
+        //     col_buffer_shape.data(),
+        //     C * input_image_size,
+        //     col_buffer_size,
+        //     kernel_shape.data(),
+        //     strides.data(),
+        //     dilations.data(),
+        //     pads.data(),
+        //     static_cast<int>(kernel_shape.size()),
+        //     col_buffer_data,
+        //     false,
+        //     *input_offset->template Data<int8_t>());
       }
 
       if (profiling_enabled) {

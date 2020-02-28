@@ -817,7 +817,7 @@ class ONNXQuantizer:
         For an original node input, determines the tensor layout of the quantized version
         '''
         if input_name in self.quantized_value_map:
-            return self.quantized_value_map[input_name]
+            return self.quantized_value_map[input_name].tensor_layout
         return TensorLayout.NCHW
 
     def _convert_to_nhwc(self, quantized_input_name):
@@ -994,7 +994,7 @@ class ONNXQuantizer:
             q_input = self.quantized_value_map[node.input[0]]
             new_out = node.output[0] + "_quantized"
             qlinear_relu = onnx.helper.make_node("QLinearRelu", quantized_input_names, [new_out], node.name)
-            q_output = QuantizedValue(node.output[0], new_out, q_input.scale_name, q_input.zp_name, q_input.value_type, qType=q_input.qType, tensor_layout=q_input.tensor_layout)        
+            q_output = QuantizedValue(node.output[0], new_out, q_input.scale_name, q_input.zp_name, q_input.value_type, qType=q_input.qType, tensor_layout=q_input.tensor_layout)
             self.quantized_value_map[node.output[0]] = q_output
             
             return [qlinear_relu]

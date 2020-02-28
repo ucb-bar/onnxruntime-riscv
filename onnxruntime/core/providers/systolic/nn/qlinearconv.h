@@ -6,11 +6,12 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace systolic {
 
-template <typename T1, typename T2, typename T3>
+template <StorageOrder STORAGE_ORDER>
 class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
@@ -21,10 +22,10 @@ class QLinearConv : public OpKernel {
   bool fused_relu_ = false;
 };
 
-template <typename T1, typename T2, typename T3>
-class FusedQLinearConvRelu : public QLinearConv<T1, T2, T3> {
+template <StorageOrder STORAGE_ORDER>
+class FusedQLinearConvRelu : public QLinearConv<STORAGE_ORDER> {
  public:
-  explicit FusedQLinearConvRelu(const OpKernelInfo& info) : QLinearConv<T1, T2, T3>(info) {
+  explicit FusedQLinearConvRelu(const OpKernelInfo& info) : QLinearConv<STORAGE_ORDER>(info) {
     this->fused_relu_ = true;
   }
 };
