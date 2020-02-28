@@ -776,7 +776,7 @@ static void __attribute__((unused)) tiled_matmul_option(size_t DIM_I, size_t DIM
     //   for (size_t i = 0; i < DIM_I; i++) {
     //     for (size_t j = 0; j < DIM_J; j++) {
     //       if (C[i * DIM_J + j] != gold.get()[i * DIM_J + j]) {
-    //        if (DIM_I == 128 && DIM_J == 49 && DIM_K == 800) {
+
     //        std::ofstream myfile("dumped.txt");
     //        myfile << "shift: " << shift << "\n";
     //         myfile << "A_matrix" << "\n";
@@ -818,7 +818,6 @@ static void __attribute__((unused)) tiled_matmul_option(size_t DIM_I, size_t DIM
     //            }
     //            myfile << "\n";
     //          }
-    //        }
     //         printf("MISMATCH: dim %zu %zu %zu\n", DIM_I, DIM_J, DIM_K);
     //         return;
     //       }
