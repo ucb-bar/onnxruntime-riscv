@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace systolic {
 
-template <StorageOrder STORAGE_ORDER>
+template <StorageOrder T>
 class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
@@ -22,10 +22,10 @@ class QLinearConv : public OpKernel {
   bool fused_relu_ = false;
 };
 
-template <StorageOrder STORAGE_ORDER>
-class FusedQLinearConvRelu : public QLinearConv<STORAGE_ORDER> {
+template <StorageOrder T>
+class FusedQLinearConvRelu : public QLinearConv<T> {
  public:
-  explicit FusedQLinearConvRelu(const OpKernelInfo& info) : QLinearConv<STORAGE_ORDER>(info) {
+  explicit FusedQLinearConvRelu(const OpKernelInfo& info) : QLinearConv<T>(info) {
     this->fused_relu_ = true;
   }
 };

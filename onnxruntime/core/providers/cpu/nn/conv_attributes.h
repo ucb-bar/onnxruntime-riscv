@@ -126,6 +126,7 @@ struct ConvAttributes {
     return Status::OK();
   }
 
+
   Status ValidateInputShape(const Tensor* X, const Tensor* W) const {
     const int64_t C = X->Shape()[1];
     const int64_t M = W->Shape()[0];
@@ -140,6 +141,31 @@ struct ConvAttributes {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
                              " kernel channels: ", W->Shape()[1],
+                             " group: ", group);
+    }
+
+    if (M % group != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
+                             " M: ", M,
+                             " group: ", group);
+    }
+    return Status::OK();
+  }
+
+    Status ValidateInputShapeNHWC(const Tensor* X, const Tensor* W) const {
+    const int64_t C = X->Shape()[3];
+    const int64_t M = W->Shape()[0];
+
+    if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
+                             " X: ", X->Shape().ToString().c_str(),
+                             " W: ", W->Shape().ToString().c_str());
+    }
+
+    if (C != W->Shape()[3] * group) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
+                             " C: ", C,
+                             " kernel channels: ", W->Shape()[3],
                              " group: ", group);
     }
 

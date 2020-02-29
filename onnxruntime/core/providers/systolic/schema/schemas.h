@@ -108,11 +108,21 @@ void nhwcConvPoolShapeInference(
   } else {
     auto second_input_shape =
         ctx.getInputType(input2Idx)->tensor_type().shape();
+    if (second_input_shape.dim_size() != 4) {
+      fail_shape_inference("Not 4 dimensions for weights of qlinearconv_nhwc");
+    }
+    int seoncd_input_M = second_input_shape.dim(0).dim_value();
+    int second_input_kH = second_input_shape.dim(1).dim_value();
+    int second_input_kW = second_input_shape.dim(2).dim_value();
+    int second_input_C_by_group = second_input_shape.dim(3).dim_value();
+
+    int second_input_shape_nchw_form[4] = {seoncd_input_M, second_input_C_by_group, second_input_kH, second_input_kW};
+
     for (int i = 2; i < second_input_shape.dim_size(); ++i) {
       if (!second_input_shape.dim(i).has_dim_value()) {
-        return;
+        fail_shape_inference("Missing dim for qlinearconv_nhwc");
       }
-      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+      kernel_shape.push_back(second_input_shape_nchw_form[i]);
     }
   }
 
@@ -121,7 +131,6 @@ void nhwcConvPoolShapeInference(
     // accounting for dilation, how big is the kernel in this dimension
     effective_kernel_shape[i] = (effective_kernel_shape[i] - 1) * dilations[i] + 1;
   }
-
 
   std::vector<int64_t> pads;
   if (getRepeatedAttribute(ctx, "pads", pads)) {

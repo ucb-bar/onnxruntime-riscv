@@ -64,3 +64,53 @@ inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
   // }
   
 }
+
+
+
+template<typename T>
+inline void GemmlowpDebug(int m, int n, int k,
+                            const T* lhs_data, int strideA,
+                            const T* rhs_data, int strideB,
+                            T* out, int strideOut,
+                            int divisor,
+                            const int32_t* bias, int strideBias) {
+
+  ORT_UNUSED_PARAMETER(bias);
+  printf("lhs matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < k; j++) {
+      printf("%d ", (int) lhs_data[i * strideA + j]);
+    }
+    printf("\n");
+  }
+
+  printf("rhs matrix\n");
+  for (int i = 0; i < k; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%d ", (int) rhs_data[i * strideB + j]);
+    }
+    printf("\n");
+  }
+
+  ORT_UNUSED_PARAMETER(strideBias);
+  ORT_UNUSED_PARAMETER(out);
+  
+  printf("out matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%d ", (int) out[i * strideOut + j]);
+    }
+    printf("\n");
+  }
+
+  printf("m, n, k: %d %d %d\n", m, n, k);
+  printf("divisor: %d\n", divisor);
+  if (bias) {
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%d ", (int) bias[i * strideBias + j]);
+    }
+    printf("\n");
+  }
+  }
+}
