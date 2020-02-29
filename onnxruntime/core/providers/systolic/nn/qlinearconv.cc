@@ -212,16 +212,16 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
       } else {
       }
 
-      for (long int i = 0; i < col_buffer_size; i++) {
-        printf("%d ", col_buffer_data[i]);
-      }
-      printf("\n");
+      // for (long int i = 0; i < col_buffer_size; i++) {
+      //   printf("%d ", col_buffer_data[i]);
+      // }
+      // printf("\n");
 
-      for (int i = 0; i < static_cast<int>(output_image_size); i++) {
-        for (int j = 0; j < static_cast<int>(kernel_dim); j++)
-          printf("%d ", col_buffer_data[i * static_cast<int>(kernel_dim) + j]);
-        printf("\n");
-      }
+      // for (int i = 0; i < static_cast<int>(output_image_size); i++) {
+      //   for (int j = 0; j < static_cast<int>(kernel_dim); j++)
+      //     printf("%d ", col_buffer_data[i * static_cast<int>(kernel_dim) + j]);
+      //   printf("\n");
+      // }
 
 
       if (profiling_enabled) {
@@ -237,14 +237,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
       std::unique_ptr<int32_t[]> broadcast_bias(nullptr);
 
       if (bias) {
-        printf("Dumping raw bias vector\n");
-        for (int i = 0; i <  static_cast<int>(M / conv_attrs_.group); i++) {
-          printf("%d ", (bias->template Data<int32_t>() + group_id * bias_offset)[i]);
-        }
-        printf("\n");
+        // printf("Dumping raw bias vector\n");
+        // for (int i = 0; i <  static_cast<int>(M / conv_attrs_.group); i++) {
+        //   printf("%d ", (bias->template Data<int32_t>() + group_id * bias_offset)[i]);
+        // }
+        // printf("\n");
         int dimI = static_cast<int>(output_image_size);
         int dimJ = static_cast<int>(M / conv_attrs_.group);
-        printf("bias dims %d %d\n", dimI, dimJ);
+        //printf("bias dims %d %d\n", dimI, dimJ);
         std::unique_ptr<int[]> matrix_bias(new int[dimI * dimJ]);
         const int32_t* bias_data = bias->template Data<int32_t>() + group_id * bias_offset;
         for (int i = 0; i < dimI; i++) {
@@ -276,6 +276,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
         start_time = profiler.StartTime();
       }
 
+      const int8_t* weight_base = W->template Data<int8_t>() + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim);
+      int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
+      for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
+        for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
+          transposed[i * static_cast<int>(M / conv_attrs_.group) + j] = weight_base[j * static_cast<int>(kernel_dim) + i];
+        }
+      }
+
       /**
        * Note that when quantizing we will have transposed the weight matrix so that it holds the correct values
        */
@@ -285,7 +293,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                               static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(kernel_dim),
                               col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                              W->template Data<int8_t>() + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim), static_cast<int>(M / conv_attrs_.group),
+                              transposed, static_cast<int>(M / conv_attrs_.group),
                               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
                               rounded_divisor, real_multiplier,
                               broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
@@ -303,14 +311,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                                         {"provider", KernelDef().Provider()}});
       }
 
-      GemmlowpDebug(static_cast<int>(output_image_size),
-                    static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(kernel_dim),
-                    col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                    W->template Data<int8_t>() + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim), static_cast<int>(M / conv_attrs_.group),
-                    Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
-                    rounded_divisor,
-                    broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
+      // GemmlowpDebug(static_cast<int>(output_image_size),
+      //               static_cast<int>(M / conv_attrs_.group),
+      //               static_cast<int>(kernel_dim),
+      //               col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
+      //               transposed, static_cast<int>(M / conv_attrs_.group),
+      //               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
+      //               rounded_divisor,
+      //               broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
                               
     }
 

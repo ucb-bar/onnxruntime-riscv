@@ -7,9 +7,11 @@ import os
 import onnx
 import onnx.numpy_helper
 import struct
+import copy
 
 import numpy as np
 from onnx import onnx_pb as onnx_proto
+from native_int8_ops import get_native_int8_ops
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -268,6 +270,7 @@ class ONNXQuantizer:
         self.nchw_to_nhwc_value = {}
         # Cached map of NWHC value names to NHWC format value names for deconvert
         self.nhwc_to_nchw_value = {}
+        self.native_int8_ops = get_native_int8_ops()
     
     def quantize_model(self):
         # Create a new topologically sorted list for quantizing a model
@@ -288,6 +291,8 @@ class ONNXQuantizer:
                     new_list += self._quantize_gather_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list +=self._handle_activation_ops(node, new_list)
+                elif node.op_type in self.native_int8_ops:
+                    new_list += self._handle_native_int8_op(node, new_list)
                 else:
                     new_list +=self._handle_other_ops(node, new_list)
 
@@ -945,6 +950,47 @@ class ONNXQuantizer:
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
  
+
+
+    def _handle_native_int8_op(self, node, new_nodes_list):
+        '''
+        Given a node which does not support quantization(Conv, Matmul, Gather), this method 
+        checks whether the input to this node is quantized and adds a DequantizeLinear node 
+        to dequantize this input back to FP32
+
+            parameter node: Current node
+            parameter new_nodes_list: List of new nodes created before processing current node
+            return: List of new nodes created
+        '''
+        replacement_node = copy.deepcopy(node) 
+        nodes = []
+        for index, node_input in enumerate(node.input):
+            # If input to this is not quantized, keep this node as is
+            if node_input not in self.quantized_value_map:
+                print("Found possible int8 compatible node {} but input was not quantized. Bailing".format(node.op_type))
+                return [node]
+
+            input_name = node.input[index]
+            quantized_value = self.quantized_value_map[input_name]
+            quantized_input_name = quantized_value.q_name
+            replacement_node.input[index] = quantized_input_name
+        
+        if node.output.size > 1:
+            # More than one output, not sure if this possible, bailing
+            print("More than one output from node {}".format(node.op_type))
+            return [node]
+        
+        data_found, output_scale_name, output_zp_name, output_scale_shape, output_zp_shape = \
+            self._get_quantization_params(node.output[0])
+
+        assert(data_found)
+
+
+
+        # Append the original node
+        nodes.append(replacement_node)
+        return nodes
+
     def _handle_other_ops(self, node, new_nodes_list):
         '''
         Given a node which does not support quantization(Conv, Matmul, Gather), this method 
