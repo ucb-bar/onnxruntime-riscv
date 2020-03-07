@@ -1,5 +1,10 @@
 # Quantization and Calibration Tools
 
+Quickstart for systolic
+```
+python3 calibrate.py --model_path $MODEL/model.onnx --dataset_path $MODEL/test_data_set_0/input_0.pb --output_model_path $MODEL/model_quantized.onnx --data_preprocess=None --static=True --nhwc=False
+```
+
 Quantization in ORT refers to 8 bit linear quantization of an onnx model. There are 2 tools which aid converting an onnx model to an onnx quantized model. 
 
     * Quantization Tool 
