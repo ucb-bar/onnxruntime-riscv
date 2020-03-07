@@ -1173,7 +1173,10 @@ class ONNXQuantizer:
             quantized_input_names[0] = nhwc_input
             nodes.extend(transpose)
 
-        assert(not self.force_nhwc_conv or self._get_tensor_layout(node.input[1]) == TensorLayout.NHWC)
+        # Ensure that the weight input to qlinearconv comes from an initializer
+        assert(not self.force_nhwc_conv or \
+            (self._get_tensor_layout(node.input[1]) == TensorLayout.NHWC and \
+             self.quantized_value_map[node.input[1]].qType == QuantizedValueType.Initializer))
         
         quantized_bias_name = ""
         bias_present = False
