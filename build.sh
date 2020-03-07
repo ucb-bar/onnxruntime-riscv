@@ -10,17 +10,28 @@ export CXX=riscv64-unknown-linux-gnu-g++
 export CC=riscv64-unknown-linux-gnu-gcc
 export CXXFLAGS="-march=rv64imafdc -mabi=lp64d"
 
-# On first build, it will fail on linking binary, complaining about missing atomics (this is despite having -latomic).
-# Rebuilding fixes this for some reason. This started happening after the version bump subsequent to commit 4db932, as there were some CMake file changes in those commits.
+# Download protoc if we don't have it
+if [ ! -d "build/protoc" ]; then
+	mkdir -p "build/protoc"
+	curl --location "https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip" --output "build/protoc/protoc.zip"
+	cd build/protoc
+	unzip protoc.zip
+fi
 
-#requires python3.6 or higher
+cd $DIR
+
+# NOTE: If you're NOT building for the first time adding "--parallel" when invoking this script will parallelize build
+# requires python3.6 or higher
 python3 $DIR/tools/ci_build/build.py --arm --disable_contrib_ops --build_dir=build "$@"
 
+# On first build, it might fail on linking binary, complaining about missing atomics (this is despite having -latomic).
+# Rebuilding fixes this for some reason. This started happening after the version bump subsequent to commit 4db932, as there were some CMake file changes in those commits.
 
 if [ -d "build/Debug" ]; then
 	cd build/Debug
 	/scratch/pranavprakash/chipyard/esp-tools-install/bin/riscv64-unknown-linux-gnu-g++  -march=rv64imafdc -mabi=lp64d -Wno-error=attributes -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -Wall -Wextra -ffunction-sections -fdata-sections -Werror -Wno-parentheses -g -Wno-nonnull-compare -Wno-deprecated-copy  -latomic -static CMakeFiles/onnx_test_runner.dir/scratch/pranavprakash/onnxruntime/onnxruntime/onnxruntime/test/onnx/main.cc.o  -o onnx_test_runner  libonnx_test_runner_common.a libonnxruntime_test_utils.a libonnxruntime_session.a libonnxruntime_providers_systolic.a libonnxruntime_optimizer.a libonnxruntime_providers.a libonnxruntime_util.a libonnxruntime_framework.a libonnxruntime_util.a libonnxruntime_graph.a libonnxruntime_common.a libonnxruntime_mlas.a libonnx_test_data_proto.a external/re2/libre2.a onnx/libonnx.a onnx/libonnx_proto.a external/protobuf/cmake/libprotobuf-lited.a external/re2/libre2.a -ldl -Wl,--whole-archive -lpthread -latomic -lrt -Wl,--no-whole-archive
 else
+	# If we're release build don't bother linking the test runner binaries
 	cd build/Release
 fi
 
