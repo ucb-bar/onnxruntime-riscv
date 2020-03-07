@@ -748,11 +748,12 @@ class ONNXQuantizer:
             nodes_list.append(node)
 
         # If we need to convert back to NCHW tensor_layout
-        if tensor_layout != TensorLayout.NCHW:
-            input_name = output_name
-            node_name = output_name + "__to_nchw"
-            output_name = output_name + "_nchw"
-            transpose_node = onnx.helper.make_node("Transpose", [input_name], [output_name], perm=[0, 3, 1, 2] , name=node_name)
+        if tensor_layout != TensorLayout.NCHW and len(unsupported_nodes) != 0:
+            raise ValueError("Cannot support using NHWC weight between quantized and unquantized node")
+            # input_name = output_name
+            # node_name = output_name + "__to_nchw"
+            # output_name = output_name + "_nchw"
+            # transpose_node = onnx.helper.make_node("Transpose", [input_name], [output_name], perm=[0, 3, 1, 2] , name=node_name)
 
         # Update unsupported nodes to take dequantized weight as input.
         for node in unsupported_nodes:
