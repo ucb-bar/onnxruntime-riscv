@@ -377,7 +377,29 @@ class ONNXQuantizer:
 
         self._quantized_weights.append(weight)
 
-    def _get_quantized_weight(self, initializer, qType, wanted_layout):
+    def _get_weights_in_transposed_nhwc_format(self, weight_data, node):
+        if weight_data.ndim != 4:
+            raise ValueError("Cannot handle anything other than 2D for weights")
+        assert(node.op_type == "Conv")
+        nhwc_weights = np.transpose(weight_data, (0, 2, 3, 1))
+        ngroups = 1
+        M = weight_data.shape[0]
+        kernel_size = weight_data.shape[2] * weight_data.shape[3]
+        kernel_dim = weight_data.shape[1] * kernel_size
+        nhwc_weights_flattened = nhwc_weights.flatten()
+        for attr in node.attribute:
+            if attr.name == "group":
+                ngroups = attr.int
+
+        for group_id in range(ngroups):
+            idx_base = group_id * int(M/ngroups) * kernel_dim
+            weight_base = nhwc_weights_flattened[idx_base : idx_base + int(M/ngroups) * kernel_dim ]
+            transposed_flatten = weight_base.reshape((int(M/ngroups), kernel_dim)).transpose().flatten()
+            nhwc_weights_flattened[idx_base : idx_base + int(M/ngroups) * kernel_dim ] = transposed_flatten
+        return nhwc_weights_flattened.reshape(nhwc_weights.shape)
+
+
+    def _get_quantized_weight(self, initializer, qType, wanted_layout, node):
         '''
             :param initializer: TensorProto initializer
             :param qType: type to quantize to
@@ -385,7 +407,7 @@ class ONNXQuantizer:
         '''
         weights_data = self.find_weight_data(initializer)
         if wanted_layout == TensorLayout.NHWC:
-            weights_data = np.transpose(weights_data, (0, 2, 3, 1))
+            weights_data = self._get_weights_in_transposed_nhwc_format(weights_data, node)
             origin_initializer_dims = initializer.dims
             initializer.dims[:] = [origin_initializer_dims[0], origin_initializer_dims[2], origin_initializer_dims[3], origin_initializer_dims[1]]
         rmin, rmax, zero_point, scale, quantized_weights_data = quantize_data(weights_data.flatten().tolist(),
@@ -401,14 +423,14 @@ class ONNXQuantizer:
 
         return weight
 
-    def _get_quantized_weight_convolution(self, initializer, qType, wanted_layout):
+    def _get_quantized_weight_convolution(self, initializer, qType, wanted_layout, node):
         '''
             :param initializer: initializer TypeProto to quantize
             :param qType: type to quantize to
             :return: Weight class object with quantization information for a given initializer
         '''
         if not self.per_channel:
-            return self._get_quantized_weight(initializer, qType, wanted_layout)
+            return self._get_quantized_weight(initializer, qType, wanted_layout, node)
 
         weights = self.find_weight_data(initializer)
         # Quantize per output channel
@@ -440,7 +462,7 @@ class ONNXQuantizer:
             quantized_weights = np.concatenate((quantized_weights, channel_weights), axis=0)
 
         if wanted_layout == TensorLayout.NHWC:
-            quantized_weights = np.permute(quantized_weights, (0, 2, 3, 1))
+            quantized_weights = self._get_weights_in_transposed_nhwc_format(quantized_weights, node)
             origin_initializer_dims = initializer.dims
             initializer.dims[:] = [origin_initializer_dims[0], origin_initializer_dims[2], origin_initializer_dims[3], origin_initializer_dims[1]]
         weight = QuantizedInitializer(initializer.name, initializer, rmin_list, rmax_list, zero_point_list,
@@ -914,9 +936,9 @@ class ONNXQuantizer:
             initializer = _find_by_name(node_input, self.model.graph.initializer)
             if initializer is not None:
                 if node.op_type == "Conv":
-                    weight = self._get_quantized_weight_convolution(initializer, self.weight_qType, wanted_weight_tensor_layout)
+                    weight = self._get_quantized_weight_convolution(initializer, self.weight_qType, wanted_weight_tensor_layout, node)
                 else:
-                    weight = self._get_quantized_weight(initializer, self.weight_qType, wanted_weight_tensor_layout)
+                    weight = self._get_quantized_weight(initializer, self.weight_qType, wanted_weight_tensor_layout, node)
 
                 # Update graph
                 nodes.extend(self._update_unsupported_nodes_using_weight(weight, new_nodes_list, wanted_weight_tensor_layout))
@@ -1176,7 +1198,7 @@ class ONNXQuantizer:
         # Ensure that the weight input to qlinearconv comes from an initializer
         assert(not self.force_nhwc_conv or \
             (self._get_tensor_layout(node.input[1]) == TensorLayout.NHWC and \
-             self.quantized_value_map[node.input[1]].qType == QuantizedValueType.Initializer))
+             self.quantized_value_map[node.input[1]].value_type == QuantizedValueType.Initializer))
         
         quantized_bias_name = ""
         bias_present = False

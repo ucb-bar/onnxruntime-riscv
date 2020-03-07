@@ -68,7 +68,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 /**
  * Reference https://github.com/pytorch/pytorch/blob/master/caffe2/operators/conv_op_impl.h
  */
-template<>
+template <>
 Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const {
   profiling::Profiler& profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
   bool profiling_enabled = profiler.IsEnabled();
@@ -151,7 +151,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   Y_dims_nchw.insert(Y_dims_nchw.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(1, 3);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims_nchw));
-  
+
   std::vector<int64_t> Y_dims = {Y_dims_nchw[0], Y_dims_nchw[2], Y_dims_nchw[3], Y_dims_nchw[1]};
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(1, 3);
@@ -212,17 +212,16 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
       } else {
       }
 
-      for (long int i = 0; i < col_buffer_size; i++) {
-        printf("%d ", col_buffer_data[i]);
-      }
-      printf("\n");
+      // for (long int i = 0; i < col_buffer_size; i++) {
+      //   printf("%d ", col_buffer_data[i]);
+      // }
+      // printf("\n");
 
-      for (int i = 0; i < static_cast<int>(output_image_size); i++) {
-        for (int j = 0; j < static_cast<int>(kernel_dim); j++)
-          printf("%d ", col_buffer_data[i * static_cast<int>(kernel_dim) + j]);
-        printf("\n");
-      }
-
+      // for (int i = 0; i < static_cast<int>(output_image_size); i++) {
+      //   for (int j = 0; j < static_cast<int>(kernel_dim); j++)
+      //     printf("%d ", col_buffer_data[i * static_cast<int>(kernel_dim) + j]);
+      //   printf("\n");
+      // }
 
       if (profiling_enabled) {
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
@@ -237,14 +236,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
       std::unique_ptr<int32_t[]> broadcast_bias(nullptr);
 
       if (bias) {
-        printf("Dumping raw bias vector\n");
-        for (int i = 0; i <  static_cast<int>(M / conv_attrs_.group); i++) {
-          printf("%d ", (bias->template Data<int32_t>() + group_id * bias_offset)[i]);
-        }
-        printf("\n");
+        // printf("Dumping raw bias vector\n");
+        // for (int i = 0; i <  static_cast<int>(M / conv_attrs_.group); i++) {
+        //   printf("%d ", (bias->template Data<int32_t>() + group_id * bias_offset)[i]);
+        // }
+        // printf("\n");
         int dimI = static_cast<int>(output_image_size);
         int dimJ = static_cast<int>(M / conv_attrs_.group);
-        printf("bias dims %d %d\n", dimI, dimJ);
+        //printf("bias dims %d %d\n", dimI, dimJ);
         std::unique_ptr<int[]> matrix_bias(new int[dimI * dimJ]);
         const int32_t* bias_data = bias->template Data<int32_t>() + group_id * bias_offset;
         for (int i = 0; i < dimI; i++) {
@@ -258,7 +257,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
         // matrix_bias.colwise() = splatted;
         // broadcast_bias = matrix_bias.data();
       }
-      
+
       std::string dimension_string;
       bool fitsSystolic = (static_cast<int>(M / conv_attrs_.group) % 16 == 0) && (static_cast<int>(output_image_size) % 16 == 0) &&
                           (static_cast<int>(kernel_dim) % 16 == 0);
@@ -271,10 +270,23 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                                         {"sub_action", "bias splat"},
                                         {"provider", KernelDef().Provider()}});
         dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +
-                                       ", " + std::to_string(static_cast<int>(output_image_size)) + ", " +
-                                       std::to_string(static_cast<int>(kernel_dim));
+                           ", " + std::to_string(static_cast<int>(output_image_size)) + ", " +
+                           std::to_string(static_cast<int>(kernel_dim));
         start_time = profiler.StartTime();
       }
+
+      /* The weights we multiply by are given by the `M / groups` x `kernel_h * kernel_w * C / groups` matrix
+       * starting at weights + group_id * (M / groups) * kernel_h * kernel_w * C / groups.
+       * 
+       * The quantization script will have already transposed this for us
+       */
+      const int8_t* weight_base = W->template Data<int8_t>() + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim);
+      // int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
+      // for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
+      //   for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
+      //     transposed[i * static_cast<int>(M / conv_attrs_.group) + j] = weight_base[j * static_cast<int>(kernel_dim) + i];
+      //   }
+      // }
 
       /**
        * Note that when quantizing we will have transposed the weight matrix so that it holds the correct values
@@ -285,11 +297,10 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                               static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(kernel_dim),
                               col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                              W->template Data<int8_t>() + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim), static_cast<int>(M / conv_attrs_.group),
+                              weight_base, static_cast<int>(M / conv_attrs_.group),
                               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
                               rounded_divisor, real_multiplier,
                               broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
-                              
 
       if (profiling_enabled) {
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
@@ -303,15 +314,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                                         {"provider", KernelDef().Provider()}});
       }
 
-      GemmlowpDebug(static_cast<int>(output_image_size),
-                    static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(kernel_dim),
-                    col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                    W->template Data<int8_t>() + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim), static_cast<int>(M / conv_attrs_.group),
-                    Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
-                    rounded_divisor,
-                    broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
-                              
+      // GemmlowpDebug(static_cast<int>(output_image_size),
+      //               static_cast<int>(M / conv_attrs_.group),
+      //               static_cast<int>(kernel_dim),
+      //               col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
+      //               transposed, static_cast<int>(M / conv_attrs_.group),
+      //               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
+      //               rounded_divisor,
+      //               broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
     }
 
     Xdata += X_offset * conv_attrs_.group;
@@ -321,7 +331,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   return Status::OK();
 }
 
-template<>
+template <>
 Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const {
   profiling::Profiler& profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
   bool profiling_enabled = profiler.IsEnabled();
@@ -509,7 +519,7 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
         // matrix_bias.colwise() = splatted;
         // broadcast_bias = matrix_bias.data();
       }
-      
+
       std::string dimension_string;
       bool fitsSystolic = (static_cast<int>(M / conv_attrs_.group) % 16 == 0) && (static_cast<int>(output_image_size) % 16 == 0) &&
                           (static_cast<int>(kernel_dim) % 16 == 0);
@@ -522,8 +532,8 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
                                         {"sub_action", "bias splat"},
                                         {"provider", KernelDef().Provider()}});
         dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +
-                                       ", " + std::to_string(static_cast<int>(output_image_size)) + ", " +
-                                       std::to_string(static_cast<int>(kernel_dim));
+                           ", " + std::to_string(static_cast<int>(output_image_size)) + ", " +
+                           std::to_string(static_cast<int>(kernel_dim));
         start_time = profiler.StartTime();
       }
 
@@ -536,7 +546,6 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
                               col_buffer_data,
                               Ydata + group_id * Y_offset,
                               rounded_divisor, real_multiplier, broadcast_bias.get());
-                              
 
       if (profiling_enabled) {
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
