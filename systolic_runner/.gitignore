@@ -1,2 +1,2 @@
 *.json
-ort_test
+imagenet_runner/ort_test
