@@ -70,20 +70,20 @@ def augment_graph(model, static):
             added_nodes.append(reduce_max_node)
             added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
 
+    if static:
+        input_name = get_graph_input_name(model)
+        reduce_min_name = input_name + "_ReduceMin"
+        reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
+                        [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
+        added_nodes.append(reduce_min_node)
+        added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
 
-    input_name = get_graph_input_name(model)
-    reduce_min_name = input_name + "_ReduceMin"
-    reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
-                    [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
-    added_nodes.append(reduce_min_node)
-    added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
-
-    # Adding ReduceMax nodes
-    reduce_max_name = input_name + "_ReduceMax"
-    reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
-                    [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
-    added_nodes.append(reduce_max_node)
-    added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
+        # Adding ReduceMax nodes
+        reduce_max_name = input_name + "_ReduceMax"
+        reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
+                        [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
+        added_nodes.append(reduce_max_node)
+        added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
 
 
     model.graph.node.extend(added_nodes)
