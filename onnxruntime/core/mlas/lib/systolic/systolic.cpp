@@ -23,8 +23,8 @@ void SystolicMultiplyi8i8_i8(char accelerator_mode, bool relu, int dimI, int dim
   int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
 
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
-  tiled_matmul_option(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
-                      shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, static_cast<tiled_matmul_type_t>(accelerator_mode));
+  tiled_matmul_auto(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
+                      shift, /*relu6_shift= */ 0, /* repeating_bias= */ 0, static_cast<tiled_matmul_type_t>(accelerator_mode));
 }
 
 
@@ -43,8 +43,8 @@ void SystolicMultiplyi8i8_i8(char accelerator_mode, bool relu,
   int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
 
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
-  tiled_matmul_option(dimI, dimJ, dimK, 
+  tiled_matmul_auto(dimI, dimJ, dimK, 
                       strideIn1, strideIn2, strideBias, strideOut,
                       in1, in2, bias, out, /*activation= */ relu,
-                      shift, /*relu6_shift= */ 0, /* full_bas_width= */ 1, static_cast<tiled_matmul_type_t>(accelerator_mode));
+                      shift, /*relu6_shift= */ 0, /* repeating_bias= */ 0, static_cast<tiled_matmul_type_t>(accelerator_mode));
 }
