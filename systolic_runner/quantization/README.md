@@ -1,9 +1,23 @@
 # Quantization and Calibration Tools
 
-Quickstart for systolic
+## Quickstart for systolic
+
+To quantize a floating point model to an int8 model suitable for Systolic, run
+
 ```
 python3 calibrate.py --model_path $MODEL/model.onnx --dataset_path $MODEL/test_data_set_0/input_0.pb --output_model_path $MODEL/model_quantized.onnx --data_preprocess=None --static=True --nhwc=False
 ```
+
+Note that you must have the `onnxruntime` python package installed (this can be installed from pypi).
+
+This will first run the floating point model on onnxruntime to determine suitable quantization parameters, then update
+the ONNX graph to use quantized equivalents. The `--static` parameters forces all quantized input scales to be fixed ahead of time,
+rather than dynamically computing them during inference (see below for details on static vs. dynamic). The `--nhwc` flag toggles whether 
+QLinearConv should be performed in NCHW (default onnx) or NHWC (custom for systolic) layout. Because the NHWC layout is supported only by convolution, appropriate layout conversions (axis transpose) may be inserted as needed.
+
+For more detail see quantizer.md in the docs/ folder.
+
+## Overview
 
 Quantization in ORT refers to 8 bit linear quantization of an onnx model. There are 2 tools which aid converting an onnx model to an onnx quantized model. 
 
