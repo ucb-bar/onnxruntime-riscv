@@ -47,7 +47,7 @@ void SystolicMultiplyi8i8_i8(char accelerator_mode, bool relu,
                              const elem_t* in2, int strideIn2,
                              elem_t* out, int strideOut,
                              int divisor, __attribute__((unused)) float real_multiplier,
-                             const int32_t* bias, int strideBias) {
+                             const int32_t* bias, int strideBias, bool repeating_bias) {
   printf("Called into systolic matmul!\n");
   bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
   if (!isPowerOf2) {
@@ -59,5 +59,5 @@ void SystolicMultiplyi8i8_i8(char accelerator_mode, bool relu,
   tiled_matmul_auto(dimI, dimJ, dimK,
                     strideIn1, strideIn2, strideBias, strideOut,
                     in1, in2, bias, out, /*activation= */ relu,
-                    shift, /*relu6_shift= */ 0, /* repeating_bias= */ 0, get_accelerator_mode(accelerator_mode));
+                    shift, /*relu6_shift= */ 0, /* repeating_bias= */ repeating_bias, get_accelerator_mode(accelerator_mode));
 }

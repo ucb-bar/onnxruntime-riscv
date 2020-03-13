@@ -233,30 +233,8 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
         start_time = profiler.StartTime();
       }
 
-      std::unique_ptr<int32_t[]> broadcast_bias(nullptr);
 
-      if (bias) {
-        // printf("Dumping raw bias vector\n");
-        // for (int i = 0; i <  static_cast<int>(M / conv_attrs_.group); i++) {
-        //   printf("%d ", (bias->template Data<int32_t>() + group_id * bias_offset)[i]);
-        // }
-        // printf("\n");
-        int dimI = static_cast<int>(output_image_size);
-        int dimJ = static_cast<int>(M / conv_attrs_.group);
-        //printf("bias dims %d %d\n", dimI, dimJ);
-        std::unique_ptr<int[]> matrix_bias(new int[dimI * dimJ]);
-        const int32_t* bias_data = bias->template Data<int32_t>() + group_id * bias_offset;
-        for (int i = 0; i < dimI; i++) {
-          std::copy(bias_data, bias_data + dimJ, &matrix_bias.get()[i * dimJ]);
-        }
-        broadcast_bias = std::move(matrix_bias);
-
-        // Eigen::Matrix<int32_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> matrix_bias;
-        // matrix_bias.resize(static_cast<int>(M / conv_attrs_.group), static_cast<int>(output_image_size));
-        // ConstEigenVectorMap<int32_t> splatted(, static_cast<int>(M / conv_attrs_.group));
-        // matrix_bias.colwise() = splatted;
-        // broadcast_bias = matrix_bias.data();
-      }
+      const int32_t* bias_data = bias ? bias->template Data<int32_t>() + group_id * bias_offset : nullptr;
 
       std::string dimension_string;
       bool fitsSystolic = (static_cast<int>(M / conv_attrs_.group) % 16 == 0) && (static_cast<int>(output_image_size) % 16 == 0) &&
@@ -300,7 +278,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                               weight_base, static_cast<int>(M / conv_attrs_.group),
                               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
                               rounded_divisor, real_multiplier,
-                              broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
+                              bias_data, static_cast<int>(M / conv_attrs_.group), /*repeating_bias= */ true);
 
       if (profiling_enabled) {
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,

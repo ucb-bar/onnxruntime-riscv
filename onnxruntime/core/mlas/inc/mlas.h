@@ -419,7 +419,7 @@ MLASCALL(char accelerator_mode, bool relu,
                             const int8_t* in2, int strideIn2,
                             int8_t* out, int strideOut,
                             int divisor, float real_multiplier,
-                            const int32_t* bias, int strideBias);
+                            const int32_t* bias, int strideBias, bool repeating_bias);
 #endif
 
 void
