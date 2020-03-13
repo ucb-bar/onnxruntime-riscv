@@ -22,16 +22,16 @@ import re
 import subprocess
 import json
 
-graph_input_name = None
-def get_graph_input_name(model):
-    global graph_input_name
-    if graph_input_name is None:
+graph_input_names = None
+def get_graph_input_names(model):
+    global graph_input_names
+    if graph_input_names is None:
         init = {i.name : 0 for i in model.graph.initializer}
         inp = [i.name for i in model.graph.input if i.name not in init]
-        if len(inp) != 1:
-            raise ValueError("Multiple or no graph input found")
-        graph_input_name = inp[0]
-    return graph_input_name
+        # if len(inp) != 1:
+        #     raise ValueError("Multiple or no graph input found")
+        graph_input_names = inp
+    return graph_input_names
 
 
 def augment_graph(model, static):
@@ -59,7 +59,9 @@ def augment_graph(model, static):
             reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
                             [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
             added_nodes.append(reduce_min_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
+            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMin'], outputs=[input_name + '_ReduceMinf'], to=TensorProto.FLOAT)
+            added_nodes.append(float_cast)
+            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
             if node.name == "":
@@ -69,23 +71,28 @@ def augment_graph(model, static):
             reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
                             [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
             added_nodes.append(reduce_max_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
+            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMax'], outputs=[input_name + '_ReduceMaxf'], to=TensorProto.FLOAT)
+            added_nodes.append(float_cast)
+            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
 
     if static:
-        input_name = get_graph_input_name(model)
-        reduce_min_name = input_name + "_ReduceMin"
-        reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
-                        [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
-        added_nodes.append(reduce_min_node)
-        added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, ()))
+        for input_name in get_graph_input_names(model):
+            reduce_min_name = input_name + "_ReduceMin"
+            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
+                            [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
+            added_nodes.append(reduce_min_node)
+            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMin'], outputs=[input_name + '_ReduceMinf'], to=TensorProto.FLOAT)
+            added_nodes.append(float_cast)
+            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
 
-        # Adding ReduceMax nodes
-        reduce_max_name = input_name + "_ReduceMax"
-        reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
-                        [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
-        added_nodes.append(reduce_max_node)
-        added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, ()))
-
+            # Adding ReduceMax nodes
+            reduce_max_name = input_name + "_ReduceMax"
+            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
+                            [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
+            added_nodes.append(reduce_max_node)
+            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMax'], outputs=[input_name + '_ReduceMaxf'], to=TensorProto.FLOAT)
+            added_nodes.append(float_cast)
+            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
 
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
@@ -201,13 +208,13 @@ def calculate_quantization_params(model, quantization_thresholds, static):
             quantization_params[node_output_name] = node_params
 
     if static:
-        graph_input_name = get_graph_input_name(model)
-        if graph_input_name in quantization_thresholds:
-            node_thresholds = quantization_thresholds[graph_input_name]
-            node_params = calculate_scale_zeropoint(None, None, node_thresholds[0], node_thresholds[1])
-            quantization_params[graph_input_name] = node_params
-        else:
-            raise ValueError("Graph input not found in quantization dict")
+        for graph_input_name in get_graph_input_names(model):
+            if graph_input_name in quantization_thresholds:
+                node_thresholds = quantization_thresholds[graph_input_name]
+                node_params = calculate_scale_zeropoint(None, None, node_thresholds[0], node_thresholds[1])
+                quantization_params[graph_input_name] = node_params
+            else:
+                raise ValueError("Graph input {} not found in quantization dict".format(graph_input_name))
 
     return quantization_params
 
