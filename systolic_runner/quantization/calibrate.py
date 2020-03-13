@@ -8,6 +8,7 @@
 
 import os
 import sys
+import glob
 import argparse
 import numpy as np
 from PIL import Image
@@ -108,8 +109,9 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     model = onnx.load(model_path)
     num_model_outputs = len(model.graph.output) # number of outputs in original model
     num_inputs = len(inputs)
-    input_name = session.get_inputs()[0].name
-    intermediate_outputs = [session.run([], {input_name: inputs[i]}) for i in range(num_inputs)]
+    input_names = [i.name for i in session.get_inputs()]
+    num_input_names = len(input_names)
+    intermediate_outputs = [session.run([], {input_names[j]: inputs[i][j] for j in range(num_input_names)}) for i in range(num_inputs)]
 
     # Creating dictionary with output results from multiple test inputs
     node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
@@ -210,37 +212,34 @@ def calculate_quantization_params(model, quantization_thresholds, static):
     return quantization_params
 
 
-def load_pb_file(data_file_name, size_limit, samples, channels, height, width):
+def load_single_test_data(test_data_dir, num_expected_inputs):
     '''
-    Load tensor data from pb files.
-    :param data_file_name: path to the pb file
-    :param dataset_size: number of image-data in the pb file. Default is 0 which means all samples from .pb file.
-    :param samples: number of samples 'N'
-    :param channels: number of channels in the image 'C'
-    :param height: image height for data size check 'H'
-    :param width: image width for data size check 'W'
+    Load tensor data from pb files in a single test data dir.
+    :param test_data_dir: path to where the pb files for each input are found
     :return input data for the model
     '''
-    tensor = onnx.TensorProto()
-    inputs = np.empty(0)
-    with open(data_file_name, 'rb') as fin:
-        tensor.ParseFromString(fin.read())
-        inputs = numpy_helper.to_array(tensor)
-        try:
-            shape = inputs.shape
-            dataset_size = 1
-            if len(shape) == 5 and (shape[0] <= size_limit or size_limit == 0):
-                dataset_size = shape[0]
-            elif len(shape) == 5 and shape[0] > size_limit:
-                inputs = inputs[:size_limit]
-                dataset_size = size_limit
-
-            inputs = inputs.reshape(dataset_size, samples, channels, height, width)
-        except:
-            sys.exit("Input .pb file contains incorrect input size. \nThe required size is: (%s). The real size is: (%s)"
-                        %((dataset_size, samples, channels, height, width), shape))
-
+    inputs = []
+    inputs_num = len(glob.glob(os.path.join(test_data_dir, 'input_*.pb')))
+    if inputs_num != num_expected_inputs:
+        raise ValueError('Number of input protobufs does not match expected model inputs')
+    if not inputs_num:
+        raise ValueError('No protobufs found in test data directory')
+    for i in range(inputs_num):
+        input_file = os.path.join(test_data_dir, 'input_{}.pb'.format(i))
+        tensor = onnx.TensorProto()
+        with open(input_file, 'rb') as f:
+            tensor.ParseFromString(f.read())
+        inputs.append(numpy_helper.to_array(tensor))
     return inputs
+    
+def load_test_data(test_data_dir, num_expected_inputs, max_to_load):
+    tests = glob.glob(os.path.join(test_data_dir, 'test_data_set_*'))
+    if len(tests):
+        return [load_single_test_data(case, num_expected_inputs) for case in \
+                (tests[:max_to_load] if max_to_load else tests)]
+    else:
+        return [load_single_test_data(test_data_dir, num_expected_inputs)]
+
 
 def main():
     # Parsing command-line arguments
@@ -264,19 +263,20 @@ def main():
     model = onnx.load(model_path)
     augmented_model = augment_graph(model, static=args.static)
     onnx.save(augmented_model, augmented_model_path)
-    
-    print(args.static)
 
     # Conducting inference
     session = onnxruntime.InferenceSession(augmented_model_path, None)
-    (samples, channels, height, width) = session.get_inputs()[0].shape
+    num_expected_inputs = len(session.get_inputs())
 
     # Generating inputs for quantization
     if args.data_preprocess == "None":
-        inputs = load_pb_file(images_folder, args.dataset_size, samples, channels, height, width)
+        inputs = load_test_data(images_folder, num_expected_inputs, size_limit)
     else:
-        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)        
-    print(inputs.shape)
+        # NOTE: This is currently broken because I changed the format of inputs
+        (samples, channels, height, width) = session.get_inputs()[0].shape
+        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)  
+   
+    print('Num cases {}, num inputs for each cases {}'.format(len(inputs), len(inputs[0])))
     dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
     print(dict_for_quantization)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization, static=args.static)
