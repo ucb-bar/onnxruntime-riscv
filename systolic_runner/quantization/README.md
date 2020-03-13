@@ -15,7 +15,7 @@ the ONNX graph to use quantized equivalents. The `--static` parameters forces al
 rather than dynamically computing them during inference (see below for details on static vs. dynamic). The `--nhwc` flag toggles whether 
 QLinearConv should be performed in NCHW (default onnx) or NHWC (custom for systolic) layout. Because the NHWC layout is supported only by convolution, appropriate layout conversions (axis transpose) may be inserted as needed.
 
-For more detail see quantizer.md in the docs/ folder.
+For more detail on Systolic specific transformations see [quantizer.md](/systolic_runner/docs/quantizer.md).
 
 ## Overview
 

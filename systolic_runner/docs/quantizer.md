@@ -2,7 +2,7 @@
 
 ## Overview
 
-For a general overview on the quantizer script first read the README in the `quantization` folder.
+For a general overview on the quantizer script first read the quantization.py [README](/systolic_runner/quantization/README.md)
 
 In short, the quantization script converts a floating point model into one where compatible operators have been replaced
 by int8 quantized equivalents.
