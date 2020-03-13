@@ -81,7 +81,7 @@
 
 #define gemmini_preload_zeros(C) \
   gemmini_preload(GARBAGE_ADDR, C)
-  
+
 // config
 #define gemmini_config_ex(mode, act, sys_shift, acc_shift, relu6_shift) \
   ROCC_INSTRUCTION_RS1_RS2(XCUSTOM_ACC, ((uint64_t)(acc_shift) << 32) | ((act) << 3) | ((mode) << 2) | CONFIG_EX, ((uint64_t)(relu6_shift) << 32) | (sys_shift), k_CONFIG)
@@ -455,9 +455,9 @@ static void matmul_cpu(size_t dim_I, size_t dim_J, size_t dim_K,
 }
 
 // General matmul which can be run with different dataflows, or on the CPU
-enum tiled_matmul_type_t { CPU,
-                           OS,
-                           WS };
+enum tiled_matmul_type_t { OS,
+                           WS,
+                           CPU };
 
 // This function runs a tiled matrix multiplication, with hardcoded tiling
 // factors
@@ -532,7 +532,7 @@ void tiled_matmul(size_t dim_I, size_t dim_J, size_t dim_K,
                        A, B, D, C,
                        tile_I, tile_J, tile_K,
                        act, shift, relu6_shift, repeating_bias,
-                       (int) tiled_matmul_type != OS);
+                       (int)tiled_matmul_type);
   } else /*if (tiled_matmul_type == CPU)*/ {
     matmul_cpu(dim_I, dim_J, dim_K,
                strideA,
