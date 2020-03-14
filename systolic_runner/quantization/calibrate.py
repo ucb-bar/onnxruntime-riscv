@@ -23,10 +23,12 @@ import subprocess
 import json
 
 graph_input_names = None
+
+
 def get_graph_input_names(model):
     global graph_input_names
     if graph_input_names is None:
-        init = {i.name : 0 for i in model.graph.initializer}
+        init = {i.name: 0 for i in model.graph.initializer}
         inp = [i.name for i in model.graph.input if i.name not in init]
         # if len(inp) != 1:
         #     raise ValueError("Multiple or no graph input found")
@@ -52,51 +54,84 @@ def augment_graph(model, static):
             input_name = node.output[0]
             # Adding ReduceMin nodes
             if node.name == "":
-                reduce_min_name = str(i)  + '_ReduceMin'
+                reduce_min_name = str(i) + '_ReduceMin'
                 i += 1
             else:
                 reduce_min_name = node.name + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
-                            [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
+            reduce_min_node = onnx.helper.make_node(
+                'ReduceMin', [input_name], [input_name + '_ReduceMin'],
+                reduce_min_name,
+                keepdims=0)
             added_nodes.append(reduce_min_node)
-            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMin'], outputs=[input_name + '_ReduceMinf'], to=TensorProto.FLOAT)
+            float_cast = onnx.helper.make_node(
+                'Cast',
+                inputs=[input_name + '_ReduceMin'],
+                outputs=[input_name + '_ReduceMinf'],
+                to=TensorProto.FLOAT)
             added_nodes.append(float_cast)
-            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
+            added_outputs.append(
+                helper.make_tensor_value_info(float_cast.output[0],
+                                              TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
             if node.name == "":
                 reduce_max_name = str(i) + '_ReduceMax'
             else:
                 reduce_max_name = node.name + '_ReduceMax'
-            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
-                            [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
+            reduce_max_node = onnx.helper.make_node(
+                'ReduceMax', [input_name], [input_name + '_ReduceMax'],
+                reduce_max_name,
+                keepdims=0)
             added_nodes.append(reduce_max_node)
-            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMax'], outputs=[input_name + '_ReduceMaxf'], to=TensorProto.FLOAT)
+            float_cast = onnx.helper.make_node(
+                'Cast',
+                inputs=[input_name + '_ReduceMax'],
+                outputs=[input_name + '_ReduceMaxf'],
+                to=TensorProto.FLOAT)
             added_nodes.append(float_cast)
-            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
+            added_outputs.append(
+                helper.make_tensor_value_info(float_cast.output[0],
+                                              TensorProto.FLOAT, ()))
 
     if static:
         for input_name in get_graph_input_names(model):
             reduce_min_name = input_name + "_ReduceMin"
-            reduce_min_node = onnx.helper.make_node('ReduceMin', [input_name],
-                            [input_name + '_ReduceMin'], reduce_min_name, keepdims=0)
+            reduce_min_node = onnx.helper.make_node(
+                'ReduceMin', [input_name], [input_name + '_ReduceMin'],
+                reduce_min_name,
+                keepdims=0)
             added_nodes.append(reduce_min_node)
-            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMin'], outputs=[input_name + '_ReduceMinf'], to=TensorProto.FLOAT)
+            float_cast = onnx.helper.make_node(
+                'Cast',
+                inputs=[input_name + '_ReduceMin'],
+                outputs=[input_name + '_ReduceMinf'],
+                to=TensorProto.FLOAT)
             added_nodes.append(float_cast)
-            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
+            added_outputs.append(
+                helper.make_tensor_value_info(float_cast.output[0],
+                                              TensorProto.FLOAT, ()))
 
             # Adding ReduceMax nodes
             reduce_max_name = input_name + "_ReduceMax"
-            reduce_max_node = onnx.helper.make_node('ReduceMax', [input_name],
-                            [input_name + '_ReduceMax'], reduce_max_name, keepdims=0)
+            reduce_max_node = onnx.helper.make_node(
+                'ReduceMax', [input_name], [input_name + '_ReduceMax'],
+                reduce_max_name,
+                keepdims=0)
             added_nodes.append(reduce_max_node)
-            float_cast = onnx.helper.make_node('Cast', inputs=[input_name + '_ReduceMax'], outputs=[input_name + '_ReduceMaxf'], to=TensorProto.FLOAT)
+            float_cast = onnx.helper.make_node(
+                'Cast',
+                inputs=[input_name + '_ReduceMax'],
+                outputs=[input_name + '_ReduceMaxf'],
+                to=TensorProto.FLOAT)
             added_nodes.append(float_cast)
-            added_outputs.append(helper.make_tensor_value_info(float_cast.output[0], TensorProto.FLOAT, ()))
+            added_outputs.append(
+                helper.make_tensor_value_info(float_cast.output[0],
+                                              TensorProto.FLOAT, ()))
 
     model.graph.node.extend(added_nodes)
     model.graph.output.extend(added_outputs)
     return model
+
 
 # Using augmented outputs to generate inputs to quantize.py
 def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
@@ -114,33 +149,54 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
         return: dictionary mapping added node names to (ReduceMin, ReduceMax) pairs
     '''
     model = onnx.load(model_path)
-    num_model_outputs = len(model.graph.output) # number of outputs in original model
+    num_model_outputs = len(
+        model.graph.output)  # number of outputs in original model
     num_inputs = len(inputs)
     input_names = [i.name for i in session.get_inputs()]
     num_input_names = len(input_names)
-    intermediate_outputs = [session.run([], {input_names[j]: inputs[i][j] for j in range(num_input_names)}) for i in range(num_inputs)]
+    intermediate_outputs = [
+        session.run(
+            [], {input_names[j]: inputs[i][j]
+                 for j in range(num_input_names)}) for i in range(num_inputs)
+    ]
 
     # Creating dictionary with output results from multiple test inputs
-    node_output_names = [session.get_outputs()[i].name for i in range(len(intermediate_outputs[0]))]
-    output_dicts = [dict(zip(node_output_names, intermediate_outputs[i])) for i in range(num_inputs)]
+    node_output_names = [
+        session.get_outputs()[i].name
+        for i in range(len(intermediate_outputs[0]))
+    ]
+    output_dicts = [
+        dict(zip(node_output_names, intermediate_outputs[i]))
+        for i in range(num_inputs)
+    ]
     merged_dict = {}
     for d in output_dicts:
         for k, v in d.items():
             merged_dict.setdefault(k, []).append(v)
     added_node_output_names = node_output_names[num_model_outputs:]
-    node_names = [added_node_output_names[i].rpartition('_')[0] for i in range(0, len(added_node_output_names), 2)] # output names
+    node_names = [
+        added_node_output_names[i].rpartition('_')[0]
+        for i in range(0, len(added_node_output_names), 2)
+    ]  # output names
 
     # Characterizing distribution of a node's values across test data sets
-    clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i != node_output_names[0])
+    clean_merged_dict = dict(
+        (i, merged_dict[i]) for i in merged_dict if i != node_output_names[0])
     if calib_mode == 'naive':
-        pairs = [tuple([float(min(clean_merged_dict[added_node_output_names[i]])),
-                float(max(clean_merged_dict[added_node_output_names[i+1]]))])
-                for i in range(0, len(added_node_output_names), 2)]
+        pairs = [
+            tuple([
+                float(min(clean_merged_dict[added_node_output_names[i]])),
+                float(max(clean_merged_dict[added_node_output_names[i + 1]]))
+            ]) for i in range(0, len(added_node_output_names), 2)
+        ]
     else:
-        raise ValueError('Unknown value for calib_mode. Currently only naive mode is supported.')
+        raise ValueError(
+            'Unknown value for calib_mode. Currently only naive mode is supported.'
+        )
 
     final_dict = dict(zip(node_names, pairs))
     return final_dict
+
 
 def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     zp_and_scale = []
@@ -175,6 +231,7 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     zp_and_scale.append(scale)
     return zp_and_scale
 
+
 def calculate_quantization_params(model, quantization_thresholds, static):
     '''
         Given a model and quantization thresholds, calculates the quantization params.
@@ -195,26 +252,33 @@ def calculate_quantization_params(model, quantization_thresholds, static):
             {
                 "param_name": [zero_point, scale]
             }
-    '''    
+    '''
     if quantization_thresholds is None:
-        raise ValueError('quantization thresholds is required to calculate quantization params (zero point and scale)')
+        raise ValueError(
+            'quantization thresholds is required to calculate quantization params (zero point and scale)'
+        )
 
     quantization_params = {}
     for index, node in enumerate(model.graph.node):
         node_output_name = node.output[0]
         if node_output_name in quantization_thresholds:
             node_thresholds = quantization_thresholds[node_output_name]
-            node_params = calculate_scale_zeropoint(node, model.graph.node[index+1], node_thresholds[0], node_thresholds[1])
+            node_params = calculate_scale_zeropoint(
+                node, model.graph.node[index + 1], node_thresholds[0],
+                node_thresholds[1])
             quantization_params[node_output_name] = node_params
 
     if static:
         for graph_input_name in get_graph_input_names(model):
             if graph_input_name in quantization_thresholds:
                 node_thresholds = quantization_thresholds[graph_input_name]
-                node_params = calculate_scale_zeropoint(None, None, node_thresholds[0], node_thresholds[1])
+                node_params = calculate_scale_zeropoint(
+                    None, None, node_thresholds[0], node_thresholds[1])
                 quantization_params[graph_input_name] = node_params
             else:
-                raise ValueError("Graph input {} not found in quantization dict".format(graph_input_name))
+                raise ValueError(
+                    "Graph input {} not found in quantization dict".format(
+                        graph_input_name))
 
     return quantization_params
 
@@ -228,7 +292,8 @@ def load_single_test_data(test_data_dir, num_expected_inputs):
     inputs = []
     inputs_num = len(glob.glob(os.path.join(test_data_dir, 'input_*.pb')))
     if inputs_num != num_expected_inputs:
-        raise ValueError('Number of input protobufs does not match expected model inputs')
+        raise ValueError(
+            'Number of input protobufs does not match expected model inputs')
     if not inputs_num:
         raise ValueError('No protobufs found in test data directory')
     for i in range(inputs_num):
@@ -238,7 +303,8 @@ def load_single_test_data(test_data_dir, num_expected_inputs):
             tensor.ParseFromString(f.read())
         inputs.append(numpy_helper.to_array(tensor))
     return inputs
-    
+
+
 def load_test_data(test_data_dir, num_expected_inputs, max_to_load):
     tests = glob.glob(os.path.join(test_data_dir, 'test_data_set_*'))
     if len(tests):
@@ -250,13 +316,30 @@ def load_test_data(test_data_dir, num_expected_inputs, max_to_load):
 
 def main():
     # Parsing command-line arguments
-    parser = argparse.ArgumentParser(description='parsing model and test data set paths')
+    parser = argparse.ArgumentParser(
+        description='parsing model and test data set paths')
     parser.add_argument('--model_path', required=True)
     parser.add_argument('--dataset_path', required=True)
-    parser.add_argument('--output_model_path', type=str, default='calibrated_quantized_model.onnx')
-    parser.add_argument('--dataset_size', type=int, default=0, help="Number of images or tensors to load. Default is 0 which means all samples")
-    parser.add_argument('--data_preprocess', type=str, required=True, choices=['preprocess_method1', 'preprocess_method2', 'None'], help="Refer to Readme.md for guidance on choosing this option.")
-    parser.add_argument('--static', required=True, type=lambda x: (str(x).lower() in ['true','1', 'yes']))
+    parser.add_argument('--output_model_path',
+                        type=str,
+                        default='calibrated_quantized_model.onnx')
+    parser.add_argument(
+        '--dataset_size',
+        type=int,
+        default=0,
+        help=
+        "Number of images or tensors to load. Default is 0 which means all samples"
+    )
+    parser.add_argument(
+        '--data_preprocess',
+        type=str,
+        required=True,
+        choices=['preprocess_method1', 'preprocess_method2', 'None'],
+        help="Refer to Readme.md for guidance on choosing this option.")
+    parser.add_argument('--static',
+                        required=True,
+                        type=lambda x:
+                        (str(x).lower() in ['true', '1', 'yes']))
     args = parser.parse_args()
     model_path = args.model_path
     output_model_path = args.output_model_path
@@ -280,17 +363,28 @@ def main():
     else:
         # NOTE: This is currently broken because I changed the format of inputs
         (samples, channels, height, width) = session.get_inputs()[0].shape
-        inputs = load_batch(images_folder, height, width, size_limit, args.data_preprocess)  
-   
-    print('Num cases {}, num inputs for each cases {}'.format(len(inputs), len(inputs[0])))
-    dict_for_quantization = get_intermediate_outputs(model_path, session, inputs, calib_mode)
+        inputs = load_batch(images_folder, height, width, size_limit,
+                            args.data_preprocess)
+
+    print('Num cases {}, num inputs for each cases {}'.format(
+        len(inputs), len(inputs[0])))
+    dict_for_quantization = get_intermediate_outputs(model_path, session,
+                                                     inputs, calib_mode)
     print(dict_for_quantization)
-    quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization, static=args.static)
+    quantization_params_dict = calculate_quantization_params(
+        model,
+        quantization_thresholds=dict_for_quantization,
+        static=args.static)
     print(quantization_params_dict)
-    calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict, static=args.static)
+    calibrated_quantized_model = quantize(
+        onnx.load(model_path),
+        quantization_mode=QuantizationMode.QLinearOps,
+        quantization_params=quantization_params_dict,
+        static=args.static)
     onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")
+
 
 if __name__ == '__main__':
     main()
