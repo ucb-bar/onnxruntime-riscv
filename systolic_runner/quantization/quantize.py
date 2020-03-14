@@ -1240,7 +1240,7 @@ def check_opset_version(org_model, force_fusions):
     return fuse_dynamic_quant
 
 def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
-    static=False, force_fusions=False, asymmetric_input_types=False, 
+    static=False, force_fusions=False, symmetric_activation=True, symmetric_weight=True, 
     quantization_params=None, nodes_to_quantize=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
@@ -1262,9 +1262,12 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         True: Fuses nodes added for dynamic quantization
         False: No fusion is applied for nodes which are added for dynamic quantization.
         Should be only used in cases where backends want to apply special fusion routines
-    :param asymmetric_input_types:
-        True: Weights are quantized into signed integers and inputs/activations into unsigned integers.
-        False: Weights and inputs/activations are quantized into unsigned integers.
+    :param symmetric_activation:
+        True: activations are quantized into signed integers.
+        False: activations are quantized into unsigned integers.
+    :param symmetric_weight:
+        True: weights are quantized into signed integers.
+        False: weights are quantized into unsigned integers.
     :param quantization_params:
         Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
         Should be specified when static is set to True.
@@ -1289,8 +1292,8 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         ]
     '''
     if nbits == 8:
-        input_qType = onnx_proto.TensorProto.INT8
-        weight_qType = onnx_proto.TensorProto.INT8
+        input_qType = onnx_proto.TensorProto.INT8 if symmetric_activation else onnx_proto.TensorProto.UINT8
+        weight_qType = onnx_proto.TensorProto.INT8 if symmetric_weight else onnx_proto.TensorProto.UINT8
         mode = quantization_mode
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(model)
