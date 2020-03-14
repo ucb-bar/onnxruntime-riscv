@@ -257,7 +257,6 @@ def main():
     parser.add_argument('--dataset_size', type=int, default=0, help="Number of images or tensors to load. Default is 0 which means all samples")
     parser.add_argument('--data_preprocess', type=str, required=True, choices=['preprocess_method1', 'preprocess_method2', 'None'], help="Refer to Readme.md for guidance on choosing this option.")
     parser.add_argument('--static', required=True, type=lambda x: (str(x).lower() in ['true','1', 'yes']))
-    parser.add_argument('--nhwc', required=True, type=lambda x: (str(x).lower() in ['true','1', 'yes']))
     args = parser.parse_args()
     model_path = args.model_path
     output_model_path = args.output_model_path
@@ -288,7 +287,7 @@ def main():
     print(dict_for_quantization)
     quantization_params_dict = calculate_quantization_params(model, quantization_thresholds=dict_for_quantization, static=args.static)
     print(quantization_params_dict)
-    calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict, static=args.static, force_nhwc_conv = args.nhwc)
+    calibrated_quantized_model = quantize(onnx.load(model_path), quantization_mode=QuantizationMode.QLinearOps, quantization_params=quantization_params_dict, static=args.static)
     onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")

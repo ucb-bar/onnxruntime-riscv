@@ -41,10 +41,6 @@ class QuantizationMode():
     IntegerOps = 0
     QLinearOps = 1
 
-class TensorLayout():
-    NCHW = 0
-    NHWC = 1
-
 quantization_modes = [getattr(QuantizationMode, attr) for attr in dir(QuantizationMode)\
     if not callable(getattr(QuantizationMode, attr)) and not attr.startswith("__")]
 
@@ -75,7 +71,7 @@ class QuantizedValue:
     Represents a linearly quantized value (input\output\intializer)
     '''
     def __init__(self, name, new_quantized_name, scale_name, zero_point_name, quantized_value_type, axis=None,
-                 qType=onnx_proto.TensorProto.UINT8, tensor_layout=TensorLayout.NCHW):
+                 qType=onnx_proto.TensorProto.UINT8):
         self.original_name = name
         self.q_name = new_quantized_name
         self.scale_name = scale_name
@@ -83,7 +79,6 @@ class QuantizedValue:
         self.value_type = quantized_value_type
         self.axis = axis
         self.qType = qType
-        self.tensor_layout = tensor_layout
 
 def quantize_data(data, quantize_range, qType):
     '''
@@ -235,7 +230,7 @@ def _find_nodes_using_initializer(graph, initializer):
 
 class ONNXQuantizer:
     def __init__(self, model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
-            quantization_params, nodes_to_quantize, force_nhwc_conv):
+            quantization_params, nodes_to_quantize):
         self.model = model
         self.per_channel = per_channel # weight-pack per channel        
         self.mode = mode # QuantizationMode.Value
@@ -245,7 +240,6 @@ class ONNXQuantizer:
         self.weight_qType = weight_qType  # quantize data type
         self.quantization_params = quantization_params
         self.nodes_to_quantize = nodes_to_quantize # specific nodes to quantize
-        self.force_nhwc_conv = force_nhwc_conv # Whether to use NHWC format for convolution
 
         if not self.mode in quantization_modes:
             raise ValueError('unsupported quantization mode {}'.format(self.mode))
@@ -264,10 +258,6 @@ class ONNXQuantizer:
         self._quantized_weights = []
         # Map of all original value names to quantized value names
         self.quantized_value_map = {}
-        # Cached map of NCHW value names to NWHC format value names for convert
-        self.nchw_to_nhwc_value = {}
-        # Cached map of NWHC value names to NHWC format value names for deconvert
-        self.nhwc_to_nchw_value = {}
     
     def quantize_model(self):
         # Create a new topologically sorted list for quantizing a model
@@ -377,60 +367,33 @@ class ONNXQuantizer:
 
         self._quantized_weights.append(weight)
 
-    def _get_weights_in_transposed_nhwc_format(self, weight_data, node):
-        if weight_data.ndim != 4:
-            raise ValueError("Cannot handle anything other than 2D for weights")
-        assert(node.op_type == "Conv")
-        nhwc_weights = np.transpose(weight_data, (0, 2, 3, 1))
-        ngroups = 1
-        M = weight_data.shape[0]
-        kernel_size = weight_data.shape[2] * weight_data.shape[3]
-        kernel_dim = weight_data.shape[1] * kernel_size
-        nhwc_weights_flattened = nhwc_weights.flatten()
-        for attr in node.attribute:
-            if attr.name == "group":
-                ngroups = attr.int
-
-        for group_id in range(ngroups):
-            idx_base = group_id * int(M/ngroups) * kernel_dim
-            weight_base = nhwc_weights_flattened[idx_base : idx_base + int(M/ngroups) * kernel_dim ]
-            transposed_flatten = weight_base.reshape((int(M/ngroups), kernel_dim)).transpose().flatten()
-            nhwc_weights_flattened[idx_base : idx_base + int(M/ngroups) * kernel_dim ] = transposed_flatten
-        return nhwc_weights_flattened.reshape(nhwc_weights.shape)
-
-
-    def _get_quantized_weight(self, initializer, qType, wanted_layout, node):
+    def _get_quantized_weight(self, initializer, qType):
         '''
             :param initializer: TensorProto initializer
             :param qType: type to quantize to
             :return: Weight class with quantization information
         '''
         weights_data = self.find_weight_data(initializer)
-        if wanted_layout == TensorLayout.NHWC:
-            weights_data = self._get_weights_in_transposed_nhwc_format(weights_data, node)
-            origin_initializer_dims = initializer.dims
-            initializer.dims[:] = [origin_initializer_dims[0], origin_initializer_dims[2], origin_initializer_dims[3], origin_initializer_dims[1]]
         rmin, rmax, zero_point, scale, quantized_weights_data = quantize_data(weights_data.flatten().tolist(),
             _get_qrange_for_qType(qType), qType)
-
         weight = QuantizedInitializer(initializer.name, initializer, [rmin], [rmax], [zero_point], [scale],
                         weights_data, quantized_weights_data, axis=None, qType=qType)
 
         # Log entry for this quantized weight
         assert(weight.name not in self.quantized_value_map)
-        quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType, tensor_layout=wanted_layout)
+        quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType)
         self.quantized_value_map[weight.name] = quantized_value
 
         return weight
 
-    def _get_quantized_weight_convolution(self, initializer, qType, wanted_layout, node):
+    def _get_quantized_weight_convolution(self, initializer, qType):
         '''
             :param initializer: initializer TypeProto to quantize
             :param qType: type to quantize to
             :return: Weight class object with quantization information for a given initializer
         '''
         if not self.per_channel:
-            return self._get_quantized_weight(initializer, qType, wanted_layout, node)
+            return self._get_quantized_weight(initializer, qType)
 
         weights = self.find_weight_data(initializer)
         # Quantize per output channel
@@ -461,16 +424,12 @@ class ONNXQuantizer:
             channel_weights = np.asarray(quantized_per_channel_data_list[i]).reshape(reshape_dims)
             quantized_weights = np.concatenate((quantized_weights, channel_weights), axis=0)
 
-        if wanted_layout == TensorLayout.NHWC:
-            quantized_weights = self._get_weights_in_transposed_nhwc_format(quantized_weights, node)
-            origin_initializer_dims = initializer.dims
-            initializer.dims[:] = [origin_initializer_dims[0], origin_initializer_dims[2], origin_initializer_dims[3], origin_initializer_dims[1]]
         weight = QuantizedInitializer(initializer.name, initializer, rmin_list, rmax_list, zero_point_list,
                         scale_list, weights, quantized_weights.flatten().tolist(), channel_index, qType)
         
         # Make entry for this quantized weight
         assert(weight.name not in self.quantized_value_map)
-        quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType, tensor_layout=wanted_layout)
+        quantized_value = QuantizedValue(weight.name, weight.name + "_quantized", weight.name + "_scale", weight.name + "_zero_point", QuantizedValueType.Initializer, None, qType)
         self.quantized_value_map[weight.name] = quantized_value
 
         return weight
@@ -724,7 +683,7 @@ class ONNXQuantizer:
         nodes.append(add_node)
         return add_node_output
 
-    def _update_unsupported_nodes_using_weight(self, weight, new_nodes_list, tensor_layout):        
+    def _update_unsupported_nodes_using_weight(self, weight, new_nodes_list):        
         '''Find all nodes using a weight that do not support quantization and
         add a DequantizeLinear node before those nodes. This includes all nodes except Conv, MatMul.
 
@@ -746,14 +705,6 @@ class ONNXQuantizer:
             node = onnx.helper.make_node("DequantizeLinear", inputs, [output_name],
                                          dequantize_linear_name)
             nodes_list.append(node)
-
-        # If we need to convert back to NCHW tensor_layout
-        if tensor_layout != TensorLayout.NCHW and len(unsupported_nodes) != 0:
-            raise ValueError("Cannot support using NHWC weight between quantized and unquantized node")
-            # input_name = output_name
-            # node_name = output_name + "__to_nchw"
-            # output_name = output_name + "_nchw"
-            # transpose_node = onnx.helper.make_node("Transpose", [input_name], [output_name], perm=[0, 3, 1, 2] , name=node_name)
 
         # Update unsupported nodes to take dequantized weight as input.
         for node in unsupported_nodes:
@@ -851,44 +802,8 @@ class ONNXQuantizer:
 
         return quantized_bias_name
 
-    def _get_tensor_layout(self, input_name):
-        '''
-        For an original node input, determines the tensor layout of the quantized version
-        '''
-        if input_name in self.quantized_value_map:
-            return self.quantized_value_map[input_name].tensor_layout
-        return TensorLayout.NCHW
 
-    def _convert_to_nhwc(self, quantized_input_name):
-        '''
-        Given a quantized input param, output a quantized param corresponding to a NHWC transpose'd version
-        '''
-        # If we've already computed this before then use cached
-        if quantized_input_name in self.nchw_to_nhwc_value:
-            return (self.nchw_to_nhwc_value[quantized_input_name], [])
-        new_out = quantized_input_name + "_nhwc"
-        node_name = quantized_input_name + "__to_nhwc"
-        #Convert NCHW to NHWC
-        transpose_node = onnx.helper.make_node("Transpose", [quantized_input_name], [new_out], perm=[0, 2, 3, 1] , name=node_name)
-        self.nchw_to_nhwc_value[quantized_input_name] = new_out
-
-        return (new_out, [transpose_node])
-        
-    def _convert_to_nchw(self, input_name):
-        '''
-        Given a quantized input param, output a quantized param corresponding to a NCHW transpose'd version
-        '''
-        if input_name in self.nhwc_to_nchw_value:
-            return self.nhwc_to_nchw_value[input_name]
-
-        new_out = input_name + "_nchw"
-        node_name = input_name + "__to_nchw"
-        #Convert NHWC to NCHW
-        transpose_node = onnx.helper.make_node("Transpose", [input_name], [new_out], perm=[0, 3, 1, 2] , name=node_name)
-        self.nhwc_to_nchw_value[input_name] = new_out
-        return (new_out, [transpose_node])
-
-    def _quantize_inputs(self, node, indices, new_nodes_list, wanted_layout=TensorLayout.NCHW):
+    def _quantize_inputs(self, node, indices, new_nodes_list):
         '''
         Given a node, this function quantizes the inputs as follows:
             - If input is a initializer, quantize the initializer data, replace old initializer
@@ -899,9 +814,6 @@ class ONNXQuantizer:
             parameter indices: input indices to quantize.
             parameter new_nodes_list: List of new nodes created before processing this node. This is used to
                                       check that two QuantizeLinear nodes are not being added for same input.
-            
-            parameter wanted_layout: What layout format to use if we're quantizing a weight
-
             return: (List of quantized input names,
                      List of zero point names used for input quantization,
                      List of scale names used for input quantization,
@@ -922,25 +834,13 @@ class ONNXQuantizer:
                 quantized_value = self.quantized_value_map[node_input]
                 qType = self.weight_qType if quantized_value.value_type == QuantizedValueType.Initializer else self.input_qType
                 if quantized_value.qType != qType: 
-                    #print(node_input)
-                    #print(quantized_value.qType)
-                    #print(qType)
+                    # print(node_input)
+                    # print(quantized_value.qType)
+                    # print(qType)
                     raise ValueError("{} is being used by multiple nodes which are being quantized to different types. "
                 "This is not suported.", node_input)
 
-                if wanted_layout == TensorLayout.NCHW and quantized_value.tensor_layout != TensorLayout.NCHW:
-                    if quantized_value.value_type == QuantizedValueType.Initializer:
-                        raise ValueError("Cannot convert NHWC initializer to NCHW initializer")
-                    (nchw_input, transpose) = self._convert_to_nchw(quantized_value.q_name)
-                    nodes.extend(transpose)
-                    quantized_input_names.append(nchw_input)
-                elif wanted_layout == TensorLayout.NHWC and quantized_value.tensor_layout != TensorLayout.NHWC:
-                    (nhwc_input, transpose) = self._convert_to_nhwc(quantized_value.q_name)
-                    nodes.extend(transpose)
-                    quantized_input_names.append(nhwc_input)   
-                else:
-                    quantized_input_names.append(quantized_value.q_name)
-
+                quantized_input_names.append(quantized_value.q_name)
                 scale_names.append(quantized_value.scale_name)
                 zero_point_names.append(quantized_value.zp_name)
                 continue
@@ -949,12 +849,12 @@ class ONNXQuantizer:
             initializer = _find_by_name(node_input, self.model.graph.initializer)
             if initializer is not None:
                 if node.op_type == "Conv":
-                    weight = self._get_quantized_weight_convolution(initializer, self.weight_qType, wanted_layout, node)
+                    weight = self._get_quantized_weight_convolution(initializer, self.weight_qType)
                 else:
-                    weight = self._get_quantized_weight(initializer, self.weight_qType, wanted_layout, node)
+                    weight = self._get_quantized_weight(initializer, self.weight_qType)
 
                 # Update graph
-                nodes.extend(self._update_unsupported_nodes_using_weight(weight, new_nodes_list, wanted_layout))
+                nodes.extend(self._update_unsupported_nodes_using_weight(weight, new_nodes_list))
                 self._update_graph(weight)
 
                 quantized_input_names.append(weight.name + "_quantized")
@@ -968,28 +868,14 @@ class ONNXQuantizer:
                     nodes.extend(quantize_input_nodes)
                     qlinear_node = quantize_input_nodes[-1]
 
-                quantized_input_name = None
-                scale_name = None
-                zero_point_name = None
                 if qlinear_node.op_type == "QuantizeLinear":
-                    assert(len(qlinear_node.output) == 1)
-                    quantized_input_name = qlinear_node.output[0]
-                    scale_name = qlinear_node.input[1]
-                    zero_point_name = qlinear_node.input[2]
+                    quantized_input_names.extend(qlinear_node.output)
+                    scale_names.append(qlinear_node.input[1])
+                    zero_point_names.append(qlinear_node.input[2])
                 else: # DynamicQuantizeLinear
-                    quantized_input_name = qlinear_node.output[0]
-                    scale_name = qlinear_node.output[1]
-                    zero_point_name = qlinear_node.output[2]
-
-                # Note that whenever we create a quantizeLinear node it's output will always be in NCHW format
-                if wanted_layout == TensorLayout.NHWC:
-                    (nhwc_input, transpose) = self._convert_to_nhwc(quantized_input_name)
-                    nodes.extend(transpose)
-                    quantized_input_name = nhwc_input
-
-                quantized_input_names.append(quantized_input_name)
-                scale_names.append(scale_name)
-                zero_point_names.append(zero_point_name)
+                    quantized_input_names.append(qlinear_node.output[0])
+                    scale_names.append(qlinear_node.output[1])
+                    zero_point_names.append(qlinear_node.output[2])
 
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
@@ -1010,21 +896,13 @@ class ONNXQuantizer:
                 node_input_altered = True
                 input_name = node.input[index]
                 quantized_value = self.quantized_value_map[input_name]
-                quantized_input_name = quantized_value.q_name
-
-                if quantized_value.tensor_layout != TensorLayout.NCHW:
-                    (nchw_input, transpose) = self._convert_to_nchw(quantized_input_name)
-                    quantized_input_name = nchw_input
-                    nodes.extend(transpose)
-
                 # Add DequantizeLinear Node for this input
                 dqlinear_name = input_name + "_DequantizeLinear"
                 dqlinear_node = _find_node_by_name(dqlinear_name, self.model.graph, new_nodes_list)
                 if dqlinear_node is None:
-                    dqlinear_inputs = [quantized_input_name, quantized_value.scale_name, quantized_value.zp_name]
+                    dqlinear_inputs = [quantized_value.q_name, quantized_value.scale_name, quantized_value.zp_name]
                     dequantize_node = onnx.helper.make_node("DequantizeLinear", dqlinear_inputs, [input_name], dqlinear_name)
                     nodes.append(dequantize_node)
-
                 else:
                     # DQ op is already present, assert it's output matches the input of current node
                     assert(input_name == dqlinear_node.output[0])
@@ -1060,7 +938,7 @@ class ONNXQuantizer:
             q_input = self.quantized_value_map[node.input[0]]
             new_out = node.output[0] + "_quantized"
             qlinear_relu = onnx.helper.make_node("QLinearRelu", [q_input.q_name], [new_out], node.name)
-            q_output = QuantizedValue(node.output[0], new_out, q_input.scale_name, q_input.zp_name, q_input.value_type, qType=q_input.qType, tensor_layout=q_input.tensor_layout)
+            q_output = QuantizedValue(node.output[0], new_out, q_input.scale_name, q_input.zp_name, q_input.value_type, qType=q_input.qType)
             self.quantized_value_map[node.output[0]] = q_output
             return [qlinear_relu]
         else:
@@ -1072,7 +950,6 @@ class ONNXQuantizer:
             self._quantize_inputs(node, [0], new_nodes_list)
         
         gather_new_output = node.output[0] + "_quantized"
-        quantized_input_name = quantized_input_names[0]
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(node.output[0], gather_new_output, scale_names[0], zero_point_names[0], QuantizedValueType.Input, qType=self.weight_qType)        
@@ -1080,7 +957,7 @@ class ONNXQuantizer:
 
         gather_original_output = node.output[0]
         node.output[0] = gather_new_output
-        node.input[0] = quantized_input_name
+        node.input[0] = quantized_input_names[0]
         nodes.append(node)
 
         return nodes
@@ -1207,12 +1084,7 @@ class ONNXQuantizer:
         assert (node.op_type == "Conv")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self._quantize_inputs(node, [0, 1], new_nodes_list, TensorLayout.NHWC if self.force_nhwc_conv else TensorLayout.NCHW)
-
-        # Ensure that the weight input to qlinearconv comes from an initializer
-        assert(not self.force_nhwc_conv or \
-            (self._get_tensor_layout(node.input[1]) == TensorLayout.NHWC and \
-             self.quantized_value_map[node.input[1]].value_type == QuantizedValueType.Initializer))
+            self._quantize_inputs(node, [0, 1], new_nodes_list)
         
         quantized_bias_name = ""
         bias_present = False
@@ -1248,12 +1120,12 @@ class ONNXQuantizer:
         if bias_present:
             qlinear_conv_inputs.append(quantized_bias_name)
 
-        qlinear_conv_node = onnx.helper.make_node("QLinearConv_nhwc" if self.force_nhwc_conv else "QLinearConv", qlinear_conv_inputs,
+        qlinear_conv_node = onnx.helper.make_node("QLinearConv", qlinear_conv_inputs,
             [qlinear_conv_output], qlinear_conv_name, **kwargs)
         nodes.append(qlinear_conv_node)
 
         # Create an entry for this quantized value
-        q_output = QuantizedValue(node.output[0], qlinear_conv_output, output_scale_name, output_zp_name, QuantizedValueType.Input, qType=self.weight_qType, tensor_layout=TensorLayout.NHWC if self.force_nhwc_conv else TensorLayout.NCHW)        
+        q_output = QuantizedValue(node.output[0], qlinear_conv_output, output_scale_name, output_zp_name, QuantizedValueType.Input, qType=self.weight_qType)        
         self.quantized_value_map[node.output[0]] = q_output
         
         return nodes
@@ -1369,7 +1241,7 @@ def check_opset_version(org_model, force_fusions):
 
 def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMode.IntegerOps,
     static=False, force_fusions=False, asymmetric_input_types=False, 
-    quantization_params=None, nodes_to_quantize=None, force_nhwc_conv=False):
+    quantization_params=None, nodes_to_quantize=None):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
 
@@ -1424,7 +1296,7 @@ def quantize(model, per_channel=False, nbits=8, quantization_mode=QuantizationMo
         copy_model.CopyFrom(model)
         fuse_dynamic_quant = check_opset_version(copy_model, force_fusions)
         quantizer = ONNXQuantizer(copy_model, per_channel, mode, static, fuse_dynamic_quant, weight_qType, input_qType,
-                        quantization_params, nodes_to_quantize, force_nhwc_conv)
+                        quantization_params, nodes_to_quantize)
         quantizer.quantize_model()
         quantizer.model.producer_name = __producer__
         quantizer.model.producer_version = __version__
