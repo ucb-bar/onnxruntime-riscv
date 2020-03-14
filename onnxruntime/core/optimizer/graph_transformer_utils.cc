@@ -17,6 +17,7 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/shape_to_initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
+#include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/gelu_fusion.h"
@@ -145,6 +146,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
+#endif
+#ifdef USE_SYSTOLIC
+      transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
 #endif
     } break;
 

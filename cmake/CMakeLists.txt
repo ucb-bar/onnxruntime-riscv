@@ -591,6 +591,7 @@ else()
   check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
+  check_cxx_compiler_flag(-Werror=unused-local-typedefs HAS_UNUSED_LOCAL_TYPEDEF)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -605,6 +606,9 @@ else()
   if(HAS_DEPRECATED_COPY)
     #too many such errors in eigen and gemmlowp
     string(APPEND CMAKE_CXX_FLAGS " -Wno-deprecated-copy")
+  endif()
+  if(HAS_UNUSED_LOCAL_TYPEDEF)
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-unused-local-typedefs")
   endif()
   if(HAS_PARENTHESES)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-parentheses")

@@ -249,8 +249,8 @@ void RegisterSystolicSchemas() {
           "Constrain input and output types to int8/unint8 tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-  ONNX_SYSTOLIC_OPERATOR_SCHEMA(QLinearConv_nhwc)
-      .SinceVersion(10)
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(Fused_QLinearConv_Relu_nhwc)
+      .SinceVersion(1)
       .SetDoc("")
       .Input(0, "x", "", "T1")
       .Input(1, "x_scale", "", "tensor(float)")
