@@ -17,6 +17,8 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
 
     options.add_options("Optional")
         ("t,trace", "Profiling trace output file", cxxopts::value<std::string>(), "[output path]")
+        ("O,optimization", "Optimization level. NHWC transformation is applied at level 1.",
+                            cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")
         ("d,debug", "Debug level", cxxopts::value<int>()->default_value("3"), "[0-5, with 0 being most verbose]");
 
     options.add_options("Info")
