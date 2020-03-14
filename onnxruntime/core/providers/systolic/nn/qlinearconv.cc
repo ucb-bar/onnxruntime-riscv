@@ -122,8 +122,8 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
     bias = context->Input<Tensor>(8);
   }
 
-  fprintf(stderr, "X dims %ld %ld %ld %ld\n", X->Shape()[0], X->Shape()[1], X->Shape()[2], X->Shape()[3]);
-  fprintf(stderr, "W dims %ld %ld %ld %ld\n", W->Shape()[0], W->Shape()[1], W->Shape()[2], W->Shape()[3]);
+  // fprintf(stderr, "X dims %ld %ld %ld %ld\n", X->Shape()[0], X->Shape()[1], X->Shape()[2], X->Shape()[3]);
+  // fprintf(stderr, "W dims %ld %ld %ld %ld\n", W->Shape()[0], W->Shape()[1], W->Shape()[2], W->Shape()[3]);
 
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[3];
@@ -156,9 +156,9 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(1, 3);
 
-  fprintf(stderr, "INPUT SHAPE %s\n", input_shape.ToString().c_str());
-  fprintf(stderr, "KERNEL SHAPE %s\n", W->Shape().ToString().c_str());
-  fprintf(stderr, "OUTPUT SHAPE %s\n", Y->Shape().ToString().c_str());
+  // fprintf(stderr, "INPUT SHAPE %s\n", input_shape.ToString().c_str());
+  // fprintf(stderr, "KERNEL SHAPE %s\n", W->Shape().ToString().c_str());
+  // fprintf(stderr, "OUTPUT SHAPE %s\n", Y->Shape().ToString().c_str());
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));

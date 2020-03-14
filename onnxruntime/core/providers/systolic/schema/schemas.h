@@ -233,8 +233,6 @@ void nhwcConvPoolShapeInference(
   output_shape->mutable_dim(1)->set_dim_value(output_shape_H);
   output_shape->mutable_dim(2)->set_dim_value(output_shape_W);
   output_shape->mutable_dim(3)->set_dim_value(output_shape_C);
-
-  std::cerr << "Output of shape inference" << output_shape_N << " " << output_shape_H << " " << output_shape_W << " " << output_shape_C << "\n";
 }
 
 void RegisterSystolicSchemas() {
@@ -251,11 +249,11 @@ void RegisterSystolicSchemas() {
 
   ONNX_SYSTOLIC_OPERATOR_SCHEMA(QLinearConv_nhwc)
       .SinceVersion(10)
-      .SetDoc("")
+      .SetDoc("Internal node for NHWC layout optimization. Used with Systolic.")
       .Input(0, "x", "", "T1")
       .Input(1, "x_scale", "", "tensor(float)")
       .Input(2, "x_zero_point", "", "T1")
-      .Input(3, "w", "", "T2")
+      .Input(3, "w", "Must be in funky group-wise pre-transposed format", "T2")
       .Input(4, "w_scale", "", "tensor(float)")
       .Input(5, "w_zero_point", "", "T2")
       .Input(6, "y_scale", "", "tensor(float)")
@@ -301,12 +299,6 @@ void RegisterSystolicSchemas() {
         propagateElemTypeFromInputToOutput(ctx, 7, 0);
 
         auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-        int N = input_shape.dim(0).dim_value();
-        int H = input_shape.dim(1).dim_value();
-        int W = input_shape.dim(2).dim_value();
-        int C = input_shape.dim(3).dim_value();
-        std::cerr << "Performing shape inference" << N << " " << H << " " << W << " " << C << "\n";
-
         nhwcConvPoolShapeInference(ctx, true, false, 0, 3);
       });
 }
