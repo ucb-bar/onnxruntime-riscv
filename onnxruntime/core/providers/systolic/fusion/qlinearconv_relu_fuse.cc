@@ -6,6 +6,8 @@ namespace systolic {
 /**
  * Memo: if you ever get a sudden termination after the fusion phase, ensure that your meta_def name is registered
  * For some reason onnxruntime will silently fail if it can't lookup kernel for a fused operator
+ * 
+ * Also note that for fusion to occur no execution provider must be assignd to the node beforehand
  */
 std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearConvReluMeta(const Node* qlinearconv, const Node* relu, bool nhwc = false) {
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
