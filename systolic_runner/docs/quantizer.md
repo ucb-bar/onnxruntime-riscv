@@ -30,6 +30,12 @@ We keep track of and propagate the quantization status of every edge in the grap
 
 Whenever we update a node to be quantized, we also quantize its weights and update the initializer in the ONNX proto. Similarly, the input scale/zero point information is also added to the initializer proto.
 
+## QLinearRelu outputs
+
+Because ONNX lacks a Relu capable of handled quantized types, we insert our own custom QLinearRelu node. We avoid the need to maintain quantization scale into and out of QLinearRelu by ensuring that when we calculate quantization parameters for a node followed by a Relu, we clip `rmin` before calculating the scale for that node. Since the range is already reduced to ensure optimal fit, a subsequent Relu node can simply perform a standard element-wise operation without having to rescale values.
+
+Note that while the QLinearRelu insertion *could* be done in an onnxruntime pass similar to NHWC insertion, we would lack information on the scale of the output from the Relu if there was no QuantizeLinear node immediately following the Relu. As such, we would have rely on the scale of the input to the DequantizeLinear before the Relu as an estimate, which might not necessarily be correct if the scale values were not calculated accounting for this as described in the previous paragraph. (Especially if the distribution of the inputs is heavily skewed negative). Thus, to ensure accuracy it's better to perform this in the quantizer script where we have access to the outputs of each layer.
+
 ## Example
 
 Consider the following snippet from the grpah of Googlenet:
