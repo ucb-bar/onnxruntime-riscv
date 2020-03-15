@@ -5,15 +5,14 @@
 To quantize a floating point model to an int8 model suitable for Systolic, run
 
 ```
-python3 calibrate.py --model_path $MODEL/model.onnx --dataset_path $MODEL/test_data_set_0/input_0.pb --output_model_path $MODEL/model_quantized.onnx --data_preprocess=None --static=True --nhwc=False
+python3 calibrate.py --model_path $MODEL/model.onnx --dataset_path $MODEL/test_data_set_0/ --output_model_path $MODEL/model_quantized.onnx --data_preprocess=None --static=True
 ```
 
 Note that you must have the `onnxruntime` python package installed (this can be installed from pypi).
 
 This will first run the floating point model on onnxruntime to determine suitable quantization parameters, then update
 the ONNX graph to use quantized equivalents. The `--static` parameters forces all quantized input scales to be fixed ahead of time,
-rather than dynamically computing them during inference (see below for details on static vs. dynamic). The `--nhwc` flag toggles whether 
-QLinearConv should be performed in NCHW (default onnx) or NHWC (custom for systolic) layout. Because the NHWC layout is supported only by convolution, appropriate layout conversions (axis transpose) may be inserted as needed.
+rather than dynamically computing them during inference (see below for details on static vs. dynamic).
 
 For more detail on Systolic specific transformations see [quantizer.md](/systolic_runner/docs/quantizer.md).
 
