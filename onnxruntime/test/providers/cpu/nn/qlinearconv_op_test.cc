@@ -3,43 +3,103 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-using namespace std;
+
 namespace onnxruntime {
 namespace test {
 
 namespace {
 
-void FindMinMax(const vector<float>& vec, float* min,
-                float* max) {
-  *min = *max = 0;
-  *min = *std::min_element(vec.begin(), vec.end());
-  *max = *std::max_element(vec.begin(), vec.end());
-}
+struct QuantizedTensor {
+  QuantizedTensor(const std::vector<float>& data) {
+    // find input range min and max
+    auto min = *std::min_element(data.begin(), data.end());
+    auto max = *std::max_element(data.begin(), data.end());
 
-// uses quantization range 0-255
-void FindScaleAndZeroPoint(float min, float max, float* scale, uint8_t* zero_point) {
-  min = std::min(min, 0.f);
-  max = std::max(max, 0.f);
-  float qmin = 0;
-  float qmax = 255;
+    // ensure the data range includes zero
+    min = std::min(min, 0.f);
+    max = std::max(max, 0.f);
 
-  *scale = (max - min) / (qmax - qmin);
-  const auto initial_zero_point = qmin - min / *scale;
-  *zero_point = static_cast<uint8_t>(std::round(std::max(0.f, std::min(255.f, initial_zero_point))));
-}
+    float qmin = std::numeric_limits<uint8_t>::min();
+    float qmax = std::numeric_limits<uint8_t>::max();
 
-void Quantize(float scale, uint8_t zero_point,
-              const std::vector<float>& input, std::vector<uint8_t>* input_quantized) {
-  for (size_t i = 0; i < input.size(); i++) {
-    const float clamped_val = std::max(0.f, std::min(255.f, std::round(static_cast<float>(input[i]) / scale) + zero_point));
-    (*input_quantized)[i] = static_cast<uint8_t>(clamped_val);
+    // compute scale and zero point
+    scale_ = (max - min) / (qmax - qmin);
+    const auto initial_zero_point = qmin - min / scale_;
+    zero_point_ = static_cast<uint8_t>(std::round(std::max(qmin, std::min(qmax, initial_zero_point))));
+
+    // quantize the data
+    quantized_.resize(data.size());
+    for (size_t i = 0; i < data.size(); i++) {
+      const float clamped_val = std::max(qmin, std::min(qmax, std::round(data[i] / scale_) + zero_point_));
+      quantized_[i] = static_cast<uint8_t>(clamped_val);
+    }
   }
+
+  QuantizedTensor(const std::vector<uint8_t>& data, float scale, uint8_t zero_point)
+      : quantized_(data), scale_(scale), zero_point_(zero_point) {
+  }
+
+  std::vector<uint8_t> quantized_;
+  float scale_;
+  uint8_t zero_point_;
+};
+
+struct QuantizedBiasTensor {
+  QuantizedBiasTensor(const std::vector<float>& data,
+                      const QuantizedTensor& X,
+                      const QuantizedTensor& W) {
+    scale_ = X.scale_ * W.scale_;
+
+    // quantize the data
+    quantized_.resize(data.size());
+    for (size_t i = 0; i < data.size(); i++) {
+      quantized_[i] = static_cast<int32_t>(std::floor(data[i] / (X.scale_ * W.scale_)));
+    }
+  }
+
+  QuantizedBiasTensor(const std::vector<int32_t>& data, float scale)
+      : quantized_(data), scale_(scale) {
+  }
+
+  std::vector<int32_t> quantized_;
+  float scale_;
+};
+
+void TestQLinearConvOp(OpTester& test,
+                       const QuantizedTensor& X,
+                       const std::vector<int64_t>& X_shape,
+                       const QuantizedTensor& W,
+                       const std::vector<int64_t>& W_shape,
+                       const QuantizedBiasTensor* B,
+                       const QuantizedTensor& Y,
+                       const std::vector<int64_t>& Y_shape,
+                       const std::unordered_set<std::string>& excluded_provider_types = {}) {
+
+  test.AddInput<uint8_t>("x", X_shape, X.quantized_);
+  test.AddInput<float>("x_scale", {}, {X.scale_});
+  test.AddInput<uint8_t>("x_zero_point", {}, {X.zero_point_});
+
+  test.AddInput<uint8_t>("w", W_shape, W.quantized_);
+  test.AddInput<float>("w_scale", {}, {W.scale_});
+  test.AddInput<uint8_t>("w_zero_point", {}, {W.zero_point_});
+
+  test.AddInput<float>("y_scale", {}, {Y.scale_});
+  test.AddInput<uint8_t>("y_zero_point", {}, {Y.zero_point_});
+
+  if (B != nullptr) {
+    const std::vector<int64_t> B_shape{static_cast<int64_t>(B->quantized_.size())};
+    test.AddInput<int32_t>("b", B_shape, B->quantized_);
+  }
+
+  test.AddOutput<uint8_t>("y", Y_shape, Y.quantized_);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
 TEST(ConvTest, QLinearConvSignedSimple2DTest) {
   OpTester test("QLinearConv", 10);
 
-  vector<int8_t> X = {2, 7, 9, 6, 4, 7, 3, 9, 10, 2, 9, 6, 3, 2, 4, 3, 7, 6, 5, 10, 4, 7, \
+  std::vector<int8_t> X = {2, 7, 9, 6, 4, 7, 3, 9, 10, 2, 9, 6, 3, 2, 4, 3, 7, 6, 5, 10, 4, 7, \
                       7, 7, 1, 8, 10, 6, 1, 7, 7, 4, 10, 0, 3, 5, 2, 7, 1, 10, 4, 2, 9, 5, \
                       5, 5, 8, 5, 3, 0, 6, 5, 8, 1, 1, 1, 9, 10, 4, 9, 0, 6, 10, 9, 6, 5, \
                       2, 1, 0, 1, 5, 3, 6, 8, 10, 1, 4, 6, 1, 9, 5, 3, 10, 9, 1, 3, 7, 1, \
@@ -56,9 +116,9 @@ TEST(ConvTest, QLinearConvSignedSimple2DTest) {
                       6, 10, 5, 7, 10, 3, 5, 9, 4, 0, 8, 6, 0, 10, 1, 10, 0, 8, 4, 4, 10, \
                       8, 10, 6, 0, 9, 2, 8, 8, 9, 7, 3, 4, 9, 0, 1, 0, 0, 7, 1, 1, 8, 2, 8, \
                       9, 9, 1, 5, 4, 7, 6};
-  vector<int64_t> X_shape = {1, 1, 19, 19};
+  std::vector<int64_t> X_shape = {1, 1, 19, 19};
 
-  vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
+  std::vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
@@ -70,9 +130,9 @@ TEST(ConvTest, QLinearConvSignedSimple2DTest) {
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1};
-  vector<int64_t> W_shape = {16, 1, 4, 4};
+  std::vector<int64_t> W_shape = {16, 1, 4, 4};
 
-  vector<int8_t> expected_vals = {23, 24, 23, 22, 26, 27, 24, 22, 18, 14, 17, 16, 16, 18, 17, 19, 22, \
+  std::vector<int8_t> expected_vals = {23, 24, 23, 22, 26, 27, 24, 22, 18, 14, 17, 16, 16, 18, 17, 19, 22, \
                                   22, 21, 24, 27, 25, 23, 20, 14, 14, 19, 18, 20, 18, 16, 19, 22, 24, \
                                   24, 26, 28, 25, 23, 18, 14, 16, 18, 20, 23, 21, 21, 21, 21, 21, 22, \
                                   25, 27, 25, 24, 19, 14, 16, 18, 19, 24, 26, 27, 26, 20, 22, 22, 24, \
@@ -313,7 +373,7 @@ TEST(ConvTest, QLinearConvSignedSimple2DTest) {
                                   18, 15, 27, 26, 24, 26, 25, 24, 26, 23, 21, 25, 26, 26, 22, 17, 16, \
                                   13, 25, 24, 22, 22, 24, 25, 28, 26, 20, 22, 22, 24, 24, 21, 20, 15, \
                                   22, 19, 16, 17, 20, 20, 24, 23, 21, 24, 24, 25, 25, 22, 20, 17};
-  vector<int64_t> Y_shape = {1, 16, 16, 16};
+  std::vector<int64_t> Y_shape = {1, 16, 16, 16};
 
   test.AddInput<int8_t>("x", X_shape, X);
   test.AddInput<float>("x_scale", {}, {1});
@@ -334,7 +394,7 @@ TEST(ConvTest, QLinearConvSignedSimple2DTest) {
 TEST(ConvTest, QLinearConvSignedWithBiasSimple2DTest) {
   OpTester test("QLinearConv", 10);
 
-  vector<int8_t> X = {2, 7, 9, 6, 4, 7, 3, 9, 10, 2, 9, 6, 3, 2, 4, 3, 7, 6, 5, 10, 4, 7, \
+  std::vector<int8_t> X = {2, 7, 9, 6, 4, 7, 3, 9, 10, 2, 9, 6, 3, 2, 4, 3, 7, 6, 5, 10, 4, 7, \
                       7, 7, 1, 8, 10, 6, 1, 7, 7, 4, 10, 0, 3, 5, 2, 7, 1, 10, 4, 2, 9, 5, \
                       5, 5, 8, 5, 3, 0, 6, 5, 8, 1, 1, 1, 9, 10, 4, 9, 0, 6, 10, 9, 6, 5, \
                       2, 1, 0, 1, 5, 3, 6, 8, 10, 1, 4, 6, 1, 9, 5, 3, 10, 9, 1, 3, 7, 1, \
@@ -351,9 +411,9 @@ TEST(ConvTest, QLinearConvSignedWithBiasSimple2DTest) {
                       6, 10, 5, 7, 10, 3, 5, 9, 4, 0, 8, 6, 0, 10, 1, 10, 0, 8, 4, 4, 10, \
                       8, 10, 6, 0, 9, 2, 8, 8, 9, 7, 3, 4, 9, 0, 1, 0, 0, 7, 1, 1, 8, 2, 8, \
                       9, 9, 1, 5, 4, 7, 6};
-  vector<int64_t> X_shape = {1, 1, 19, 19};
+  std::vector<int64_t> X_shape = {1, 1, 19, 19};
 
-  vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
+  std::vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
@@ -365,9 +425,9 @@ TEST(ConvTest, QLinearConvSignedWithBiasSimple2DTest) {
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, \
                         1, 1, 1};
-  vector<int64_t> W_shape = {16, 1, 4, 4};
+  std::vector<int64_t> W_shape = {16, 1, 4, 4};
 
-  vector<int8_t> expected_vals = {24, 25, 24, 23, 27, 28, 24, 23, 19, 15, 18, 17, 17, 19, 18, 20, 23, \
+  std::vector<int8_t> expected_vals = {24, 25, 24, 23, 27, 28, 24, 23, 19, 15, 18, 17, 17, 19, 18, 20, 23, \
                                   24, 22, 25, 28, 26, 24, 21, 15, 16, 20, 19, 20, 19, 17, 20, 23, 25, \
                                   25, 27, 29, 26, 24, 20, 14, 17, 18, 21, 24, 22, 22, 22, 22, 22, 23, \
                                   26, 28, 26, 24, 20, 15, 18, 18, 20, 26, 27, 28, 27, 21, 22, 23, 25, \
@@ -608,7 +668,7 @@ TEST(ConvTest, QLinearConvSignedWithBiasSimple2DTest) {
                                   34, 31, 43, 42, 40, 42, 41, 40, 42, 39, 37, 41, 42, 42, 38, 33, 32, \
                                   29, 41, 40, 38, 38, 40, 41, 44, 42, 36, 38, 38, 40, 40, 37, 36, 31, \
                                   38, 35, 32, 33, 36, 36, 40, 39, 37, 40, 40, 41, 41, 38, 36, 33};
-  vector<int64_t> Y_shape = {1, 16, 16, 16};
+  std::vector<int64_t> Y_shape = {1, 16, 16, 16};
 
   test.AddInput<int8_t>("x", X_shape, X);
   test.AddInput<float>("x_scale", {}, {1});
@@ -632,14 +692,14 @@ TEST(ConvTest, QLinearConvSignedWithBiasSimple2DTest) {
 TEST(ConvTest, QLinearConvSimple2DTest) {
   OpTester test("QLinearConv", 10);
 
-  vector<uint8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
-  vector<int64_t> X_shape = {1, 1, 5, 5};
+  std::vector<uint8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
+  std::vector<int64_t> X_shape = {1, 1, 5, 5};
 
-  vector<uint8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  vector<int64_t> W_shape = {1, 1, 4, 4};
+  std::vector<uint8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  std::vector<int64_t> W_shape = {1, 1, 4, 4};
 
-  vector<uint8_t> expected_vals = {10, 9, 9, 10};
-  vector<int64_t> Y_shape = {1, 1, 2, 2};
+  std::vector<uint8_t> expected_vals = {10, 9, 9, 10};
+  std::vector<int64_t> Y_shape = {1, 1, 2, 2};
 
   test.AddInput<uint8_t>("x", X_shape, X);
   test.AddInput<float>("x_scale", {}, {1});
@@ -663,14 +723,14 @@ TEST(ConvTest, QLinearConvSimple2DTest) {
 TEST(ConvTest, QLinearConvSignedTiny2DTest) {
   OpTester test("QLinearConv", 10);
 
-  vector<int8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
-  vector<int64_t> X_shape = {1, 1, 5, 5};
+  std::vector<int8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
+  std::vector<int64_t> X_shape = {1, 1, 5, 5};
 
-  vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  vector<int64_t> W_shape = {1, 1, 4, 4};
+  std::vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  std::vector<int64_t> W_shape = {1, 1, 4, 4};
 
-  vector<int8_t> expected_vals = {10, 9, 9, 10};
-  vector<int64_t> Y_shape = {1, 1, 2, 2};
+  std::vector<int8_t> expected_vals = {10, 9, 9, 10};
+  std::vector<int64_t> Y_shape = {1, 1, 2, 2};
 
   test.AddInput<int8_t>("x", X_shape, X);
   test.AddInput<float>("x_scale", {}, {1});
@@ -693,14 +753,14 @@ TEST(ConvTest, QLinearConvSignedTiny2DTest) {
 TEST(ConvTest, QLinearConvNHWCSignedTiny2DTest) {
   OpTester test("QLinearConv_nhwc", 10);
 
-  vector<int8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
-  vector<int64_t> X_shape = {1, 5, 5, 1};
+  std::vector<int8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
+  std::vector<int64_t> X_shape = {1, 5, 5, 1};
 
-  vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  vector<int64_t> W_shape = {1, 4, 4, 1};
+  std::vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+  std::vector<int64_t> W_shape = {1, 4, 4, 1};
 
-  vector<int8_t> expected_vals = {10, 9, 9, 10};
-  vector<int64_t> Y_shape = {1, 2, 2, 1};
+  std::vector<int8_t> expected_vals = {10, 9, 9, 10};
+  std::vector<int64_t> Y_shape = {1, 2, 2, 1};
 
   test.AddInput<int8_t>("x", X_shape, X);
   test.AddInput<float>("x_scale", {}, {1});
@@ -720,10 +780,8 @@ TEST(ConvTest, QLinearConvNHWCSignedTiny2DTest) {
   test.Run();
 }
 
-TEST(ConvTest, QLinearConv2DTest) {
-  OpTester test("QLinearConv", 10);
-
-  vector<float> X = {0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
+TEST(QLinearConvTest, Conv2DTest) {
+  QuantizedTensor X({0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
                      0.2626858949661255f, 0.13414543867111206f, -0.27184486389160156f, -0.43028733134269714f,
                      -0.26825493574142456f, 0.3893144130706787f, -0.13631996512413025f, -0.009590476751327515f,
                      -0.48771554231643677f, -0.25256502628326416f, -0.2812897562980652f, 0.4043201804161072f,
@@ -735,64 +793,33 @@ TEST(ConvTest, QLinearConv2DTest) {
                      0.3618946671485901f, -0.40949052572250366f, -0.18248388171195984f, -0.3349453806877136f,
                      -0.34091079235076904f, 0.006497859954833984f, 0.4537564516067505f, 0.08006560802459717f,
                      -0.14788749814033508f, 0.034442365169525146f, -0.33322954177856445f, 0.06049239635467529f,
-                     0.42619407176971436f};
-  vector<int64_t> X_shape = {1, 1, 7, 7};
+                     0.42619407176971436f});
+  QuantizedTensor W({-0.4406261742115021f});
+  QuantizedTensor Y({-0.19936637580394745f, -0.06828942894935608f, -0.04934731498360634f, 0.17369966208934784f,
+                     -0.11574628204107285f, -0.05910799279808998f, 0.1197819635272026f, 0.18959586322307587f,
+                     0.1182001456618309f, -0.17154212296009064f, 0.06006614491343498f, 0.0042258151806890965f,
+                     0.21490024030208588f, 0.11128675937652588f, 0.12394362688064575f, -0.17815405130386353f,
+                     -0.034346915781497955f, -0.14407673478126526f, -0.05778544768691063f, 0.19459928572177887f,
+                     -0.05484473705291748f, -0.16188594698905945f, -0.07485868036746979f, -0.08851054310798645f,
+                     -0.10284193605184555f, -0.17014220356941223f, -0.04898572340607643f, -0.17083507776260376f,
+                     -0.09170642495155334f, 0.1511256992816925f, 0.012886842712759972f, 0.09025576710700989f,
+                     0.08479554951190948f, 0.0489313043653965f, 0.14465972781181335f, 0.007934254594147205f,
+                     -0.15946026146411896f, 0.1804322451353073f, 0.08040717244148254f, 0.1475857049226761f,
+                     0.15021422505378723f, -0.0028631272725760937f, -0.19993697106838226f, -0.03527900204062462f,
+                     0.06516310572624207f, -0.015176207758486271f, 0.14682966470718384f, -0.02665453404188156f,
+                     -0.18779225647449493f});
 
-  vector<float> W = {-0.4406261742115021f};
-  vector<int64_t> W_shape = {1, 1, 1, 1};
-
-  auto expected_vals = {-0.19936637580394745f, -0.06828942894935608f, -0.04934731498360634f, 0.17369966208934784f,
-                        -0.11574628204107285f, -0.05910799279808998f, 0.1197819635272026f, 0.18959586322307587f,
-                        0.1182001456618309f, -0.17154212296009064f, 0.06006614491343498f, 0.0042258151806890965f,
-                        0.21490024030208588f, 0.11128675937652588f, 0.12394362688064575f, -0.17815405130386353f,
-                        -0.034346915781497955f, -0.14407673478126526f, -0.05778544768691063f, 0.19459928572177887f,
-                        -0.05484473705291748f, -0.16188594698905945f, -0.07485868036746979f, -0.08851054310798645f,
-                        -0.10284193605184555f, -0.17014220356941223f, -0.04898572340607643f, -0.17083507776260376f,
-                        -0.09170642495155334f, 0.1511256992816925f, 0.012886842712759972f, 0.09025576710700989f,
-                        0.08479554951190948f, 0.0489313043653965f, 0.14465972781181335f, 0.007934254594147205f,
-                        -0.15946026146411896f, 0.1804322451353073f, 0.08040717244148254f, 0.1475857049226761f,
-                        0.15021422505378723f, -0.0028631272725760937f, -0.19993697106838226f, -0.03527900204062462f,
-                        0.06516310572624207f, -0.015176207758486271f, 0.14682966470718384f, -0.02665453404188156f,
-                        -0.18779225647449493f};
-  vector<int64_t> Y_shape = {1, 1, 7, 7};
-
-  // Calculate quantization params and quantize the inputs and expected output
-  float lhs_min, lhs_max, rhs_min, rhs_max, result_min, result_max;
-  FindMinMax(X, &lhs_min, &lhs_max);
-  FindMinMax(W, &rhs_min, &rhs_max);
-  FindMinMax(expected_vals, &result_min, &result_max);
-
-  float lhs_scale, rhs_scale, result_scale;
-  uint8_t lhs_zero_point, rhs_zero_point, result_zero_point;
-  FindScaleAndZeroPoint(lhs_min, lhs_max, &lhs_scale, &lhs_zero_point);
-  FindScaleAndZeroPoint(rhs_min, rhs_max, &rhs_scale, &rhs_zero_point);
-  FindScaleAndZeroPoint(result_min, result_max, &result_scale, &result_zero_point);
-
-  vector<uint8_t> x_quantized(X.size()), w_quantized(W.size()), result_quantized(expected_vals.size());
-  Quantize(lhs_scale, lhs_zero_point, X, &x_quantized);
-  Quantize(rhs_scale, rhs_zero_point, W, &w_quantized);
-  Quantize(result_scale, result_zero_point, expected_vals, &result_quantized);
-
-  test.AddInput<uint8_t>("x", X_shape, x_quantized);
-  test.AddInput<float>("x_scale", {}, {lhs_scale});
-  test.AddInput<uint8_t>("x_zero_point", {}, {lhs_zero_point});
-
-  test.AddInput<uint8_t>("w", W_shape, w_quantized);
-  test.AddInput<float>("w_scale", {}, {rhs_scale});
-  test.AddInput<uint8_t>("w_zero_point", {}, {rhs_zero_point});
-
-  test.AddInput<float>("y_scale", {}, {result_scale});
-  test.AddInput<uint8_t>("y_zero_point", {}, {result_zero_point});
-
-  test.AddOutput<uint8_t>("y", Y_shape, result_quantized);
-
-  test.Run();
-}
-
-TEST(ConvTest, QLinearConv3DTest) {
   OpTester test("QLinearConv", 10);
 
-  vector<float> X = {0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
+  TestQLinearConvOp(test,
+                    X, {1, 1, 7, 7},
+                    W, {1, 1, 1, 1},
+                    nullptr,
+                    Y, {1, 1, 7, 7});
+}
+
+TEST(QLinearConvTest, Conv3DTest) {
+  QuantizedTensor X({0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
                      0.45676887035369873f, -0.0320507287979126f, 0.4229400157928467f, -0.18730869889259338f,
                      -0.45851585268974304f, 0.042054951190948486f, -0.13332295417785645f, -0.25374430418014526f,
                      -0.23845627903938293f, 0.12214112281799316f, -0.1778157651424408f, 0.1891845464706421f,
@@ -807,57 +834,93 @@ TEST(ConvTest, QLinearConv3DTest) {
                      0.24954384565353394f, -0.22505927085876465f, -0.36272895336151123f, -0.47674262523651123f,
                      0.11275297403335571f, 0.49773406982421875f, 0.2686365246772766f, 0.025525271892547607f,
                      -0.3037869930267334f, 0.41126757860183716f, 0.36149072647094727f, 0.00883406400680542f,
-                     -0.07959523797035217f, 0.3601323366165161f, 0.17322391271591187f, -0.012007325887680054f};
-  vector<int64_t> X_shape = {1, 1, 4, 4, 4};
-  vector<float> W = {0.32824617624282837f};
-  vector<int64_t> W_shape = {1, 1, 1, 1, 1};
-  vector<int64_t> Y_shape = {1, 1, 4, 4, 4};
-  auto expected_vals = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0035360013134777546f, 0.14948052167892456f, 0.0f,
-                        0.0f, -0.15050607919692993f, -0.043762750923633575f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -0.12386361509561539f, -0.03541983291506767f, 0.0f,
-                        0.0f, 0.09152615070343018f, 0.08054415881633759f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+                     -0.07959523797035217f, 0.3601323366165161f, 0.17322391271591187f, -0.012007325887680054f});
+  QuantizedTensor W({0.32824617624282837f});
+  QuantizedTensor Y({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0035360013134777546f, 0.14948052167892456f, 0.0f,
+                     0.0f, -0.15050607919692993f, -0.043762750923633575f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -0.12386361509561539f, -0.03541983291506767f, 0.0f,
+                     0.0f, 0.09152615070343018f, 0.08054415881633759f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
 
-  vector<int64_t> pads = {2, 2, 2, 2, 2, 2};
-  vector<int64_t>strides = {2, 2, 2};
+  OpTester test("QLinearConv", 10);
+  test.AddAttribute("pads", std::vector<int64_t>{2, 2, 2, 2, 2, 2});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
 
-  // Calculate quantization params and quantize the inputs and expected output
-  float lhs_min, lhs_max, rhs_min, rhs_max, result_min, result_max;
-  FindMinMax(X, &lhs_min, &lhs_max);
-  FindMinMax(W, &rhs_min, &rhs_max);
-  FindMinMax(expected_vals, &result_min, &result_max);
+  TestQLinearConvOp(test,
+                    X, {1, 1, 4, 4, 4},
+                    W, {1, 1, 1, 1, 1},
+                    nullptr,
+                    Y, {1, 1, 4, 4, 4});
+}
 
-  float lhs_scale, rhs_scale, result_scale;
-  uint8_t lhs_zero_point, rhs_zero_point, result_zero_point;
-  FindScaleAndZeroPoint(lhs_min, lhs_max, &lhs_scale, &lhs_zero_point);
-  FindScaleAndZeroPoint(rhs_min, rhs_max, &rhs_scale, &rhs_zero_point);
-  FindScaleAndZeroPoint(result_min, result_max, &result_scale, &result_zero_point);
+TEST(QLinearConvTest, WithBias_2D) {
+  QuantizedTensor X({6, 81, 214, 151, 234, 42, 50, 89, 30, 91, 125, 141, 52, 31, 58, 224, 84, 251, 67, 137,
+                     223, 119, 79, 220, 249, 75, 131, 246, 113, 56, 54, 197, 110, 142, 126, 171, 53, 228,
+                     240, 83, 229, 218, 185, 9, 80, 116, 176, 193, 175, 253},
+                    0.01f,
+                    135);
+  QuantizedTensor W({234, 229, 13, 187, 98, 161, 246, 188, 252, 107, 49, 72, 53, 212, 175, 47, 21, 14, 86,
+                     230, 16, 177, 82, 166, 75, 220, 169, 119, 34, 205, 27, 9, 44, 74, 40, 8, 28, 139, 240,
+                     106, 63, 2, 255, 156, 128, 222, 73, 51, 66, 48, 81, 247, 180, 91, 206, 239, 190, 146,
+                     227, 235, 10, 130, 95, 232, 121, 133, 231, 162, 108, 105, 254, 143},
+                    0.15f,
+                    110);
+  QuantizedBiasTensor B({-1123, 3212, 1723, -621}, X.scale_ * W.scale_);
+  QuantizedTensor Y({67, 81, 66, 75, 71, 101, 20, 8, 44, 94, 83, 73, 133, 125, 54, 144, 165, 56, 53, 88,
+                     130, 118, 170, 168, 140, 109, 103, 80, 122, 142, 129, 100, 39, 61, 141, 133, 59, 155,
+                     68, 129, 74, 132, 83, 143, 146, 152, 81, 127, 82, 112, 131, 64, 82, 68, 93, 149, 146,
+                     137, 201, 118, 112, 183, 171, 144, 85, 122, 86, 63, 163, 245, 95, 152, 126, 80, 82,
+                     49, 136, 160, 187, 147, 29, 20, 135, 174, 126, 124, 36, 56, 0, 83, 134, 171, 119, 109,
+                     85, 155, 157, 167, 194, 130},
+                    0.75f,
+                    121);
 
-  vector<uint8_t> x_quantized(X.size()), w_quantized(W.size()), result_quantized(expected_vals.size());
-  Quantize(lhs_scale, lhs_zero_point, X, &x_quantized);
-  Quantize(rhs_scale, rhs_zero_point, W, &w_quantized);
-  Quantize(result_scale, result_zero_point, expected_vals, &result_quantized);
+  OpTester test("QLinearConv", 10);
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
-  test.AddAttribute("pads", pads);
-  test.AddAttribute("strides", strides);
+  // TODO: nGraph fails to handle the optional bias vector correctly.
+  TestQLinearConvOp(test,
+                    X, {1, 2, 5, 5},
+                    W, {4, 2, 3, 3},
+                    &B,
+                    Y, {1, 4, 5, 5},
+                    {kNGraphExecutionProvider});
+}
 
-  test.AddInput<uint8_t>("x", X_shape, x_quantized);
-  test.AddInput<float>("x_scale", {}, {lhs_scale});
-  test.AddInput<uint8_t>("x_zero_point", {}, {lhs_zero_point});
+TEST(QLinearConvTest, WithGroup_2D) {
+  QuantizedTensor X({98, 166, 219, 195, 46, 97, 27, 211, 239, 1, 28, 208, 143, 144, 215, 252, 79, 5, 154,
+                     56, 122, 191, 94, 25, 221, 48, 37, 182, 68, 245, 210, 206, 183, 22, 163, 104, 242,
+                     112, 161, 66, 181, 235, 117, 75, 236, 61, 115, 36, 120, 253, 165, 214, 159, 132, 11,
+                     201, 30, 249, 89, 171, 186, 67, 225, 197, 135, 142, 241, 169, 170, 164, 178, 58, 50,
+                     51, 200, 43, 199, 126, 222, 123, 227, 42, 3, 21, 124, 220, 24, 47, 63, 110},
+                    0.01f,
+                    135);
+  QuantizedTensor W({220, 111, 73, 254, 235, 151, 6, 156, 129, 204, 234, 198, 44, 89, 202, 82, 118, 189,
+                     71, 120, 123, 121, 110, 83, 173, 248, 108, 229, 124, 68, 85, 239, 133, 213, 112, 122,
+                     170, 231, 225, 195, 192, 9, 232, 97, 160, 227, 67, 137},
+                    0.15f,
+                    110);
+  QuantizedBiasTensor B({-1853, 598, -17854, 14592, 42, -366}, X.scale_ * W.scale_);
+  QuantizedTensor Y({113, 128, 70, 64, 125, 162, 80, 189, 112, 147, 121, 111, 96, 68, 94, 101, 77, 88, 223,
+                     128, 163, 194, 138, 164, 122, 109, 117, 91, 72, 121, 134, 155, 127, 125, 98, 128},
+                    0.75f,
+                    121);
 
-  test.AddInput<uint8_t>("w", W_shape, w_quantized);
-  test.AddInput<float>("w_scale", {}, {rhs_scale});
-  test.AddInput<uint8_t>("w_zero_point", {}, {rhs_zero_point});
+  OpTester test("QLinearConv", 10);
+  test.AddAttribute("group", static_cast<int64_t>(3));
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 1, 1});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
 
-  test.AddInput<float>("y_scale", {}, {result_scale});
-  test.AddInput<uint8_t>("y_zero_point", {}, {result_zero_point});
-
-  test.AddOutput<uint8_t>("y", Y_shape, result_quantized);
-
-  test.Run();
+  // TODO: nGraph rejects grouped convolutions with bias.
+  TestQLinearConvOp(test,
+                    X, {1, 6, 3, 5},
+                    W, {6, 2, 2, 2},
+                    &B,
+                    Y, {1, 6, 2, 3},
+                    {kNGraphExecutionProvider});
 }
 
 }  // namespace
