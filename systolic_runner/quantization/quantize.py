@@ -34,16 +34,20 @@ type_to_name = {
     15: "COMPLEX128",
 }
 
-
 # Quantization mode
 # IntegerOps: Use IntegerOps in quantized model. Only ConvInteger and MatMulInteger ops are supported now.
 # QLinearOps: Use QLinearOps in quantized model. Only QLinearConv and QLinearMatMul ops are supported now.
+
+
 class QuantizationMode():
     IntegerOps = 0
     QLinearOps = 1
 
-quantization_modes = [getattr(QuantizationMode, attr) for attr in dir(QuantizationMode)\
-    if not callable(getattr(QuantizationMode, attr)) and not attr.startswith("__")]
+
+quantization_modes = [
+    getattr(QuantizationMode, attr) for attr in dir(QuantizationMode) if
+    not callable(getattr(QuantizationMode, attr)) and not attr.startswith("__")
+]
 
 
 class QuantizedInitializer:
@@ -65,11 +69,13 @@ class QuantizedInitializer:
         self.initializer = initializer  # TensorProto initializer in ONNX graph
         self.rmins = rmins  # List of minimum range for each axis
         self.rmaxs = rmaxs  # List of maximum range for each axis
-        self.zero_points = zero_points  # 1D tensor of zero points computed for each axis. scalar if axis is empty
+        # 1D tensor of zero points computed for each axis. scalar if axis is empty
+        self.zero_points = zero_points
         self.scales = scales  # 1D tensor of scales computed for each axis. scalar if axis is empty
         self.data = data  # original data from initializer TensorProto
         self.quantized_data = quantized_data  # weight-packed data from data
-        self.axis = axis  # Scalar to specify which dimension in the initializer to weight pack.
+        # Scalar to specify which dimension in the initializer to weight pack.
+        self.axis = axis
         # If empty, single zero point and scales computed from a single rmin and rmax
         self.qType = qType  # type of quantized data.
 
@@ -125,8 +131,8 @@ def quantize_data(data, quantize_range, qType):
         max_range = max(abs(rmin), abs(rmax))
         scale = (float(max_range) * 2) / quantize_range
         zero_point = 0
-        quantized_data = (np.asarray(data) / scale).round().astype(
-            'b')  #signed byte type
+        # signed byte type
+        quantized_data = (np.asarray(data) / scale).round().astype('b')
     elif qType == onnx_proto.TensorProto.UINT8:
         scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
         zero_point = round((0 - rmin) / scale)  # round to nearest integer
@@ -283,7 +289,6 @@ class ONNXQuantizer:
         self.fixed_qrange_int8_name = "fixed_quantization_range_int8"
         # For uint8 data-type, to compute zero point, we subtract rmin from 0 (represented by fixed_zero_name tensor)
         self.fixed_zero_name = "fixed_zero"
-        self.fixed_one_name = "fixed_one"
         # For int8 data-type, zero point is always zero (respresented by fixed_zero_point_name tensor)
         self.fixed_zero_zp_name = "fixed_zero_zp"
 
@@ -559,7 +564,6 @@ class ONNXQuantizer:
             [reduce_min_abs_node.output[0], reduce_max_abs_node.output[0]],
             [abs_max_name + ":0"], abs_max_name)
         nodes_list.append(abs_max_node)
-
         #   and divide by (quantize_range/2.0) which will be equal to max(...)*2.0/quantize_range
         _add_initializer_if_not_present(self.model.graph,
                                         self.fixed_qrange_int8_name,
@@ -663,7 +667,7 @@ class ONNXQuantizer:
         Create initializers and inputs in the graph for zero point and scale of output.
         Zero point and scale values are obtained from self.quantization_params if specified.
 
-            parameter output_name: Name of the output.
+            parameter param_name: Name of the quantization parameter.
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         '''
         if self.quantization_params is None or param_name not in self.quantization_params:
@@ -706,8 +710,8 @@ class ONNXQuantizer:
     def _get_quantize_input_nodes(self, node, input_index, qType):
         '''
         Given a input for a node (which is not a initializer), this function
-            - add elements to graph to compute zero point and scale for this input.
-            - add new QuantizeLinear nodes to quantize the input.
+            - add nodes to compute zero point and scale for this input if they don't exist.
+            - add new QuantizeLinear node to quantize the input.
 
             parameter node: node being quantized in NodeProto format.
             parameter input_index: index of input in node.input.
@@ -718,7 +722,7 @@ class ONNXQuantizer:
         output_name = input_name + "_quantized"
 
         data_found, scale_name, zp_name, scale_shape, zp_shape = \
-                self._get_quantization_params(input_name)
+            self._get_quantization_params(input_name)
 
         if self.static:
             if data_found == False:
@@ -730,7 +734,6 @@ class ONNXQuantizer:
             qlinear_node = onnx.helper.make_node(
                 "QuantizeLinear", [input_name, scale_name, zp_name],
                 [output_name], input_name + "_QuantizeLinear")
-
             return [qlinear_node]
 
         else:
@@ -753,7 +756,8 @@ class ONNXQuantizer:
                 else:
                     nodes = []
                     scale_name, zp_name, scale_shape, zp_shape = \
-                        self._get_dynamic_input_quantization_params(input_name, nodes, qType)
+                        self._get_dynamic_input_quantization_params(
+                            input_name, nodes, qType)
                     qlinear_node = onnx.helper.make_node(
                         "QuantizeLinear", [input_name, scale_name, zp_name],
                         [output_name], input_name + "_QuantizeLinear")
@@ -815,7 +819,7 @@ class ONNXQuantizer:
 
         # Check if DequantizeLinear node needs to be added to graph.
         if len(unsupported_nodes) != 0 and \
-            _find_node_by_name(dequantize_linear_name, self.model.graph, new_nodes_list) is None:
+                _find_node_by_name(dequantize_linear_name, self.model.graph, new_nodes_list) is None:
             inputs = [
                 weight.name + "_quantized", weight.name + "_scale",
                 weight.name + "_zero_point"
@@ -920,7 +924,7 @@ class ONNXQuantizer:
                               bias_scale).round().astype(np.int32)
             # print(quantized_data)
 
-            #update bias initializer
+            # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(
                 bias_initializer.dims)
             packed_bias_initializer = onnx.numpy_helper.from_array(
@@ -1075,7 +1079,7 @@ class ONNXQuantizer:
         Checks whether the give activation op can be removed from the graph. When mode is QLinearOps, 
         the output quatization params are calculated based on outputs from activation nodes, 
         therefore these nodes can be removed from the graph if they follow a quantized op.
-        
+
             parameter node: Current node
             parameter new_nodes_list: List of new nodes created before processing current node
             return: List of nodes
@@ -1089,6 +1093,7 @@ class ONNXQuantizer:
         if node.input[0] not in self.quantized_value_map:
             return [node]
 
+        # Prepare to remove this node
         if self.input_qType == onnx_proto.TensorProto.UINT8:
             quantized_value = self.quantized_value_map[node.input[0]]
             self.quantized_value_map[node.output[0]] = quantized_value
@@ -1123,7 +1128,7 @@ class ONNXQuantizer:
                                   scale_names[0],
                                   zero_point_names[0],
                                   QuantizedValueType.Input,
-                                  qType=self.weight_qType)
+                                  qType=self.input_qType)
         self.quantized_value_map[node.output[0]] = q_output
 
         gather_original_output = node.output[0]
@@ -1317,7 +1322,7 @@ class ONNXQuantizer:
                                   output_scale_name,
                                   output_zp_name,
                                   QuantizedValueType.Input,
-                                  qType=self.weight_qType)
+                                  qType=self.input_qType)
         self.quantized_value_map[node.output[0]] = q_output
 
         return nodes
@@ -1369,7 +1374,7 @@ class ONNXQuantizer:
                                   output_scale_name,
                                   output_zp_name,
                                   QuantizedValueType.Input,
-                                  qType=self.weight_qType)
+                                  qType=self.input_qType)
         self.quantized_value_map[node.output[0]] = q_output
 
         return nodes
