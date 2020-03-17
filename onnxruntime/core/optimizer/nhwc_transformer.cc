@@ -199,12 +199,13 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
   // Create the replacement node.
   std::string nhwc_node_name = graph_.GenerateNodeName(node.Name() + "_nhwc");
   Node& nhwc_node = graph_.AddNode(nhwc_node_name,
-                                   "QLinearConv_nhwc",
+                                   node.OpType() + "_nhwc",
                                    nhwc_node_name,
                                    input_defs,
                                    output_defs,
                                    &node.GetAttributes(),
                                    kOnnxDomain);
+  nhwc_node.SetExecutionProviderType(kSystolicExecutionProvider);
 
   nhwc_node.MutableInputDefs()[3] = nhwc_conv_W_arg;
 
@@ -222,7 +223,7 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
     nhwc_input->remaining_original_uses_--;
   }
 
-  LOGS(logger, VERBOSE) << "Transforming QLinearConv to NHWC";
+  LOGS(logger, VERBOSE) << "Transforming " << node.OpType() << " to NHWC";
   CreateNhwcArgument(node, nhwc_node, output_defs[0]->Name());
   removed_nodes_.push_front(node.Index());
 }
@@ -246,7 +247,7 @@ void NhwcTransformerImpl::TransformQLinearRelu(Node& node,  const logging::Logge
 }
 
 void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
-  if (node.OpType() == "QLinearConv") {
+  if (node.OpType() == "QLinearConv" || node.OpType() == "Fused_QLinearConv_Relu") {
     TransformQLinearConv(node, logger);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
@@ -303,7 +304,9 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+    if (node.GetExecutionProviderType() == kSystolicExecutionProvider) {
       impl.Transform(node, logger);
+    }
   }
   impl.Finalize(modified, logger);
   return Status::OK();

@@ -167,7 +167,7 @@ void nhwcConvPoolShapeInference(
       }
     }
   }
-    
+
   auto output_shape =
       ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
@@ -190,7 +190,7 @@ void nhwcConvPoolShapeInference(
     assert(input_shape.dim(2 + i).has_dim_value() && 2 + i < 4 && "Overflow at 177");
 
     // how big is the input, including padding
-    int64_t effective_input_size = input_shape_nchw_form[2+i];
+    int64_t effective_input_size = input_shape_nchw_form[2 + i];
     effective_input_size += pads[i];
     effective_input_size += pads[i + kernel_shape_size];
 
@@ -235,6 +235,38 @@ void nhwcConvPoolShapeInference(
   output_shape->mutable_dim(3)->set_dim_value(output_shape_C);
 }
 
+void nhwcConvPoolShapeInference(InferenceContext&
+                                    ctx) {
+  auto x_type = ctx.getInputType(0);
+  auto w_type = ctx.getInputType(3);
+  if (nullptr == x_type || nullptr == w_type ||
+      x_type->value_case() != TypeProto::kTensorType ||
+      w_type->value_case() != TypeProto::kTensorType) {
+    fail_type_inference("inputs are expected to have tensor type.");
+  }
+
+  auto x_zero_point_type = ctx.getInputType(2);
+  if (nullptr == x_zero_point_type ||
+      x_zero_point_type->tensor_type().elem_type() !=
+          x_type->tensor_type().elem_type()) {
+    fail_type_inference(
+        "input and zero_point pair is expected to have be same type.");
+  }
+
+  auto w_zero_point_type = ctx.getInputType(5);
+  if (nullptr == w_zero_point_type ||
+      w_zero_point_type->tensor_type().elem_type() !=
+          w_type->tensor_type().elem_type()) {
+    fail_type_inference(
+        "weight and zero_point pair is expected to have same type.");
+  }
+
+  propagateElemTypeFromInputToOutput(ctx, 7, 0);
+
+  auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+  nhwcConvPoolShapeInference(ctx, true, false, 0, 3);
+}
+
 void RegisterSystolicSchemas() {
   ONNX_SYSTOLIC_OPERATOR_SCHEMA(QLinearRelu)
       .SinceVersion(1)
@@ -270,37 +302,32 @@ void RegisterSystolicSchemas() {
       .Attr("strides", "", AttributeProto::INTS, OPTIONAL)
       .Attr("pads", "", AttributeProto::INTS, OPTIONAL)
       .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
-      .TypeAndShapeInferenceFunction([](InferenceContext&
-                                            ctx) {
-        auto x_type = ctx.getInputType(0);
-        auto w_type = ctx.getInputType(3);
-        if (nullptr == x_type || nullptr == w_type ||
-            x_type->value_case() != TypeProto::kTensorType ||
-            w_type->value_case() != TypeProto::kTensorType) {
-          fail_type_inference("inputs are expected to have tensor type.");
-        }
+      .TypeAndShapeInferenceFunction(static_cast<void (*)(InferenceContext& ctx)>(nhwcConvPoolShapeInference));
 
-        auto x_zero_point_type = ctx.getInputType(2);
-        if (nullptr == x_zero_point_type ||
-            x_zero_point_type->tensor_type().elem_type() !=
-                x_type->tensor_type().elem_type()) {
-          fail_type_inference(
-              "input and zero_point pair is expected to have be same type.");
-        }
-
-        auto w_zero_point_type = ctx.getInputType(5);
-        if (nullptr == w_zero_point_type ||
-            w_zero_point_type->tensor_type().elem_type() !=
-                w_type->tensor_type().elem_type()) {
-          fail_type_inference(
-              "weight and zero_point pair is expected to have same type.");
-        }
-
-        propagateElemTypeFromInputToOutput(ctx, 7, 0);
-
-        auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-        nhwcConvPoolShapeInference(ctx, true, false, 0, 3);
-      });
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(Fused_QLinearConv_Relu_nhwc)
+      .SinceVersion(1)
+      .SetDoc("Internal fused node for NHWC layout optimization. Used with Systolic.")
+      .Input(0, "x", "", "T1")
+      .Input(1, "x_scale", "", "tensor(float)")
+      .Input(2, "x_zero_point", "", "T1")
+      .Input(3, "w", "Must be in funky group-wise pre-transposed format", "T2")
+      .Input(4, "w_scale", "", "tensor(float)")
+      .Input(5, "w_zero_point", "", "T2")
+      .Input(6, "y_scale", "", "tensor(float)")
+      .Input(7, "y_zero_point", "", "T3")
+      .Input(8, "B", "", "T4", OpSchema::Optional)
+      .Output(0, "y", "", "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain filter type to 8-bit integer tensor.")
+      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .TypeAndShapeInferenceFunction(static_cast<void (*)(InferenceContext& ctx)>(nhwcConvPoolShapeInference));
 }
 
 }  // namespace systolic

@@ -56,6 +56,10 @@ int main(int argc, char* argv[]) {
   // 99: ORT_ENABLE_ALL -> To Enable All possible opitmizations
   session_options.SetGraphOptimizationLevel(static_cast<GraphOptimizationLevel>(cmd["optimization"].as<int>()));
 
+  if (cmd.count("save_model")) {
+    session_options.SetOptimizedModelFilePath(cmd["save_model"].as<std::string>().c_str());
+  }
+
   //*************************************************************************
   // create session and load model into memory
   // using squeezenet version 1.3

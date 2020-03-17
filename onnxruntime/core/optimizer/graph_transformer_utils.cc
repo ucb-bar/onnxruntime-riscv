@@ -112,10 +112,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
 
-#ifdef USE_SYSTOLIC
-      transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
-#endif
-
       rule_transformer = GenerateRuleBasedGraphTransformer(level, transformers_and_rules_to_enable, l1_execution_providers);
     } break;
 
@@ -145,6 +141,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     } break;
 
     case TransformerLevel::Level3: {
+#ifdef USE_SYSTOLIC
+      transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
+#endif
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
