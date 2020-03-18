@@ -10,6 +10,7 @@ import os
 import sys
 import glob
 import argparse
+import copy
 import numpy as np
 from PIL import Image
 import onnx
@@ -22,18 +23,40 @@ import re
 import subprocess
 import json
 
-graph_input_names = None
+# Candidate nodes for quantization. Calibration will be done for these nodes only
+# When more nodes are extended to support quantization, add them to this list
+# Values are the relevant input indices that should be quantized
+QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1]}
 
 
-def get_graph_input_names(model):
-    global graph_input_names
-    if graph_input_names is None:
-        init = {i.name: 0 for i in model.graph.initializer}
-        inp = [i.name for i in model.graph.input if i.name not in init]
-        # if len(inp) != 1:
-        #     raise ValueError("Multiple or no graph input found")
-        graph_input_names = inp
-    return graph_input_names
+def get_subsequent_nodes(model, index, edge):
+    matches = []
+    for node in model.graph.node[index + 1:]:
+        if (edge in node.input):
+            matches.append(node.op_type)
+    return matches
+
+
+def create_reduce_nodes(edge_to_reduce, added_nodes, added_outputs,
+                        reduced_edges):
+    # Adding ReduceMin nodes
+    reduce_min_node = onnx.helper.make_node('ReduceMin', [edge_to_reduce],
+                                            [edge_to_reduce + '_ReduceMin'],
+                                            keepdims=0)
+    added_nodes.append(reduce_min_node)
+    added_outputs.append(
+        helper.make_tensor_value_info(reduce_min_node.output[0],
+                                      TensorProto.FLOAT, ()))
+
+    # Adding ReduceMax nodes
+    reduce_max_node = onnx.helper.make_node('ReduceMax', [edge_to_reduce],
+                                            [edge_to_reduce + '_ReduceMax'],
+                                            keepdims=0)
+    added_nodes.append(reduce_max_node)
+    added_outputs.append(
+        helper.make_tensor_value_info(reduce_max_node.output[0],
+                                      TensorProto.FLOAT, ()))
+    reduced_edges.append(edge_to_reduce)
 
 
 def augment_graph(model, static):
@@ -43,94 +66,28 @@ def augment_graph(model, static):
         parameter model: loaded FP32 ONNX model to quantize
         return: augmented ONNX model
     '''
-    # Candidate nodes for quantization. Calibration will be done for these nodes only
-    # When more nodes are extended to support quantization, add them to this list
-    quantization_candidates = ['Conv', 'MatMul']
     added_nodes = []
     added_outputs = []
+    reduced_edges = []
     i = 0
     for node in model.graph.node:
-        if node.op_type in quantization_candidates or static:
-            input_name = node.output[0]
-            # Adding ReduceMin nodes
-            if node.name == "":
-                reduce_min_name = str(i) + '_ReduceMin'
-                i += 1
-            else:
-                reduce_min_name = node.name + '_ReduceMin'
-            reduce_min_node = onnx.helper.make_node(
-                'ReduceMin', [input_name], [input_name + '_ReduceMin'],
-                reduce_min_name,
-                keepdims=0)
-            added_nodes.append(reduce_min_node)
-            float_cast = onnx.helper.make_node(
-                'Cast',
-                inputs=[input_name + '_ReduceMin'],
-                outputs=[input_name + '_ReduceMinf'],
-                to=TensorProto.FLOAT)
-            added_nodes.append(float_cast)
-            added_outputs.append(
-                helper.make_tensor_value_info(float_cast.output[0],
-                                              TensorProto.FLOAT, ()))
+        if node.op_type in QUANTIZATION_CANDIDATES:
+            output_name = node.output[0]
+            create_reduce_nodes(output_name, added_nodes, added_outputs,
+                                reduced_edges)
+            # In dynamic quantization we can just worry about outputs of QUANTIZATION_CANDIDATES
+            # In static mode we need the inputs for those as well
+            if static:
+                for idx, input_name in enumerate(node.input):
+                    if idx in QUANTIZATION_CANDIDATES[
+                            node.op_type] and input_name not in reduced_edges:
+                        create_reduce_nodes(input_name, added_nodes,
+                                            added_outputs, reduced_edges)
 
-            # Adding ReduceMax nodes
-            if node.name == "":
-                reduce_max_name = str(i) + '_ReduceMax'
-            else:
-                reduce_max_name = node.name + '_ReduceMax'
-            reduce_max_node = onnx.helper.make_node(
-                'ReduceMax', [input_name], [input_name + '_ReduceMax'],
-                reduce_max_name,
-                keepdims=0)
-            added_nodes.append(reduce_max_node)
-            float_cast = onnx.helper.make_node(
-                'Cast',
-                inputs=[input_name + '_ReduceMax'],
-                outputs=[input_name + '_ReduceMaxf'],
-                to=TensorProto.FLOAT)
-            added_nodes.append(float_cast)
-            added_outputs.append(
-                helper.make_tensor_value_info(float_cast.output[0],
-                                              TensorProto.FLOAT, ()))
-
-    if static:
-        for input_name in get_graph_input_names(model):
-            reduce_min_name = input_name + "_ReduceMin"
-            reduce_min_node = onnx.helper.make_node(
-                'ReduceMin', [input_name], [input_name + '_ReduceMin'],
-                reduce_min_name,
-                keepdims=0)
-            added_nodes.append(reduce_min_node)
-            float_cast = onnx.helper.make_node(
-                'Cast',
-                inputs=[input_name + '_ReduceMin'],
-                outputs=[input_name + '_ReduceMinf'],
-                to=TensorProto.FLOAT)
-            added_nodes.append(float_cast)
-            added_outputs.append(
-                helper.make_tensor_value_info(float_cast.output[0],
-                                              TensorProto.FLOAT, ()))
-
-            # Adding ReduceMax nodes
-            reduce_max_name = input_name + "_ReduceMax"
-            reduce_max_node = onnx.helper.make_node(
-                'ReduceMax', [input_name], [input_name + '_ReduceMax'],
-                reduce_max_name,
-                keepdims=0)
-            added_nodes.append(reduce_max_node)
-            float_cast = onnx.helper.make_node(
-                'Cast',
-                inputs=[input_name + '_ReduceMax'],
-                outputs=[input_name + '_ReduceMaxf'],
-                to=TensorProto.FLOAT)
-            added_nodes.append(float_cast)
-            added_outputs.append(
-                helper.make_tensor_value_info(float_cast.output[0],
-                                              TensorProto.FLOAT, ()))
-
-    model.graph.node.extend(added_nodes)
-    model.graph.output.extend(added_outputs)
-    return model
+    augmented_model = copy.deepcopy(model)
+    augmented_model.graph.node.extend(added_nodes)
+    augmented_model.graph.output.extend(added_outputs)
+    return augmented_model
 
 
 # Using augmented outputs to generate inputs to quantize.py
@@ -198,7 +155,7 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     return final_dict
 
 
-def calculate_scale_zeropoint(node, next_node, rmin, rmax):
+def calculate_scale_zeropoint(next_nodes, rmin, rmax):
     zp_and_scale = []
     # adjust rmin and rmax such that 0 is included in the range. This is required
     # to make sure zero can be uniquely represented.
@@ -208,16 +165,21 @@ def calculate_scale_zeropoint(node, next_node, rmin, rmax):
     # We update the output range min and max when next node is clip or relu
     # With this technique we can remove these 2 ops and
     # reduce the output range which in turn helps to improve accuracy
-    if next_node and next_node.op_type == 'Clip':
+    if len(next_nodes) == 1 and next_nodes[0] == 'Clip':
         clip_min = next_node.attribute[0].f
         clip_max = next_node.attribute[1].f
         if rmin < clip_min:
             rmin = clip_min
         if rmax > clip_max:
             rmax = clip_max
-    if next_node and next_node.op_type == 'Relu':
+    if len(next_nodes) == 1 and 'Relu' in next_nodes:
         if rmin < 0:
             rmin = 0
+    elif 'Relu' in next_nodes and len(next_nodes) > 1:
+        # TODO: Add Relu to QUANTIZATION_CANDIDATES (-> QLinearRelu), and update calibrate.py
+        raise ValueError(
+            "Not reducing output range as output also goes to non-Relu nodes: {}"
+            .format(next_nodes))
 
     max_range = max(abs(rmin), abs(rmax))
     scale = (np.float32(max_range)) / 127
@@ -260,25 +222,24 @@ def calculate_quantization_params(model, quantization_thresholds, static):
 
     quantization_params = {}
     for index, node in enumerate(model.graph.node):
-        node_output_name = node.output[0]
-        if node_output_name in quantization_thresholds:
+        if node.op_type in QUANTIZATION_CANDIDATES:
+            node_output_name = node.output[0]
+            assert (node_output_name in quantization_thresholds)
             node_thresholds = quantization_thresholds[node_output_name]
             node_params = calculate_scale_zeropoint(
-                node, model.graph.node[index + 1], node_thresholds[0],
-                node_thresholds[1])
+                get_subsequent_nodes(model, index, node_output_name),
+                node_thresholds[0], node_thresholds[1])
             quantization_params[node_output_name] = node_params
-
-    if static:
-        for graph_input_name in get_graph_input_names(model):
-            if graph_input_name in quantization_thresholds:
-                node_thresholds = quantization_thresholds[graph_input_name]
-                node_params = calculate_scale_zeropoint(
-                    None, None, node_thresholds[0], node_thresholds[1])
-                quantization_params[graph_input_name] = node_params
-            else:
-                raise ValueError(
-                    "Graph input {} not found in quantization dict".format(
-                        graph_input_name))
+            if static:
+                for idx, node_input_name in enumerate(node.input):
+                    if idx in QUANTIZATION_CANDIDATES[node.op_type]:
+                        assert (node_input_name in quantization_thresholds)
+                        if node_input_name not in quantization_params:
+                            node_thresholds = quantization_thresholds[
+                                node_input_name]
+                            node_params = calculate_scale_zeropoint(
+                                [], node_thresholds[0], node_thresholds[1])
+                            quantization_params[node_input_name] = node_params
 
     return quantization_params
 
