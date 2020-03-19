@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
       } else {
         input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
         input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;
-        input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.225)/0.225;  
+        input_tensor_values[(2*224 + i)*224 + j] = ((*(data++))/255.0 - 0.406)/0.225;  
       }
     }
   }

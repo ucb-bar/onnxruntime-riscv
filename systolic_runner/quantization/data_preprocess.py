@@ -36,6 +36,16 @@ def preprocess_method1(image_filepath, height, width):
     nchw_data = nhwc_data.transpose(0, 3, 1, 2) # ONNX Runtime standard
     return nchw_data
 
+def preprocess_method1_raw(raw_image):
+    r_channel = raw_image[:, 0, :, :]
+    g_channel = raw_image[:, 1, :, :]
+    b_channel = raw_image[:, 2, :, :]
+
+    r_channel = ((r_channel/255.0) - 0.485)/0.229
+    g_channel = ((g_channel/255.0) - 0.456)/0.224
+    b_channel = ((b_channel/255.0) - 0.406)/0.225
+    return np.stack([r_channel, g_channel, b_channel], axis=1)
+
 def preprocess_method2(image_filepath, height, width):
     '''
     Resizes and normalizes image to NCHW format. 

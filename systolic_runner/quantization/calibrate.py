@@ -17,7 +17,7 @@ import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
 from quantize import quantize, QuantizationMode
-from data_preprocess import load_batch
+from data_preprocess import load_batch, preprocess_method1_raw
 
 import re
 import subprocess
@@ -135,7 +135,6 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
         added_node_output_names[i].rpartition('_')[0]
         for i in range(0, len(added_node_output_names), 2)
     ]  # output names
-
     # Characterizing distribution of a node's values across test data sets
     clean_merged_dict = dict(
         (i, merged_dict[i]) for i in merged_dict if i != node_output_names[0])
@@ -155,7 +154,7 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     return final_dict
 
 
-def calculate_scale_zeropoint(next_nodes, rmin, rmax):
+def calculate_scale_zeropoint(next_nodes, rmin, rmax, mode):
     zp_and_scale = []
     # adjust rmin and rmax such that 0 is included in the range. This is required
     # to make sure zero can be uniquely represented.
@@ -181,20 +180,21 @@ def calculate_scale_zeropoint(next_nodes, rmin, rmax):
             "Not reducing output range as output also goes to non-Relu nodes: {}"
             .format(next_nodes))
 
-    max_range = max(abs(rmin), abs(rmax))
-    scale = (np.float32(max_range)) / 127
-    zero_point = np.int8(0)
-
-    # scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
-    # initial_zero_point = (0 - rmin) / scale
-    # zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
+    if mode == 'int8':
+        max_range = max(abs(rmin), abs(rmax))
+        scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
+        zero_point = np.int8(0)
+    else:
+        scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
+        initial_zero_point = (0 - rmin) / scale
+        zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
 
     zp_and_scale.append(zero_point)
     zp_and_scale.append(scale)
     return zp_and_scale
 
 
-def calculate_quantization_params(model, quantization_thresholds, static):
+def calculate_quantization_params(model, quantization_thresholds, static, mode):
     '''
         Given a model and quantization thresholds, calculates the quantization params.
     :param model: ModelProto to quantize
@@ -228,7 +228,7 @@ def calculate_quantization_params(model, quantization_thresholds, static):
             node_thresholds = quantization_thresholds[node_output_name]
             node_params = calculate_scale_zeropoint(
                 get_subsequent_nodes(model, index, node_output_name),
-                node_thresholds[0], node_thresholds[1])
+                node_thresholds[0], node_thresholds[1], mode)
             quantization_params[node_output_name] = node_params
             if static:
                 for idx, node_input_name in enumerate(node.input):
@@ -238,13 +238,13 @@ def calculate_quantization_params(model, quantization_thresholds, static):
                             node_thresholds = quantization_thresholds[
                                 node_input_name]
                             node_params = calculate_scale_zeropoint(
-                                [], node_thresholds[0], node_thresholds[1])
+                                [], node_thresholds[0], node_thresholds[1], mode)
                             quantization_params[node_input_name] = node_params
 
     return quantization_params
 
 
-def load_single_test_data(test_data_dir, num_expected_inputs):
+def load_single_test_data(test_data_dir, num_expected_inputs, preprocess_method):
     '''
     Load tensor data from pb files in a single test data dir.
     :param test_data_dir: path to where the pb files for each input are found
@@ -262,17 +262,20 @@ def load_single_test_data(test_data_dir, num_expected_inputs):
         tensor = onnx.TensorProto()
         with open(input_file, 'rb') as f:
             tensor.ParseFromString(f.read())
-        inputs.append(numpy_helper.to_array(tensor))
+        tensor = numpy_helper.to_array(tensor)
+        if preprocess_method == 'imagenet':
+            tensor = preprocess_method1_raw(tensor)
+        inputs.append(tensor)
     return inputs
 
 
-def load_test_data(test_data_dir, num_expected_inputs, max_to_load):
+def load_test_data(test_data_dir, num_expected_inputs, max_to_load, preprocess_method):
     tests = glob.glob(os.path.join(test_data_dir, 'test_data_set_*'))
     if len(tests):
-        return [load_single_test_data(case, num_expected_inputs) for case in \
+        return [load_single_test_data(case, num_expected_inputs, preprocess_method) for case in \
                 (tests[:max_to_load] if max_to_load else tests)]
     else:
-        return [load_single_test_data(test_data_dir, num_expected_inputs)]
+        return [load_single_test_data(test_data_dir, num_expected_inputs, preprocess_method)]
 
 
 def main():
@@ -295,8 +298,15 @@ def main():
         '--data_preprocess',
         type=str,
         required=True,
-        choices=['preprocess_method1', 'preprocess_method2', 'None'],
+        choices=['imagenet', 'preprocess_method1', 'preprocess_method2', 'None'],
         help="Refer to Readme.md for guidance on choosing this option.")
+    parser.add_argument(
+        '--mode',
+        type=str,
+        required=False,
+        choices=['int8', 'uint8'],
+        default='int8',
+        help="Whether to quantize in int8 or uint8.")
     parser.add_argument('--static',
                         required=True,
                         type=lambda x:
@@ -318,9 +328,10 @@ def main():
     session = onnxruntime.InferenceSession(augmented_model_path, None)
     num_expected_inputs = len(session.get_inputs())
 
-    # Generating inputs for quantization
-    if args.data_preprocess == "None":
-        inputs = load_test_data(images_folder, num_expected_inputs, size_limit)
+    # Get input samples for quantization
+    # If the input folder points to a bunch of protos, use that
+    if not len(glob.glob(os.path.join(images_folder, '*.jpg'))):
+        inputs = load_test_data(images_folder, num_expected_inputs, size_limit, args.data_preprocess)
     else:
         # NOTE: This is currently broken because I changed the format of inputs
         (samples, channels, height, width) = session.get_inputs()[0].shape
@@ -335,13 +346,15 @@ def main():
     quantization_params_dict = calculate_quantization_params(
         model,
         quantization_thresholds=dict_for_quantization,
-        static=args.static)
+        static=args.static, mode=args.mode)
     print(quantization_params_dict)
     calibrated_quantized_model = quantize(
         onnx.load(model_path),
         quantization_mode=QuantizationMode.QLinearOps,
         quantization_params=quantization_params_dict,
-        static=args.static)
+        static=args.static,
+        symmetric_activation = args.mode == 'int8',
+        symmetric_weight = args.mode == 'int8')
     onnx.save(calibrated_quantized_model, output_model_path)
 
     print("Calibrated, quantized model saved.")
