@@ -178,7 +178,6 @@ int main(int argc, char* argv[]) {
   
   float *input_tensor_values = new float[input_tensor_size];
 
-  bool caffePreprocess = cmd["preprocess"].as<std::string>() == "caffe";
   
   for (int i = 0; i < 224; i++) {
     for (int j = 0; j < 224; j++) {
@@ -186,10 +185,15 @@ int main(int argc, char* argv[]) {
       unsigned char g = *(data++);
       unsigned char b = *(data++);
 
-      if (caffePreprocess) {
+      if (cmd["preprocess"].as<std::string>() == "caffe2") {
         input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
         input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
         input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;  
+      } 
+      else if (cmd["preprocess"].as<std::string>() == "caffe") {
+        input_tensor_values[(0*224 + i)*224 + j] = (b - 123.68)*0.017;
+        input_tensor_values[(1*224 + i)*224 + j] = (g - 116.78)*0.017;
+        input_tensor_values[(2*224 + i)*224 + j] = (r - 103.94)*0.017;  
       } else {
         input_tensor_values[(0*224 + i)*224 + j] = ((*(data++))/255.0 - 0.485)/0.229;
         input_tensor_values[(1*224 + i)*224 + j] = ((*(data++))/255.0 - 0.456)/0.224;

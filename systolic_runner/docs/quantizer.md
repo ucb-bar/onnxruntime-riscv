@@ -36,6 +36,10 @@ Because ONNX lacks a Relu capable of handled quantized types, we insert our own 
 
 Note that while the QLinearRelu insertion *could* be done in an onnxruntime pass similar to NHWC insertion, we would lack information on the scale of the output from the Relu if there was no QuantizeLinear node immediately following the Relu. As such, we would have rely on the scale of the input to the DequantizeLinear before the Relu as an estimate, which might not necessarily be correct if the scale values were not calculated accounting for this as described in the previous paragraph. (Especially if the distribution of the inputs is heavily skewed negative). Thus, to ensure accuracy it's better to perform this in the quantizer script where we have access to the outputs of each layer.
 
+TODO: Implement the node fusion (at the systolic provider level) for the case of QLinearConv + Dequantize + Relu + Requantize
+
+This should at least most of the cases (e.g. Mobilenet) and will be useful for models exported from Pytorch
+
 ## Example
 
 Consider the following snippet from the grpah of Googlenet:
