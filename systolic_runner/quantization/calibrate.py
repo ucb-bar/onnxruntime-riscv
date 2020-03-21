@@ -17,7 +17,7 @@ import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
 from quantize import quantize, QuantizationMode
-from data_preprocess import load_batch, preprocess_method1_raw
+from data_preprocess import load_batch, preprocess_method1_raw, preprocess_caffe_raw
 
 import re
 import subprocess
@@ -182,7 +182,7 @@ def calculate_scale_zeropoint(next_nodes, rmin, rmax, mode):
 
     if mode == 'int8':
         max_range = max(abs(rmin), abs(rmax))
-        scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
+        scale = (np.float32(max_range)) / 127 if rmin != rmax else 1
         zero_point = np.int8(0)
     else:
         scale = np.float32((rmax - rmin)/255 if rmin != rmax else 1)
@@ -265,6 +265,8 @@ def load_single_test_data(test_data_dir, num_expected_inputs, preprocess_method)
         tensor = numpy_helper.to_array(tensor)
         if preprocess_method == 'imagenet':
             tensor = preprocess_method1_raw(tensor)
+        elif preprocess_method == 'caffe':
+            tensor = preprocess_caffe_raw(tensor)
         inputs.append(tensor)
     return inputs
 
@@ -298,7 +300,7 @@ def main():
         '--data_preprocess',
         type=str,
         required=True,
-        choices=['imagenet', 'preprocess_method1', 'preprocess_method2', 'None'],
+        choices=['imagenet', 'caffe', 'preprocess_method1', 'preprocess_method2', 'None'],
         help="Refer to Readme.md for guidance on choosing this option.")
     parser.add_argument(
         '--mode',

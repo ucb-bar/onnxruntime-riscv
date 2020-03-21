@@ -2,6 +2,9 @@
 
 inline int nearestPowerOfTwo(int n)
 {
+    if (n == 0) {
+      return 1;
+    }
     int v = n; 
     v--;
     v |= v >> 1;

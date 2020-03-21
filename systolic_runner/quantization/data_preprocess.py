@@ -46,6 +46,16 @@ def preprocess_method1_raw(raw_image):
     b_channel = ((b_channel/255.0) - 0.406)/0.225
     return np.stack([r_channel, g_channel, b_channel], axis=1)
 
+def preprocess_caffe_raw(raw_image):
+    r_channel = raw_image[:, 0, :, :]
+    g_channel = raw_image[:, 1, :, :]
+    b_channel = raw_image[:, 2, :, :]
+
+    r_channel = (r_channel - 103.94)*0.017
+    g_channel = (g_channel - 116.78)*0.017
+    b_channel = (b_channel - 123.68)*0.017
+    return np.stack([b_channel, g_channel, r_channel], axis=1)
+
 def preprocess_method2(image_filepath, height, width):
     '''
     Resizes and normalizes image to NCHW format. 
