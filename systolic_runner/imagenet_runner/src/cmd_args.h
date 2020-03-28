@@ -11,8 +11,8 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
     options.add_options("Required")
         ("m,model", "ONNX model path", cxxopts::value<std::string>(), "[path]")
         ("i,image", "Image path", cxxopts::value<std::string>(), "[path]")
-        ("p,preprocess", "Preprocessing mode. Either 'caffe' or 'mxnet'. "
-                          "Alexnet, googlenet, etc. are caffe derived models", cxxopts::value<std::string>(), "[caffe/mxnet]")
+        ("p,preprocess", "Preprocessing mode. Either 'caffe2', 'caffe' or 'mxnet'. "
+                          "Alexnet, googlenet, etc. are caffe2 derived models", cxxopts::value<std::string>(), "[caffe/mxnet]")
         ("x,execution", "Systolic execution mode. Either 0, 1, or 2 (CPU, OS, WS).", cxxopts::value<int>(), "[0/1/2]");
 
     options.add_options("Optional")
