@@ -123,6 +123,11 @@ Use the individual flags to only run the specified stages.
     parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
 
+    parser.add_argument("--ios", action='store_true', help="build for ios")
+    parser.add_argument("--ios_sysroot", default="", help="Path to ios sysroot")
+    parser.add_argument("--ios_toolchain_dir", default="", help="Path to ios toolchain binaries")
+
+
     # Arguments needed by CI
     parser.add_argument("--cmake_path", default="cmake", help="Path to the CMake program.")
     parser.add_argument("--ctest_path", default="ctest", help="Path to the CTest program.")
@@ -347,7 +352,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                  "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
                  "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
                  "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
-                 "-Donnxruntime_ENABLE_WCOS=" + ("ON" if args.enable_wcos else "OFF"),
                  "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
                  ]
 
@@ -378,6 +382,23 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
                 "-DANDROID_PLATFORM=android-" + str(args.android_api),
                 "-DANDROID_ABI=" + str(args.android_abi)]
+
+    if args.ios:
+        needed_args = [args.ios_sysroot, args.arm64 or args.arm, args.ios_toolchain_dir]
+        arg_names = ["--ios_sysroot <path to sysroot>", "--arm or --arm64", "--ios_toolchain_dir <path to toolchain>"]
+        if not all(needed_args):
+            raise BuildError("iOS build canceled due to missing arguments: " + ', '.join(val for val, cond in zip(arg_names, needed_args) if not cond))
+        compilers = sorted(glob.glob(args.ios_toolchain_dir + "/bin/*-clang*"))
+        os.environ["PATH"] = os.path.join(args.ios_toolchain_dir, "bin") + os.pathsep + os.environ.get("PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = os.path.join(args.ios_toolchain_dir, "/lib") + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+        if len(compilers) != 2:
+            raise BuildError("error identifying compilers in ios_toolchain_dir")
+        cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + ("arm64" if args.arm64 else "arm"),
+                       "-DCMAKE_SYSTEM_NAME=iOSCross",
+                       "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
+                       "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+                       "-DCMAKE_C_COMPILER=" + compilers[0],
+                       "-DCMAKE_CXX_COMPILER=" + compilers[1]]
 
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
@@ -616,6 +637,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs, enab
             executables = ['onnxruntime_test_all.exe']
             if args.build_shared_lib:
                 executables.append('onnxruntime_shared_lib_test.exe')
+                executables.append('onnxruntime_global_thread_pools_test.exe')
             run_subprocess(['vstest.console.exe', '--parallel', '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common', '/Logger:trx','/Enablecodecoverage','/Platform:x64',"/Settings:%s" % os.path.join(source_dir, 'cmake\\codeconv.runsettings')] + executables,
                        cwd=cwd2, dll_path=dll_path)
         else:

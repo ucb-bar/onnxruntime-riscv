@@ -19,6 +19,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include <cmath>
 
 #if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_SSE2_INTRINSICS)
 

@@ -185,16 +185,15 @@ static inline float ErfInv(float x) {
 }
 
 //https://www.csie.ntu.edu.tw/~cjlin/papers/svmprob/svmprob.pdf
-static inline void multiclass_probability(int64_t classcount, const std::vector<float>& r, std::vector<float>& p) {
+static inline void multiclass_probability(int64_t classcount,
+                                          const gsl::span<const float>& r,
+                                          const gsl::span<float>& p) {
   int64_t sized2 = classcount * classcount;
   std::vector<float> Q;
   std::vector<float> Qp;
-  for (int64_t k = 0; k < sized2; k++) {
-    Q.push_back(0);
-  }
-  for (int64_t k = 0; k < classcount; k++) {
-    Qp.push_back(0);
-  }
+  Q.assign(sized2, 0.f);
+  Qp.assign(classcount, 0.f);
+
   float eps = 0.005f / static_cast<float>(classcount);
   for (int64_t i = 0; i < classcount; i++) {
     p[i] = 1.0f / static_cast<float>(classcount);  // Valid if k = 1
@@ -207,6 +206,7 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
       Q[i * classcount + j] = -r[j * classcount + i] * r[i * classcount + j];
     }
   }
+
   for (int64_t loop = 0; loop < 100; loop++) {
     // stopping condition, recalculate QP,pQP for numerical accuracy
     float pQp = 0;
@@ -217,6 +217,7 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
       }
       pQp += p[i] * Qp[i];
     }
+
     float max_error = 0;
     for (int64_t i = 0; i < classcount; i++) {
       float error = std::fabs(Qp[i] - pQp);
@@ -224,7 +225,9 @@ static inline void multiclass_probability(int64_t classcount, const std::vector<
         max_error = error;
       }
     }
-    if (max_error < eps) break;
+
+    if (max_error < eps)
+      break;
 
     for (int64_t i = 0; i < classcount; i++) {
       float diff = (-Qp[i] + pQp) / Q[i * classcount + i];
@@ -254,58 +257,62 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
   return 1 - ComputeLogistic(val);  // ref: https://github.com/arnaudsj/libsvm/blob/eaaefac5ebd32d0e07902e1ae740e038eaaf0826/svm.cpp#L1818
 }
 
-static inline void ComputeSoftmax(const gsl::span<float>& values) {
+template <typename T>
+static inline void ComputeSoftmax(const gsl::span<T>& values) {
   // TODO: Replace this with usage of code in Softmax operator
 
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
   }
   float this_sum = 0.f;
-  for (float& value : values) {
-    value = std::exp(value - v_max);
-    this_sum += value;
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    *it = std::exp(static_cast<float>(*it) - v_max);
+    this_sum += static_cast<float>(*it);
   }
-  for (float& value : values)
-    value /= this_sum;
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = static_cast<float>(*it) / this_sum;
 }
 
-static inline void ComputeSoftmax(std::vector<float>& values) {
+template <typename T>
+static inline void ComputeSoftmax(std::vector<T>& values) {
   auto span = gsl::make_span(values);
   ComputeSoftmax(span);
 }
 
 //this function skips zero values (since exp(0) is non zero)
-static inline void ComputeSoftmaxZero(const gsl::span<float>& values) {
+template <typename T>
+static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (float value : values) {
-    if (value > v_max)
-      v_max = value;
+  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+    if (static_cast<float>(*it) > v_max)
+      v_max = static_cast<float>(*it);
   }
   float exp_neg_v_max = std::exp(-v_max);
   float this_sum = 0.f;
-  for (float& value : values) {
-    if (value > 0.0000001f || value < -0.0000001f) {
-      value = std::exp(value - v_max);
-      this_sum += value;
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    if (static_cast<float>(*it) > 0.0000001f || static_cast<float>(*it) < -0.0000001f) {
+      *it = std::exp(static_cast<float>(*it) - v_max);
+      this_sum += static_cast<float>(*it);
     } else {
-      value *= exp_neg_v_max;
+      *it = static_cast<float>(*it) * exp_neg_v_max;
     }
   }
-  for (float& value : values)
-    value /= this_sum;
+  for (auto it = values.begin(); it != values.end(); ++it)
+    *it = *it / this_sum;
 }
 
-static inline void ComputeSoftmaxZero(std::vector<float>& values) {
+template <typename T>
+static inline void ComputeSoftmaxZero(std::vector<T>& values) {
   auto span = gsl::make_span(values);
   ComputeSoftmaxZero(span);
 }
 
-template <typename T>
-static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform,
+template <typename T, typename IT>
+static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
                          T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
@@ -319,15 +326,18 @@ static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transf
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX:
         ComputeSoftmax(scores);
-        memcpy(Z, scores.data(), scores.size() * sizeof(T));
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
         ComputeSoftmaxZero(scores);
-        memcpy(Z, scores.data(), scores.size() * sizeof(T));
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
       default:
       case POST_EVAL_TRANSFORM::NONE:
-        memcpy(Z, scores.data(), scores.size() * sizeof(T));
+        for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
+          *Z = static_cast<T>(*it);
         break;
     }
   } else if (scores.size() == 1) {  //binary case
@@ -351,7 +361,8 @@ static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transf
         case 2:
         case 3:  //2 = mixed weights, winning class is positive
           if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
-            scores.push_back(static_cast<T>(ComputeLogistic(static_cast<float>(scores[0]))));
+            scores.resize(2);
+            scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
             scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
           } else {
             scores.push_back(scores[0]);
@@ -386,7 +397,8 @@ static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transf
 //       was seen from testing with the arbitrary values of 1000 scores per threads.
 template <typename T>
 void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, int64_t batch_size,
-                                   POST_EVAL_TRANSFORM post_transform, int add_second_class,
+                                   POST_EVAL_TRANSFORM post_transform,
+                                   int add_second_class, bool have_space_for_second_class,
                                    concurrency::ThreadPool* threadpool) {
   if (batch_size < 1)
     return;
@@ -476,12 +488,22 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
           ORT_THROW("Unexpected value for 'add_second_class' of ", add_second_class);
       }
 
-      const float* cur_in = s_end;
-      float* cur_out = &*scores.end();
-      while (cur_in > s) {
-        --cur_in;
-        cur_out -= 2;
-        update_scores(*cur_in, cur_out);
+      if (have_space_for_second_class) {
+        // forward iteration as there's a gap between each score to write into
+        float* cur_score = scores.data();
+        for (int i = 0; i < num_batches; ++i) {
+          update_scores(*cur_score, cur_score);
+          cur_score += 2;
+        }
+      } else {
+        // reverse iteration as the scores are packed together and each score needs to be expanded to two
+        const float* cur_in = s_end;
+        float* cur_out = &*scores.end();
+        while (cur_in > s) {
+          --cur_in;
+          cur_out -= 2;
+          update_scores(*cur_in, cur_out);
+        }
       }
     }
   }
