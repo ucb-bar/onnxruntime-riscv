@@ -9,11 +9,12 @@ fi
 
 # I clearly have no idea how to actually write bash scripts.
 echo $1
-root_path=../../
+root_path="`cd "../../";pwd`"
 build_path=${root_path}/build/${release_path}
 
 # Download fresh clang if we don't have it
 if [ ! -d "${root_path}/build/llvm" ]; then
+    echo "Downloading clang..."
 	mkdir -p "${root_path}/build/llvm"
 	curl --location "https://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz" --output "${root_path}/build/llvm/llvm.tar.xz"
 	cd ${root_path}/build/llvm
@@ -25,13 +26,11 @@ cd $DIR
 
 # Download fresh clang if we don't have it
 if [ ! -d "Halide/bin" ]; then
-	mkdir -p "${root_path}/build/llvm"
-	curl --location "https://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz" --output "${root_path}/build/llvm/llvm.tar.xz"
-	cd "Halide"
+    cd "Halide"
+    echo "Building Halide..."
     export LLVM_CONFIG="${root_path}/build/llvm/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04/bin/llvm-config"
-    make
+    make -j16
 fi
-
 
 # Build the custom op lib
 # riscv64-unknown-linux-gnu-g++ -fPIC -DDISABLE_CONTRIB_OPS -DEIGEN_MPL2_ONLY -DPLATFORM_POSIX -DUSE_EIGEN_FOR_BLAS -DUSE_SYSTOLIC=1 \
