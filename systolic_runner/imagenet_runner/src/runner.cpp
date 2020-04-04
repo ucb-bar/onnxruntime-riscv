@@ -7,6 +7,9 @@
 #include <vector>
 #include <systolic/systolic_provider_factory.h>
 #include <onnxruntime_cxx_api.h>
+#ifdef USE_CUSTOM_OP_LIBRARY
+#include "custom_op_library.h"
+#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -59,6 +62,13 @@ int main(int argc, char* argv[]) {
   if (cmd.count("save_model")) {
     session_options.SetOptimizedModelFilePath(cmd["save_model"].as<std::string>().c_str());
   }
+
+#ifdef USE_CUSTOM_OP_LIBRARY
+  if (cmd.count("kernel")) {
+    printf("Loading custom kernel\n");
+    Ort::ThrowOnError(RegisterCustomOps((OrtSessionOptions*) session_options, OrtGetApiBase()));
+  }
+#endif
 
   //*************************************************************************
   // create session and load model into memory

@@ -37,46 +37,6 @@ struct KernelOne {
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
 
-    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size()pranavprakash@a6 ~/o/onnxruntime> git show f0dcd84f05946e17e991108efe33db24708a9ea8 | cat
-#include "custom_op_library.h"
-
-#define EXCLUDE_REFERENCE_TO_ORT_DLL
-#include "onnxruntime_cxx_api.h"
-#undef EXCLUDE_REFERENCE_TO_ORT_DLL
-
-#include <vector>
-#include <cmath>
-
-static const char* c_OpDomain = "test.customop";
-
-struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
-    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
-    ort.ReleaseTensorTypeAndShapeInfo(info);
-  }
-};
-
-
-struct KernelOne {
-  KernelOne(OrtApi api)
-     :api_(api),
-     ort_(api_)
-  {
-  }
-
-  void Compute(OrtKernelContext* context) {
-    printf("Called into custom op library\n");
-
-    // Setup inputs
-    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    const float* X = ort_.GetTensorData<float>(input_X);
-    const float* Y = ort_.GetTensorData<float>(input_Y);
-
-    // Setup output
-    OrtTensorDimensions dimensions(ort_, input_X);
-
     OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
     float* out = ort_.GetTensorMutableData<float>(output);
 

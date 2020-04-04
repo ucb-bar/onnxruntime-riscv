@@ -16,6 +16,9 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
         ("x,execution", "Systolic execution mode. Either 0, 1, or 2 (CPU, OS, WS).", cxxopts::value<int>(), "[0/1/2]");
 
     options.add_options("Optional")
+#ifdef USE_CUSTOM_OP_LIBRARY
+        ("k,kernel", "Use custom kernels",  cxxopts::value<bool>()->default_value("false"), "[output path]")
+#endif
         ("t,trace", "Profiling trace output file", cxxopts::value<std::string>(), "[output path]")
         ("O,optimization", "Optimization level. NHWC transformation is applied at level 1.",
                             cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")

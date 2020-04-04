@@ -1,3 +1,4 @@
 *.json
 **/ort_test
 quantization/models/*
+halide_interop/model_converter/generated/*

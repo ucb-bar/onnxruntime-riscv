@@ -12,7 +12,7 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
         ("m,model", "ONNX model path", cxxopts::value<std::string>(), "[path]");
 
     options.add_options("Optional")
-        ("k,kernel", "Use custom kernels",  cxxopts::value<bool>()->default_value(false), "[output path]"),
+        ("k,kernel", "Use custom kernels",  cxxopts::value<bool>()->default_value("false"), "[output path]")
         ("t,trace", "Profiling trace output file", cxxopts::value<std::string>(), "[output path]")
         ("O,optimization", "Optimization level. NHWC transformation is applied at level 1.",
                             cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")
