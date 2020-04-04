@@ -30,7 +30,11 @@ if [ ! -d "Halide/bin" ]; then
     echo "Building Halide..."
     export LLVM_CONFIG="${root_path}/build/llvm/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04/bin/llvm-config"
     make -j16
+    cd "apps/onnx"
+    make model_test
 fi
+
+cd $DIR
 
 # Build the custom op lib
 # riscv64-unknown-linux-gnu-g++ -fPIC -DDISABLE_CONTRIB_OPS -DEIGEN_MPL2_ONLY -DPLATFORM_POSIX -DUSE_EIGEN_FOR_BLAS -DUSE_SYSTOLIC=1 \
