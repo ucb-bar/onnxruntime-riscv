@@ -30,6 +30,10 @@ if [ ! -d "Halide/bin" ]; then
     echo "Building Halide..."
     export LLVM_CONFIG="${root_path}/build/llvm/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-16.04/bin/llvm-config"
     make -j16
+    make "bin/runtime.generator"
+    cd bin
+    ./runtime.generator -r halide_runtime -o . target="riscv-64-linux"
+    cd ..
     cd "apps/onnx"
     make model_test
 fi

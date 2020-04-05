@@ -13,7 +13,8 @@ extra_libs=""
 extra_defs=""
 if [ -f "${root_path}/systolic_runner/halide_interop/model_converter/generated/libcustom.a" ]; then
     echo "Found custom lib. Building with support for loading it."
-    extra_libs="${root_path}/systolic_runner/halide_interop/model_converter/generated/libcustom.a"
+    extra_libs="${root_path}/systolic_runner/halide_interop/model_converter/generated/libcustom.a \
+                ${root_path}/systolic_runner/halide_interop/Halide/bin/halide_runtime.a"
     extra_defs="-DUSE_CUSTOM_OP_LIBRARY"
 fi
 

@@ -1,6 +1,6 @@
 from model import Model
 from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, shape_inference
 import onnx.utils
 import numpy as np
 import argparse
@@ -10,7 +10,7 @@ import cpp_templates
 from cpp_templates import header, kernel_def, op_def, register_single, register, custom_format
 from onnx_types import VI
 
-NODES_TO_HALIDE = ['LRN', 'MaxPool']
+NODES_TO_HALIDE = ['LRN', 'MaxPool', 'Relu']
 GENERATED_PREFIX = "./generated/"
 
 value_info_dict = {}
@@ -61,7 +61,7 @@ def gen_file(node):
         if output not in value_info_dict:
             raise ValueError("Could not infer shape for {}".format(output))
 
-    node_name = hash_dn(node.op_type + ''.join(node.input) + ''.join(node.output))
+    node_name = node.op_type + "_"+ hash_dn(node.op_type + ''.join(node.input) + ''.join(node.output))
 
     graph_def = helper.make_graph([node], node_name, [value_info_dict[inp] for inp in node.input],
                                   [value_info_dict[output] for output in node.output])
@@ -79,6 +79,61 @@ def gen_file(node):
     op_specs += [build_opspec(node_name, node.input, node.output)]
     node_names += [node_name]
 
+def add_value_info_for_constants(model : onnx.ModelProto):
+    """
+    Currently onnx.shape_inference doesn't use the shape of initializers, so add
+    that info explicitly as ValueInfoProtos.
+    Mutates the model.
+    Args:
+        model: The ModelProto to update.
+    """
+    # All (top-level) constants will have ValueInfos before IRv4 as they are all inputs
+    if model.ir_version < 4:
+        return
+
+    def add_const_value_infos_to_graph(graph : onnx.GraphProto):
+        inputs = {i.name for i in graph.input}
+        existing_info = {vi.name: vi for vi in graph.value_info}
+        for init in graph.initializer:
+            # Check it really is a constant, not an input
+            if init.name in inputs:
+                continue
+
+            # The details we want to add
+            elem_type = init.data_type
+            shape = init.dims
+
+            # Get existing or create new value info for this constant
+            vi = existing_info.get(init.name)
+            if vi is None:
+                vi = graph.value_info.add()
+                vi.name = init.name
+
+            # Even though it would be weird, we will not overwrite info even if it doesn't match
+            tt = vi.type.tensor_type
+            if tt.elem_type == onnx.TensorProto.UNDEFINED:
+                tt.elem_type = elem_type
+            if not tt.HasField("shape"):
+                # Ensure we set an empty list if the const is scalar (zero dims)
+                tt.shape.dim.extend([])
+                for dim in shape:
+                    tt.shape.dim.add().dim_value = dim
+
+        # Handle subgraphs
+        for node in graph.node:
+            for attr in node.attribute:
+                # Ref attrs refer to other attrs, so we don't need to do anything
+                if attr.ref_attr_name != "":
+                    continue
+
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    add_const_value_infos_to_graph(attr.g)
+                if attr.type == onnx.AttributeProto.GRAPHS:
+                    for g in attr.graphs:
+                        add_const_value_infos_to_graph(g)
+
+
+    add_const_value_infos_to_graph(model.graph)
 
 
 def main():
@@ -94,14 +149,20 @@ def main():
         print ('Error: Creating directory. ' +  GENERATED_PREFIX)
 
     model = onnx.load(args.model_path)
-    polished_model = onnx.utils.polish_model(model)
+    if model.ir_version <= 3:
+        model.ir_version = 4
+    add_value_info_for_constants(model)
+    if len(model.opset_import) == 1:
+        model.opset_import.append(helper.make_operatorsetid("", 10))
+    polished_model = shape_inference.infer_shapes(model)
     name_to_value_info = {x.name: x for x in polished_model.graph.value_info}
     input_value_info = {x.name : x for x in polished_model.graph.input}
     output_value_info = {x.name : x for x in polished_model.graph.output}
 
     value_info_dict = {**name_to_value_info, **input_value_info, **output_value_info}
-    gen_file(polished_model.graph.node[0])
-    gen_file(polished_model.graph.node[1])
+    for idx, node in enumerate(polished_model.graph.node):
+        if node.op_type in NODES_TO_HALIDE:
+            gen_file(node)
 
     with open(GENERATED_PREFIX + "custom_op_library.cc", "w+") as f:
         f.write(header)
