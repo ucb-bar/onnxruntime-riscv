@@ -10,7 +10,7 @@ import cpp_templates
 from cpp_templates import header, kernel_def, op_def, register_single, register, custom_format
 from onnx_types import VI
 
-NODES_TO_HALIDE = ['LRN', 'MaxPool', 'Relu']
+NODES_TO_HALIDE = ['LRN', 'MaxPool', 'Relu', 'Add']
 GENERATED_PREFIX = "./generated/"
 
 value_info_dict = {}
@@ -136,24 +136,27 @@ def add_value_info_for_constants(model : onnx.ModelProto):
     add_const_value_infos_to_graph(model.graph)
 
 
-def main():
+def main(model=None):
     global value_info_dict
-    parser = argparse.ArgumentParser(description='input model path')
-    parser.add_argument('--model_path', required=True)
-    args = parser.parse_args()
 
     try:
         if not os.path.exists(GENERATED_PREFIX):
             os.makedirs(GENERATED_PREFIX)
     except OSError:
         print ('Error: Creating directory. ' +  GENERATED_PREFIX)
+        
+    if model is None:
+        parser = argparse.ArgumentParser(description='input model path')
+        parser.add_argument('--model_path', required=True)
+        args = parser.parse_args()
 
-    model = onnx.load(args.model_path)
-    if model.ir_version <= 3:
-        model.ir_version = 4
-    add_value_info_for_constants(model)
-    if len(model.opset_import) == 1:
-        model.opset_import.append(helper.make_operatorsetid("", 10))
+        model = onnx.load(args.model_path)
+        if model.ir_version <= 3:
+            model.ir_version = 4
+        add_value_info_for_constants(model)
+        if len(model.opset_import) == 1:
+            model.opset_import.append(helper.make_operatorsetid("", 10))
+
     polished_model = shape_inference.infer_shapes(model)
     name_to_value_info = {x.name: x for x in polished_model.graph.value_info}
     input_value_info = {x.name : x for x in polished_model.graph.input}
@@ -178,3 +181,19 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+    # A = helper.make_tensor_value_info('A', TensorProto.FLOAT, [1, 64, 112, 112])
+    # B = helper.make_tensor_value_info('B', TensorProto.FLOAT, [1, 64, 112, 112])
+    # # Create one output
+    # C = helper.make_tensor_value_info('C', TensorProto.FLOAT, [1, 64, 112, 112])
+
+    # D = helper.make_tensor_value_info('D', TensorProto.FLOAT, [1, 64, 112, 112])
+    # # Create a node
+    # node_def = helper.make_node('Add', ['A', 'B'], ['C'])
+    # node_def2 = helper.make_node('Relu', ['C'], ['D'])
+
+    # # Create the model
+    # graph_def = helper.make_graph([node_def], "scalar-model", [A, B], [C])
+    # onnx_model = helper.make_model(graph_def, producer_name='onnx-example')
+    # main(onnx_model)
+

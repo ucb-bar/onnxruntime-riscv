@@ -149,9 +149,13 @@ int main(int argc, char* argv[]) {
   //*************************************************************************
   // Score the model using sample data, and inspect values
 
-  float input_tensor_values_1[3] = {1,2,3};
-  float input_tensor_values_2[3] = {4,5,6};
-  int64_t shape[1] = {3};
+  float input_tensor_values_1[1 * 64 * 112 * 112];
+  float input_tensor_values_2[1 * 64 * 112 * 112];
+  for (int i = 0; i < 1 * 64 * 112 * 112; i++) {
+    input_tensor_values_1[i] = 1;
+    input_tensor_values_2[i] = 1;
+  }
+  int64_t shape[4] = {1, 64, 112, 112};
 
   // initialize input data with values in [0.0, 1.0]
   // for (unsigned int i = 0; i < input_tensor_size; i++)
@@ -160,8 +164,8 @@ int main(int argc, char* argv[]) {
   // create input tensor object from data values
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   std::vector<Ort::Value> input_tensors;
-  input_tensors.push_back(Ort::Value::CreateTensor<float>(memory_info, input_tensor_values_1, 3, shape, 1));
-  input_tensors.push_back(Ort::Value::CreateTensor<float>(memory_info, input_tensor_values_2, 3, shape, 1));
+  input_tensors.push_back(Ort::Value::CreateTensor<float>(memory_info, input_tensor_values_1, 1 * 64 * 112 * 112, shape, 4));
+  input_tensors.push_back(Ort::Value::CreateTensor<float>(memory_info, input_tensor_values_2, 1 * 64 * 112 * 112, shape, 4));
   assert(input_tensors[0].IsTensor());
   assert(input_tensors.size() == 2);
 

@@ -24,7 +24,7 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
 
     auto result = options.parse(argc, argv);
 
-    if (result.count("help") || result.arguments().size() < 4) {
+    if (result.count("help")) {
         printf("%s", options.help().c_str());
         exit(0);
     }
