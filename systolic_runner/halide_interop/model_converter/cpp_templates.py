@@ -31,12 +31,22 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
 static const char* c_OpDomain = "test.customop";
 
-std::vector<int32_t> getTensorDims(Ort::CustomOpApi ort, const OrtValue* value) {
+std::vector<halide_dimension_t> getHalideDimsForVector(const std::vector<int64_t> &shape) {
+  // Hacky workaround for fact that halide indexes things differently
+  std::vector<halide_dimension_t> ret(shape.size());
+  int32_t cum = 1;
+  for (int i = shape.size() - 1; i >= 0; i--) {
+    ret[i] = {0, (int32_t) shape[i], cum};
+    cum *= shape[i];
+  }
+  return ret;
+}
+
+std::vector<halide_dimension_t> getTensorDims(Ort::CustomOpApi ort, const OrtValue* value) {
   OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
   std::vector<int64_t> shape = ort.GetTensorShape(info);
-  std::vector<int32_t> ret(std::begin(shape), std::end(shape));
   ort.ReleaseTensorTypeAndShapeInfo(info);
-  return ret;
+  return getHalideDimsForVector(shape);
 }
 
 template<typename T>
@@ -45,8 +55,8 @@ Halide::Runtime::Buffer<const T> getInBufferForOrtValue(Ort::CustomOpApi ort, co
 }
 
 template<typename T>
-Halide::Runtime::Buffer<T> getOutBufferForOrtValue(Ort::CustomOpApi ort, OrtValue* value, const std::vector<int32_t> &dims) {
-  return Halide::Runtime::Buffer<T>(ort.GetTensorMutableData<T>(value), dims);
+Halide::Runtime::Buffer<T> getOutBufferForOrtValue(Ort::CustomOpApi ort, OrtValue* value, const std::vector<int64_t> &dims) {
+  return Halide::Runtime::Buffer<T>(ort.GetTensorMutableData<T>(value), getHalideDimsForVector(dims));
 }
 """
 
