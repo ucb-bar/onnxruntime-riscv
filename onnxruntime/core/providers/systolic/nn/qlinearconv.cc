@@ -168,14 +168,17 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
 
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
+
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
-  const int64_t X_offset = C / conv_attrs_.group * input_image_size;
-  const int64_t Y_offset = Y->Shape().Size() / Y->Shape()[0] / conv_attrs_.group;
+
+  const int64_t X_offset = C * input_image_size;
+  const int64_t Y_offset = (Y->Shape().Size() / Y->Shape()[0]);
+
   const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
 
   // The col buffer is stored in HWC order as well - the height and width, and
   // kernel_dim.
-  const int64_t col_buffer_size = kernel_dim * output_image_size;
+  const int64_t col_buffer_size = C * output_image_size * kernel_size;
   const int bias_offset = static_cast<int>(M / conv_attrs_.group);
 
   auto col_data = alloc->Alloc(sizeof(int8_t) * col_buffer_size);
@@ -186,72 +189,32 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   ORT_ENFORCE(kernel_rank == 2, "NHWC cannot handle kernel rank other than 2 atm");
 
   for (int image_id = 0; image_id < N; ++image_id) {
+    math::Im2col<int8_t, StorageOrder::NHWC>()(
+        Xdata,
+        C,
+        input_shape[0],
+        input_shape[1],
+        kernel_shape[0],
+        kernel_shape[1],
+        dilations[0],
+        dilations[1],
+        pads[0],
+        pads[1],
+        pads[2],
+        pads[3],
+        strides[0],
+        strides[1],
+        col_buffer_data,
+        conv_attrs_.group,
+        *input_offset->template Data<int8_t>());
+
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       TimePoint start_time;
       if (profiling_enabled) {
         start_time = profiler.StartTime();
       }
-      if (kernel_rank == 2) {
-        math::Im2col<int8_t, StorageOrder::NHWC>()(
-            Xdata + group_id * X_offset,
-            C / conv_attrs_.group,
-            input_shape[0],
-            input_shape[1],
-            kernel_shape[0],
-            kernel_shape[1],
-            dilations[0],
-            dilations[1],
-            pads[0],
-            pads[1],
-            pads[2],
-            pads[3],
-            strides[0],
-            strides[1],
-            col_buffer_data,
-            *input_offset->template Data<int8_t>());
-      } else {
-      }
-
-      // for (long int i = 0; i < col_buffer_size; i++) {
-      //   printf("%d ", col_buffer_data[i]);
-      // }
-      // printf("\n");
-
-      // for (int i = 0; i < static_cast<int>(output_image_size); i++) {
-      //   for (int j = 0; j < static_cast<int>(kernel_dim); j++)
-      //     printf("%d ", col_buffer_data[i * static_cast<int>(kernel_dim) + j]);
-      //   printf("\n");
-      // }
-
-      if (profiling_enabled) {
-        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                       Node().Name() + "_kernel_im2col_time",
-                                       start_time,
-                                       {{"op_name", KernelDef().OpName()},
-                                        {"sub_action", "im2col"},
-                                        {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
-      }
-
 
       const int32_t* bias_data = bias ? bias->template Data<int32_t>() + group_id * bias_offset : nullptr;
-
-      std::string dimension_string;
-      bool fitsSystolic = (static_cast<int>(M / conv_attrs_.group) % 16 == 0) && (static_cast<int>(output_image_size) % 16 == 0) &&
-                          (static_cast<int>(kernel_dim) % 16 == 0);
-
-      if (profiling_enabled) {
-        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                       Node().Name() + "_kernel_bias_splat_time",
-                                       start_time,
-                                       {{"op_name", KernelDef().OpName()},
-                                        {"sub_action", "bias splat"},
-                                        {"provider", KernelDef().Provider()}});
-        dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +
-                           ", " + std::to_string(static_cast<int>(output_image_size)) + ", " +
-                           std::to_string(static_cast<int>(kernel_dim));
-        start_time = profiler.StartTime();
-      }
 
       /* The weights we multiply by are given by the `M / groups` x `kernel_h * kernel_w * C / groups` matrix
        * starting at weights + group_id * (M / groups) * kernel_h * kernel_w * C / groups.
@@ -281,6 +244,10 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                               bias_data, static_cast<int>(M / conv_attrs_.group), /*repeating_bias= */ true);
 
       if (profiling_enabled) {
+        std::string dimension_string;
+        dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +
+                           ", " + std::to_string(static_cast<int>(output_image_size)) + ", " +
+                           std::to_string(static_cast<int>(kernel_dim));
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                        Node().Name() + "_kernel_matmul_time",
                                        start_time,
@@ -288,7 +255,6 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                                         {"sub_action", "matmul"},
                                         {"relu_fused", fused_relu_ ? "yes" : "no"},
                                         {"dimensions", dimension_string},
-                                        {"fits_systolic", fitsSystolic ? "yes" : "no"},
                                         {"provider", KernelDef().Provider()}});
       }
 
@@ -302,8 +268,8 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
       //               broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
     }
 
-    Xdata += X_offset * conv_attrs_.group;
-    Ydata += Y_offset * conv_attrs_.group;
+    Xdata += X_offset;
+    Ydata += Y_offset;
   }
 
   return Status::OK();
