@@ -165,6 +165,13 @@ if (onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_nnapi_src})
 endif()
 
+if (onnxruntime_USE_SYSTOLIC)
+  file(GLOB_RECURSE onnxruntime_test_providers_systolic_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/systolic/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_systolic_src})
+endif()
+
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${ONNXRUNTIME_ROOT}/test/global_thread_pools")
 
@@ -247,6 +254,10 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
+if(onnxruntime_USE_SYSTOLIC)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_systolic)
+endif()
+
 if(onnxruntime_USE_FEATURIZERS)
    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_featurizers)
    list(APPEND onnxruntime_test_providers_libs onnxruntime_featurizers re2)
@@ -301,6 +312,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_OPENVINO}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_SYSTOLIC}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_SYSTOLIC}
@@ -332,6 +344,13 @@ if(onnxruntime_USE_NNAPI)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_SYSTOLIC)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/systolic/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_systolic)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_systolic)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_systolic)
 endif()
 
 if(WIN32)

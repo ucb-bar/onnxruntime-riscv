@@ -202,6 +202,7 @@ struct Im2col<T, StorageOrder::NHWC> {
       int64_t stride_h,
       int64_t stride_w,
       T* data_col,
+      int64_t groups,
       T padding_value = 0);
 };
 

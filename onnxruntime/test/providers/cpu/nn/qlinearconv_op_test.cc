@@ -750,36 +750,6 @@ TEST(ConvTest, QLinearConvSignedTiny2DTest) {
   test.Run();
 }
 
-TEST(ConvTest, QLinearConvNHWCSignedTiny2DTest) {
-  OpTester test("QLinearConv_nhwc", 10);
-
-  std::vector<int8_t> X = {110, 35, 111, 107, 5, 79, 103, 5, 12, 123, 34, 40, 41, 102, 33, 117, 109, 73, 51, 123, 6, 126, 56, 111, 111};
-  std::vector<int64_t> X_shape = {1, 5, 5, 1};
-
-  std::vector<int8_t> W = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-  std::vector<int64_t> W_shape = {1, 4, 4, 1};
-
-  std::vector<int8_t> expected_vals = {10, 9, 9, 10};
-  std::vector<int64_t> Y_shape = {1, 2, 2, 1};
-
-  test.AddInput<int8_t>("x", X_shape, X);
-  test.AddInput<float>("x_scale", {}, {1});
-  test.AddInput<int8_t>("x_zero_point", {}, {0});
-
-  test.AddInput<int8_t>("w", W_shape, W);
-  test.AddInput<float>("w_scale", {}, {1});
-  test.AddInput<int8_t>("w_zero_point", {}, {0});
-
-  test.AddInput<float>("y_scale", {}, {128});
-  test.AddInput<int8_t>("y_zero_point", {}, {0});
-
-  test.AddInput<int32_t>("B", {1}, {100});
-
-  test.AddOutput<int8_t>("y", Y_shape, expected_vals);
-
-  test.Run();
-}
-
 TEST(QLinearConvTest, Conv2DTest) {
   QuantizedTensor X({0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
                      0.2626858949661255f, 0.13414543867111206f, -0.27184486389160156f, -0.43028733134269714f,

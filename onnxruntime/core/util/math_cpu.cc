@@ -329,35 +329,55 @@ template struct Im2col<int8_t, StorageOrder::NCHW>;
 
 template <typename T>
 void Im2col<T, StorageOrder::NHWC>::operator()(const T* data_im, int64_t channels, int64_t height,
-                                                   int64_t width, int64_t kernel_h, int64_t kernel_w,
-                                                   int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
-                                                   int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
-                                                   int64_t stride_w, T* data_col, T padding_value) {
+                                               int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                               int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                               int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                               int64_t stride_w, T* data_col, const int64_t groups, T padding_value) {
+  /* https://github.com/pytorch/pytorch/blob/master/caffe2/quantization/server/im2col_dnnlowp.h#L186 */
+  /* https://github.com/pytorch/pytorch/blob/master/caffe2/utils/math_cpu.cc#L2383 */
+
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
   int64_t height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
   int64_t width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
 
-  int64_t h_pad = -pad_t;
-  for (int64_t h = 0; h < height_col; ++h) {
-    int64_t w_pad = -pad_l;
-    for (int64_t w = 0; w < width_col; ++w) {
-      for (int64_t ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h) {
-        for (int64_t iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w) {
+  for (int h = 0; h < height_col; ++h) {
+    int h_pad = -pad_t + h * stride_h;
+    T* data_col_temp =
+        data_col + h * width_col * kernel_h * kernel_w * channels;
+    int w_pad = -pad_l;
+    for (int w = 0; w < width_col; ++w) {
+      int r = 0;
+      for (int ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h, ++r) {
+        int s = 0;
+        for (int iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w, ++s) {
           if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            memcpy(data_col, data_im + (ih * width + iw) * channels,
-                   sizeof(T) * channels);
+            for (int g = 0; g < groups; ++g) {
+              memcpy(
+                  data_col_temp +
+                      ((g * kernel_h + r) * kernel_w + s) * (channels / groups),
+                  data_im + (ih * width + iw) * channels +
+                      g * (channels / groups),
+                  sizeof(T) * (channels / groups));
+            }
           } else {
-            std::fill_n(data_col, channels, padding_value);
+            // This should be simply padded with zero.
+            for (int g = 0; g < groups; ++g) {
+              for (int i = 0; i < channels / groups; ++i) {
+                data_col_temp
+                    [(((g * kernel_h + r) * kernel_w) + s) *
+                         (channels / groups) +
+                     i] = padding_value;
+              }
+            }
           }
-          data_col += channels;
-        }
-      }
+        }  // for each iw
+      }    // for each ih
+      data_col_temp += kernel_h * kernel_w * channels;
       w_pad += stride_w;
-    }
-    h_pad += stride_h;
-  }
+    }  // for each output pixel
+  }    // for each image row
 }
 
 template struct Im2col<int8_t, StorageOrder::NHWC>;
@@ -472,6 +492,7 @@ void Col2im<float, CPUMathUtil, StorageOrder::NHWC>(const float* data_col, int64
                                                     int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
                                                     int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
                                                     int64_t stride_w, float* data_im, CPUMathUtil* context) {
+  /* THIS IMPLEMENTATION IS BROKEN. LOOK AT github.com/pytorch/pytorch/blob/master/caffe2/utils/math_cpu.cc */
   const int64_t dkernel_h = dilation_h * (kernel_h - 1) + 1;
   const int64_t dkernel_w = dilation_w * (kernel_w - 1) + 1;
 
