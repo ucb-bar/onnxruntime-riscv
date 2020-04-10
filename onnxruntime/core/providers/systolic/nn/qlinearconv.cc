@@ -78,49 +78,46 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   const auto* W = context->Input<Tensor>(3);
 
   // validate offsets
-  auto input_offset = context->Input<Tensor>(2);
-  auto filter_offset = context->Input<Tensor>(5);
-  auto result_offset = context->Input<Tensor>(7);
-  ORT_ENFORCE(IsScalarOr1ElementVector(input_offset),
+  auto X_zero_point = context->Input<Tensor>(2);
+  auto W_zero_point = context->Input<Tensor>(5);
+  auto Y_zero_point = context->Input<Tensor>(7);
+  ORT_ENFORCE(IsScalarOr1ElementVector(X_zero_point),
               "QLinearConv : input zero point must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(filter_offset),
+  ORT_ENFORCE(IsScalarOr1ElementVector(W_zero_point),
               "QLinearConv : filter zero point must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(result_offset),
+  ORT_ENFORCE(IsScalarOr1ElementVector(Y_zero_point),
               "QLinearConv : result zero point must be a scalar or 1D tensor of size 1");
 
-  auto input_offset_data = *(input_offset->template Data<int8_t>());
-  auto filter_offset_data = *(filter_offset->template Data<int8_t>());
-  auto result_offset_data = *(result_offset->template Data<int8_t>());
-  ORT_ENFORCE(input_offset_data == 0, "Systolic can only handle zero offset for input");
-  ORT_ENFORCE(filter_offset_data == 0, "Systolic can only handle zero offset for filter");
-  ORT_ENFORCE(result_offset_data == 0, "Systolic can only handle zero offset for result");
+  auto X_zero_point_value = *(X_zero_point->template Data<int8_t>());
+  auto W_zero_point_value = *(W_zero_point->template Data<int8_t>());
+  auto Y_zero_point_value = *(Y_zero_point->template Data<int8_t>());
+  ORT_ENFORCE(X_zero_point_value == 0, "Systolic can only handle zero offset for input");
+  ORT_ENFORCE(W_zero_point_value == 0, "Systolic can only handle zero offset for filter");
+  ORT_ENFORCE(Y_zero_point_value == 0, "Systolic can only handle zero offset for result");
 
   // validate scale
-  auto input_scale = context->Input<Tensor>(1);
-  auto filter_scale = context->Input<Tensor>(4);
-  auto result_scale = context->Input<Tensor>(6);
-  ORT_ENFORCE(IsScalarOr1ElementVector(input_scale),
+  auto X_scale = context->Input<Tensor>(1);
+  auto W_scale = context->Input<Tensor>(4);
+  auto Y_scale = context->Input<Tensor>(6);
+  ORT_ENFORCE(IsScalarOr1ElementVector(X_scale),
               "QLinearConv : input scale must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(filter_scale),
+  ORT_ENFORCE(IsScalarOr1ElementVector(W_scale),
               "QLinearConv : filter scale must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(result_scale),
+  ORT_ENFORCE(IsScalarOr1ElementVector(Y_scale),
               "QLinearConv : result scale must be a scalar or 1D tensor of size 1");
 
-  auto input_scale_data = *(input_scale->template Data<float>());
-  auto filter_scale_data = *(filter_scale->template Data<float>());
-  auto result_scale_data = *(result_scale->template Data<float>());
+  auto X_scale_value = *(X_scale->template Data<float>());
+  auto W_scale_value = *(W_scale->template Data<float>());
+  auto Y_scale_value = *(Y_scale->template Data<float>());
 
-  ORT_ENFORCE(result_scale_data != 0, "result_scale_data cannot be 0");
-  ORT_ENFORCE(filter_scale_data != 0, "filter_scale_data cannot be 0");
-  ORT_ENFORCE(input_scale_data != 0, "input_scale_data cannot be 0");
-
-  const float real_multiplier = (input_scale_data * filter_scale_data) / result_scale_data;
-  unsigned int rounded_divisor = nearestPowerOfTwo(result_scale_data / (input_scale_data * filter_scale_data));
+  ORT_ENFORCE(Y_scale_value != 0, "Y_scale_value cannot be 0");
+  ORT_ENFORCE(W_scale_value != 0, "W_scale_value cannot be 0");
+  ORT_ENFORCE(X_scale_value != 0, "X_scale_value cannot be 0");
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  const Tensor* bias = nullptr;
+  const Tensor* B = nullptr;
   if (num_inputs == 9) {
-    bias = context->Input<Tensor>(8);
+    B = context->Input<Tensor>(8);
   }
 
   const int64_t N = X->Shape()[0];
@@ -145,91 +142,101 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims_nchw;
-  Y_dims_nchw.insert(Y_dims_nchw.begin(), {N, M});
+  std::vector<int64_t> Y_dims_nchw({N, M});
   TensorShape input_shape = X->Shape().Slice(1, 3);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, &pads, &Y_dims_nchw));
-
   std::vector<int64_t> Y_dims = {Y_dims_nchw[0], Y_dims_nchw[2], Y_dims_nchw[3], Y_dims_nchw[1]};
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   TensorShape output_shape = Y->Shape().Slice(1, 3);
+
+  // Bail out early if one of the dimensions is zero.
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   // fprintf(stderr, "INPUT SHAPE %s\n", input_shape.ToString().c_str());
   // fprintf(stderr, "KERNEL SHAPE %s\n", W->Shape().ToString().c_str());
   // fprintf(stderr, "OUTPUT SHAPE %s\n", Y->Shape().ToString().c_str());
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-
-  const auto* Xdata = X->template Data<int8_t>();
-  auto* Ydata = Y->template MutableData<int8_t>();
-
   const int64_t input_image_size = input_shape.Size();
   const int64_t output_image_size = output_shape.Size();
-
   const int64_t kernel_size = TensorShape(kernel_shape).Size();
-
   const int64_t X_offset = C * input_image_size;
   const int64_t Y_offset = (Y->Shape().Size() / Y->Shape()[0]);
-
+  const int64_t B_offset = static_cast<int>(M / conv_attrs_.group);
   const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
+  const int64_t col_buffer_size = C * output_image_size * kernel_size;
+  
+  const size_t kernel_rank = kernel_shape.size();
+  ORT_ENFORCE(kernel_rank == 2, "NHWC cannot handle kernel rank other than 2 atm");
 
   // The col buffer is stored in HWC order as well - the height and width, and
   // kernel_dim.
-  const int64_t col_buffer_size = C * output_image_size * kernel_size;
-  const int bias_offset = static_cast<int>(M / conv_attrs_.group);
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  
+  BufferUniquePtr col_buffer;
+  
+  if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
+    auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(int8_t)) * col_buffer_size);
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+  } else {
+    printf("1x1 case!\n");
+  }
 
-  auto col_data = alloc->Alloc(sizeof(int8_t) * col_buffer_size);
-  BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
 
-  const size_t kernel_rank = kernel_shape.size();
-  ORT_ENFORCE(kernel_rank == 2, "NHWC cannot handle kernel rank other than 2 atm");
+  const float real_multiplier = (X_scale_value * W_scale_value) / Y_scale_value;
+  unsigned int rounded_divisor = nearestPowerOfTwo(Y_scale_value / (X_scale_value * W_scale_value));
+
+  const auto* Xdata = X->template Data<int8_t>();
+  const auto* Wdata = W->template Data<int8_t>();
+  const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
+  auto* Ydata = Y->template MutableData<int8_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     TimePoint start_time;
     if (profiling_enabled) {
       start_time = profiler.StartTime();
     }
+    if (col_buffer_data != nullptr) {
+      math::Im2col<int8_t, StorageOrder::NHWC>()(
+          Xdata,
+          C,
+          input_shape[0],
+          input_shape[1],
+          kernel_shape[0],
+          kernel_shape[1],
+          dilations[0],
+          dilations[1],
+          pads[0],
+          pads[1],
+          pads[2],
+          pads[3],
+          strides[0],
+          strides[1],
+          col_buffer_data,
+          conv_attrs_.group,
+          X_zero_point_value);
 
-    math::Im2col<int8_t, StorageOrder::NHWC>()(
-        Xdata,
-        C,
-        input_shape[0],
-        input_shape[1],
-        kernel_shape[0],
-        kernel_shape[1],
-        dilations[0],
-        dilations[1],
-        pads[0],
-        pads[1],
-        pads[2],
-        pads[3],
-        strides[0],
-        strides[1],
-        col_buffer_data,
-        conv_attrs_.group,
-        *input_offset->template Data<int8_t>());
-
-    if (profiling_enabled) {
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     Node().Name() + "_kernel_nhwc_im2col_time",
-                                     start_time,
-                                     {{"op_name", KernelDef().OpName()},
-                                      {"sub_action", "im2col"},
-                                      {"provider", KernelDef().Provider()}});
-      start_time = profiler.StartTime();
+      if (profiling_enabled) {
+        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                      Node().Name() + "_kernel_nhwc_im2col_time",
+                                      start_time,
+                                      {{"op_name", KernelDef().OpName()},
+                                        {"sub_action", "im2col"},
+                                        {"provider", KernelDef().Provider()}});
+        start_time = profiler.StartTime();
+      }
     }
 
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      const int32_t* bias_data = bias ? bias->template Data<int32_t>() + group_id * bias_offset : nullptr;
-
       /* The weights we multiply by are given by the `M / groups` x `kernel_h * kernel_w * C / groups` matrix
        * starting at weights + group_id * (M / groups) * kernel_h * kernel_w * C / groups.
        * 
        * The quantization script will have already transposed this for us
        */
-      const int8_t* weight_base = W->template Data<int8_t>() + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim);
+      const int8_t* weight_base = Wdata + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim);
       // int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
       // for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
       //   for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
@@ -245,11 +252,12 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                               static_cast<int>(output_image_size),
                               static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(kernel_dim),
-                              col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
+                              (col_buffer_data == nullptr ? Xdata : col_buffer_data) + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
                               weight_base, static_cast<int>(M / conv_attrs_.group),
                               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
                               rounded_divisor, real_multiplier,
-                              bias_data, static_cast<int>(M / conv_attrs_.group), /*repeating_bias= */ true);
+                              Bdata != nullptr ?  Bdata + group_id * B_offset : nullptr, static_cast<int>(M / conv_attrs_.group),
+                              /*repeating_bias= */ true);
 
       if (profiling_enabled) {
         std::string dimension_string;
@@ -324,9 +332,9 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
   auto X_scale_value = *(X_scale->template Data<float>());
   auto W_scale_value = *(W_scale->template Data<float>());
   auto Y_scale_value = *(Y_scale->template Data<float>());
-  ORT_ENFORCE(X_scale_value != 0, "input_scale_data cannot be 0");
-  ORT_ENFORCE(W_scale_value != 0, "filter_scale_data cannot be 0");
-  ORT_ENFORCE(Y_scale_value != 0, "result_scale_data cannot be 0");
+  ORT_ENFORCE(X_scale_value != 0, "X_scale_value cannot be 0");
+  ORT_ENFORCE(W_scale_value != 0, "W_scale_value cannot be 0");
+  ORT_ENFORCE(Y_scale_value != 0, "Y_scale_value cannot be 0");
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* B = nullptr;
@@ -396,6 +404,8 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
       col_buffer_shape.push_back(kernel_dim);
       col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
     }
+  } else {
+    printf("1x1 case!\n");
   }
 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
@@ -514,9 +524,9 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
       // GemmlowpDebug(W->template Data<int8_t>() + group_id * W_offset,
       //                   col_buffer_data,
       //                   Ydata + group_id * Y_offset,
-      //                   *filter_offset->template Data<int8_t>(),
-      //                   *input_offset->template Data<int8_t>(),
-      //                   *result_offset->template Data<int8_t>(),
+      //                   *W_zero_point->template Data<int8_t>(),
+      //                   *X_zero_point->template Data<int8_t>(),
+      //                   *Y_zero_point->template Data<int8_t>(),
       //                   static_cast<int>(M / conv_attrs_.group),
       //                   static_cast<int>(output_image_size),
       //                   static_cast<int>(kernel_dim),
