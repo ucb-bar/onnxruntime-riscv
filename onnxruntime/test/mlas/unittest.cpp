@@ -2157,7 +2157,7 @@ private:
                 printf("B matrix:\n");
                 for (size_t k = 0; k < K; k++) {
                     for (size_t n = 0; n < N; n++) {
-                        printf("%d ", A[k * N + n]);
+                        printf("%d ", B[k * N + n]);
                     }
                     printf("\n");
                 }
