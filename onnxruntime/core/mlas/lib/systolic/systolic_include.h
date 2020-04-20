@@ -132,7 +132,7 @@ static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const acc_t* D,
 
         const size_t blocks = j + D_blocks <= J ? D_blocks : J - j;
 
-        const size_t cols = blocks * DIM - (j == J - 1 ? pad_J : 0);
+        const size_t cols = blocks * DIM - (j + blocks >= J ? pad_J : 0);
         const size_t rows = DIM - (i == I - 1 ? pad_I : 0);
 
         gemmini_extended_mvin(D_dram_addr, D_sp_addr_acc, cols, rows);
@@ -147,7 +147,7 @@ static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const acc_t* D,
       const elem_t* const B_dram_addr = B + (k * B_row_len + j) * DIM;
       const uint32_t B_sp_addr = B_sp_addr_start + (k * J + j) * DIM;
       const size_t blocks = j + B_blocks <= J ? B_blocks : J - j;
-      const size_t cols = blocks * DIM - (j == J - 1 ? pad_J : 0);
+      const size_t cols = blocks * DIM - (j + blocks >= J ? pad_J : 0);
       const size_t rows = DIM - (k == K - 1 ? pad_K : 0);
       gemmini_extended_mvin(B_dram_addr, B_sp_addr, cols, rows);
     }
@@ -160,7 +160,7 @@ static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const acc_t* D,
       const elem_t* const A_dram_addr = A + (i * A_row_len + k) * DIM;
       const uint32_t A_sp_addr = A_sp_addr_start + (i * K + k) * DIM;
       const size_t blocks = k + A_blocks <= K ? A_blocks : K - k;
-      const size_t cols = blocks * DIM - (k == K - 1 ? pad_K : 0);
+      const size_t cols = blocks * DIM - (k + blocks >= K ? pad_K : 0);
       const size_t rows = DIM - (i == I - 1 ? pad_I : 0);
       gemmini_extended_mvin(A_dram_addr, A_sp_addr, cols, rows);
     }
@@ -244,7 +244,7 @@ static void sp_tiled_matmul_ws(const elem_t* A, const elem_t* B,
         const uint32_t D_sp_addr_acc = D_sp_addr_start + (i * J + j) * DIM;
 
         size_t blocks = j + D_blocks <= J ? D_blocks : J - j;
-        const size_t cols = blocks * DIM - (j == J - 1 ? pad_J : 0);
+        const size_t cols = blocks * DIM - (j + blocks >= J ? pad_J : 0);
         const size_t rows = DIM - (i == I - 1 ? pad_I : 0);
 
         gemmini_extended_mvin(D_dram_addr, D_sp_addr_acc, cols, rows);
@@ -259,7 +259,7 @@ static void sp_tiled_matmul_ws(const elem_t* A, const elem_t* B,
       const elem_t* const B_dram_addr = B + (k * B_row_len + j) * DIM;
       const uint32_t B_sp_addr = B_sp_addr_start + (k * J + j) * DIM;
       const size_t blocks = j + B_blocks <= J ? B_blocks : J - j;
-      const size_t cols = blocks * DIM - (j == J - 1 ? pad_J : 0);
+      const size_t cols = blocks * DIM - (j + blocks >= J ? pad_J : 0);
       const size_t rows = DIM - (k == K - 1 ? pad_K : 0);
       gemmini_extended_mvin(B_dram_addr, B_sp_addr, cols, rows);
     }
@@ -272,7 +272,7 @@ static void sp_tiled_matmul_ws(const elem_t* A, const elem_t* B,
       const elem_t* const A_dram_addr = A + (i * A_row_len + k) * DIM;
       const uint32_t A_sp_addr = A_sp_addr_start + (i * K + k) * DIM;
       const size_t blocks = k + A_blocks <= K ? A_blocks : K - k;
-      const size_t cols = blocks * DIM - (k == K - 1 ? pad_K : 0);
+      const size_t cols = blocks * DIM - (k + blocks >= K ? pad_K : 0);
       const size_t rows = DIM - (i == I - 1 ? pad_I : 0);
       gemmini_extended_mvin(A_dram_addr, A_sp_addr, cols, rows);
     }
