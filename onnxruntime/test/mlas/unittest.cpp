@@ -108,6 +108,7 @@ public:
 #else
             if (mprotect(_BaseBuffer, BytesToAllocate, PROT_READ | PROT_WRITE) != 0) {
                 printf("Failed to protect guard region. Retrying without guard enabled.\n");
+                munmap(_BaseBuffer, _BaseBufferSize);
                 _BaseBuffer = mmap(0, _BaseBufferSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
                 if (_BaseBuffer == nullptr) {
                     printf("Failed to allocate base buffer memory.\n");

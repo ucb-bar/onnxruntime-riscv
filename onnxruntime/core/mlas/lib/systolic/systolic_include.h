@@ -14,6 +14,18 @@
 
 #include "systolic_params.h"
 
+// Rounding right shift equation: https://riscv.github.io/documents/riscv-v-spec/#_vector_fixed_point_rounding_mode_register_vxrm
+#ifndef ELEM_T_IS_FLOAT
+#define ROUNDING_RIGHT_SHIFT(x, shift)                                                                         \
+  ({ (shift) > 0 ? (((x) >> (shift)) +                                                                         \
+                    (((shift) == 0 ? 0 : (((x) >> ((shift)-1)) & 1)) &                                         \
+                     ((((shift) <= 1 ? 0 : ((x) & ((1 << ((shift)-1)) - 1))) != 0) | (((x) >> (shift)) & 1)))) \
+                 : ((x) << (-(shift))); })
+#else
+#define ROUNDING_RIGHT_SHIFT(x, shift) \
+  ((x) / (1 << (shift)))
+#endif
+
 // Accelerator interface
 #include "xcustom.h"
 
@@ -39,6 +51,116 @@
 #define NO_ACTIVATION 0
 #define RELU 1
 #define RELU6 2
+
+#ifdef ELEM_T_IS_FLOAT
+double rand_double() {
+  double a = (double)(rand() % 128) / (double)(1 + (rand() % 64));
+  double b = (double)(rand() % 128) / (double)(1 + (rand() % 64));
+  return a - b;
+}
+
+elem_t elem_t_bits_to_elem_t(elem_t_bits x) {
+  union {
+    elem_t_bits b;
+    elem_t f;
+  } un;
+
+  un.b = x;
+  return un.f;
+}
+
+elem_t_bits elem_t_to_elem_t_bits(elem_t x) {
+  union {
+    elem_t_bits b;
+    elem_t f;
+  } un;
+
+  un.f = x;
+  return un.b;
+}
+
+acc_t acc_t_bits_to_acc_t(acc_t_bits x) {
+  union {
+    acc_t_bits b;
+    acc_t f;
+  } un;
+
+  un.b = x;
+  return un.f;
+}
+
+acc_t_bits acc_t_to_acc_t_bits(acc_t x) {
+  union {
+    acc_t_bits b;
+    acc_t f;
+  } un;
+
+  un.f = x;
+  return un.b;
+}
+
+bool elem_t_isnan(elem_t x) {
+  elem_t_bits bits = elem_t_to_elem_t_bits(x);
+  uint64_t exp = (bits >> (ELEM_T_SIG_BITS - 1)) & (((uint64_t)1 << ELEM_T_EXP_BITS) - 1);
+  uint64_t sig = bits & (((uint64_t)1 << ELEM_T_SIG_BITS) - 1);
+  bool is_nan_or_inf = exp == (((uint64_t)1 << ELEM_T_EXP_BITS) - 1);
+  bool is_not_inf = sig != 0;
+  return is_nan_or_inf && is_not_inf;
+}
+
+bool acc_t_isnan(acc_t x) {
+  acc_t_bits bits = acc_t_to_acc_t_bits(x);
+  uint64_t exp = (bits >> (ACC_T_SIG_BITS - 1)) & (((uint64_t)1 << ACC_T_EXP_BITS) - 1);
+  uint64_t sig = bits & (((uint64_t)1 << ACC_T_SIG_BITS) - 1);
+  bool is_nan_or_inf = exp == (((uint64_t)1 << ACC_T_EXP_BITS) - 1);
+  bool is_not_inf = sig != 0;
+  return is_nan_or_inf && is_not_inf;
+}
+#endif
+
+#ifdef HAS_MVIN_SCALE
+scale_t scale_t_bits_to_scale_t(scale_t_bits x) {
+  union {
+    scale_t_bits b;
+    scale_t f;
+  } un;
+
+  un.b = x;
+  return un.f;
+}
+
+scale_t_bits scale_t_to_scale_t_bits(scale_t x) {
+  union {
+    scale_t_bits b;
+    scale_t f;
+  } un;
+
+  un.f = x;
+  return un.b;
+}
+#endif
+
+#ifdef HAS_MVIN_ACC_SCALE
+scale_acc_t scale_acc_t_bits_to_scale_acc_t(scale_acc_t_bits x) {
+  union {
+    scale_acc_t_bits b;
+    scale_acc_t f;
+  } un;
+
+  un.b = x;
+  return un.f;
+}
+
+scale_acc_t_bits scale_acc_t_to_scale_acc_t_bits(scale_acc_t x) {
+  union {
+    scale_acc_t_bits b;
+    scale_acc_t f;
+  } un;
+
+  un.f = x;
+  return un.b;
+}
+#endif
 
 #define ROCC_INSTRUCTION_RS1_RS2(x, rs1, rs2, funct) \
   ROCC_INSTRUCTION_0_R_R(x, rs1, rs2, funct)
@@ -82,12 +204,21 @@
 #define gemmini_preload_zeros(C) \
   gemmini_preload(GARBAGE_ADDR, C)
 
+
 // config
 #define gemmini_config_ex(mode, act, sys_shift, acc_shift, relu6_shift) \
   ROCC_INSTRUCTION_RS1_RS2(XCUSTOM_ACC, ((uint64_t)(acc_shift) << 32) | ((act) << 3) | ((mode) << 2) | CONFIG_EX, ((uint64_t)(relu6_shift) << 32) | (sys_shift), k_CONFIG)
 
-#define gemmini_config_ld(stride) \
+#if defined(HAS_MVIN_SCALE) || defined(HAS_MVIN_ACC_SCALE)
+#define gemmini_extended_config_ld(stride, scale) \
+  ROCC_INSTRUCTION_RS1_RS2(XCUSTOM_ACC, ((uint64_t)(scale_t_to_scale_t_bits(scale)) << 32) | CONFIG_LD, stride, k_CONFIG)
+#else
+#define gemmini_extended_config_ld(stride, scale) \
   ROCC_INSTRUCTION_RS1_RS2(XCUSTOM_ACC, CONFIG_LD, stride, k_CONFIG)
+#endif
+
+#define gemmini_config_ld(stride) \
+  gemmini_extended_config_ld(stride, MVIN_SCALE_ONE)
 
 #define gemmini_config_st(stride) \
   ROCC_INSTRUCTION_RS1_RS2(XCUSTOM_ACC, CONFIG_ST, stride, k_CONFIG)
@@ -99,18 +230,13 @@
 // fence
 #define gemmini_fence() asm volatile("fence")
 
-#define ROUNDING_RIGHT_SHIFT(x, shift)                      \
-  ({ ((x) >> (shift)) +                                     \
-         (((shift) == 0 ? 0 : (((x) >> ((shift)-1)) & 1)) & \
-          ((((shift) <= 1 ? 0 : ((x) & ((1 << ((shift)-1)) - 1))) != 0) | (((x) >> (shift)) & 1))); })
-
 // Tiling functions
 static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const acc_t* D, elem_t* C,
                                size_t I, size_t J, size_t K, size_t pad_I, size_t pad_J, size_t pad_K,
                                size_t A_row_len, size_t B_row_len, size_t D_row_len, size_t C_row_len,
                                bool no_bias, bool repeating_bias) {
   const uint32_t A_sp_addr_start = 0;
-  const uint32_t B_sp_addr_start = BANK_NUM * BANK_ROWS / 2;
+  const uint32_t B_sp_addr_start = BANK_NUM * BANK_ROWS - K * J * DIM;
   const uint32_t D_sp_addr_start = 1 << (ADDR_LEN - 1);
   const uint32_t C_sp_addr_start = 3 << (ADDR_LEN - 2);
 
@@ -121,7 +247,7 @@ static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const acc_t* D,
   // Move-in D
   if (D != NULL && !no_bias) {
     const size_t D_stride = repeating_bias ? 0 : D_row_len * sizeof(acc_t);
-    gemmini_config_ld(D_stride);
+    gemmini_extended_config_ld(D_stride, MVIN_SCALE_ONE);
 
     for (size_t i = 0; i < I; i++) {
       for (size_t j = 0; j < J; j += D_blocks) {
@@ -141,7 +267,7 @@ static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const acc_t* D,
   }
 
   // Move-in B
-  gemmini_config_ld(B_row_len * sizeof(elem_t));
+  gemmini_extended_config_ld(B_row_len * sizeof(elem_t), MVIN_SCALE_ONE);
   for (size_t j = 0; j < J; j += B_blocks) {
     for (size_t k = 0; k < K; k++) {
       const elem_t* const B_dram_addr = B + (k * B_row_len + j) * DIM;
@@ -154,7 +280,7 @@ static void sp_tiled_matmul_os(const elem_t* A, const elem_t* B, const acc_t* D,
   }
 
   // Move-in A
-  gemmini_config_ld(A_row_len * sizeof(elem_t));
+  gemmini_extended_config_ld(A_row_len * sizeof(elem_t), MVIN_SCALE_ONE);
   for (size_t i = 0; i < I; i++) {
     for (size_t k = 0; k < K; k += A_blocks) {
       const elem_t* const A_dram_addr = A + (i * A_row_len + k) * DIM;
@@ -223,7 +349,7 @@ static void sp_tiled_matmul_ws(const elem_t* A, const elem_t* B,
                                size_t A_row_len, size_t B_row_len, size_t D_row_len, size_t C_row_len,
                                bool no_bias, bool repeating_bias) {
   const uint32_t A_sp_addr_start = 0;
-  const uint32_t B_sp_addr_start = I * K * DIM;
+  const uint32_t B_sp_addr_start = BANK_NUM * BANK_ROWS - K * J * DIM;
   const uint32_t D_sp_addr_start = 1 << (ADDR_LEN - 1);
   const uint32_t C_sp_addr_start = 3 << (ADDR_LEN - 2);
 
@@ -234,7 +360,7 @@ static void sp_tiled_matmul_ws(const elem_t* A, const elem_t* B,
   // Move-in D
   if (D != NULL && !no_bias) {
     const size_t D_stride = repeating_bias ? 0 : D_row_len * sizeof(acc_t);
-    gemmini_config_ld(D_stride);
+    gemmini_extended_config_ld(D_stride, MVIN_SCALE_ONE);
 
     for (size_t i = 0; i < I; i++) {
       for (size_t j = 0; j < J; j += D_blocks) {
@@ -253,7 +379,7 @@ static void sp_tiled_matmul_ws(const elem_t* A, const elem_t* B,
   }
 
   // Move-in B
-  gemmini_config_ld(B_row_len * sizeof(elem_t));
+  gemmini_extended_config_ld(B_row_len * sizeof(elem_t), MVIN_SCALE_ONE);
   for (size_t j = 0; j < J; j += B_blocks) {
     for (size_t k = 0; k < K; k++) {
       const elem_t* const B_dram_addr = B + (k * B_row_len + j) * DIM;
@@ -266,7 +392,7 @@ static void sp_tiled_matmul_ws(const elem_t* A, const elem_t* B,
   }
 
   // Move-in A
-  gemmini_config_ld(A_row_len * sizeof(elem_t));
+  gemmini_extended_config_ld(A_row_len * sizeof(elem_t), MVIN_SCALE_ONE);
   for (size_t k = 0; k < K; k += A_blocks) {
     for (size_t i = 0; i < I; i++) {
       const elem_t* const A_dram_addr = A + (i * A_row_len + k) * DIM;
