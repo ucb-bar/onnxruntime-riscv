@@ -519,7 +519,7 @@ private:
 
         for (size_t f = 0; f < M * N; f++) {
             if (C[f] != CReference[f]) {
-                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, offa, offb);
+                printf("mismatch M=%zd, N=%zd, K=%zd, offa=%d, offb=%d!\n", M, N, K, (int)offa, (int)offb);
             }
         }
     }
@@ -1951,9 +1951,8 @@ public:
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
-                if (!AlmostEquals(Buffer[i].f, TestData[i][kind].f)) {
-                  printf("mismatch in vectorized activation kind=%d i=%d input=%f (%08x) expected=%f (%08x) got=%f (%08x)\n", kind, i,
-                         TestData[i][0].f, TestData[i][0].u, TestData[i][kind].f, TestData[i][kind].u, Buffer[i].f, Buffer[i].u);
+                if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
+                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", (int)kind, (int)i, Buffer[i].u, TestData[i][kind].u);
                 }
             }
 
@@ -1968,10 +1967,8 @@ public:
 
             for (unsigned i = 0; i < _countof(TestData); i++) {
                 // Sensitive to comparing positive/negative zero and NaNs.
-
-                if (!AlmostEquals(Buffer[i].f, TestData[i][kind].f)) {
-                  printf("mismatch in scalar activation kind=%d i=%d input=%f (%08x) expected=%f (%08x) got=%f (%08x)\n", kind, i,
-                         TestData[i][0].f, TestData[i][0].u, TestData[i][kind].f, TestData[i][kind].u, Buffer[i].f, Buffer[i].u);
+                if (Buffer[i].u != TestData[i][kind].u && Buffer[i].f != TestData[i][kind].f) {
+                    printf("mismatch activation kind=%d i=%d value=%08x expected=%08x\n", (int)kind, (int)i, Buffer[i].u, TestData[i][kind].u);
                 }
             }
         }
