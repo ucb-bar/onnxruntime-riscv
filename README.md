@@ -1,3 +1,6 @@
+# Systolic Quickstart
+Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/systolic/systolic_runner/docs/BUILD.md) in `systolic_runner`(along with other documentation).
+
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline?label=Windows+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)
