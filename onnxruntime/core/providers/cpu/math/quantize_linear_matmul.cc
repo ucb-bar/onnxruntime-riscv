@@ -13,18 +13,17 @@
 namespace onnxruntime {
 
 // only register this operator if low precision computation is enabled.
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul,
     kOnnxDomain,
     10,
-    uint8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
     QLinearMatMul<uint8_t, uint8_t, uint8_t>);
-    
+
 template <>
 Status QLinearMatMul<uint8_t, uint8_t, uint8_t>::Compute(OpKernelContext* ctx) const {
   auto a = ctx->Input<Tensor>(0);

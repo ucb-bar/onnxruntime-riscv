@@ -19,7 +19,7 @@ namespace systolic {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
-using ONNX_NAMESPACE::OPTIONAL;
+using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::TypeProto;
 
 #define ONNX_SYSTOLIC_OPERATOR_SCHEMA(name) \
@@ -297,10 +297,10 @@ void RegisterSystolicSchemas() {
       .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
       .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
       .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
-      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("strides", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("pads", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
       .TypeAndShapeInferenceFunction(static_cast<void (*)(InferenceContext& ctx)>(nhwcConvPoolShapeInference));
 
@@ -322,10 +322,10 @@ void RegisterSystolicSchemas() {
       .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
       .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
       .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
-      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("strides", "", AttributeProto::INTS, OPTIONAL)
-      .Attr("pads", "", AttributeProto::INTS, OPTIONAL)
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
       .TypeAndShapeInferenceFunction(static_cast<void (*)(InferenceContext& ctx)>(nhwcConvPoolShapeInference));
 }
