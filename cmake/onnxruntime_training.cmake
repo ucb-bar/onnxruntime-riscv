@@ -74,6 +74,7 @@ if(UNIX AND NOT APPLE)
 endif()
 target_link_libraries(onnxruntime_training_mnist PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_mnist PROPERTIES FOLDER "ONNXRuntimeTest")
+target_link_libraries(onnxruntime_training_mnist PRIVATE atomic)
 
 
 # squeezenet
@@ -113,6 +114,7 @@ endif()
 
 target_link_libraries(onnxruntime_training_bert PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_bert PROPERTIES FOLDER "ONNXRuntimeTest")
+target_link_libraries(onnxruntime_training_bert PRIVATE atomic)
 
 # Pipeline
 file(GLOB_RECURSE training_pipeline_poc_src
@@ -134,6 +136,7 @@ endif()
 
 target_link_libraries(onnxruntime_training_pipeline_poc PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_pipeline_poc PROPERTIES FOLDER "ONNXRuntimeTest")
+target_link_libraries(onnxruntime_training_pipeline_poc PRIVATE atomic)
 
 # GPT-2
 file(GLOB_RECURSE training_gpt2_src
@@ -151,3 +154,4 @@ if (onnxruntime_USE_HOROVOD)
 endif()
 target_link_libraries(onnxruntime_training_gpt2 PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
 set_target_properties(onnxruntime_training_gpt2 PROPERTIES FOLDER "ONNXRuntimeTest")
+target_link_libraries(onnxruntime_training_gpt2 PRIVATE atomic)
