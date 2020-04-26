@@ -2,11 +2,13 @@
 
 ## Quickstart for systolic
 
-To quantize a floating point model to an int8 model suitable for Systolic, run
+To e.g. quantize a floating point model downloaded form the model zoo to an int8 model suitable for Systolic, run
 
 ```
-python3 calibrate.py --model_path $MODEL/model.onnx --dataset_path $MODEL/test_data_set_0/ --output_model_path $MODEL/model_quantized.onnx --data_preprocess=None --static=True
+python3 calibrate.py --model_path $MODEL/model.onnx  --dataset_path $MODEL --output_model_path $MODEL/model_quantized.onnx --static=True --data_preprocess=caffe2 --mode=int8
 ```
+
+where the preprocess mode depends on the precise model you're trying to quantize. As an example, googlenet uses caffe2 style preprocessing, while resnet50 uses mxnet style preprocessing. Best way to determine this is if the preprocessing steps aren't given is to try running the floating point model through the imagenet runner and playing with the preprocessing options until the results make sense.
 
 Note that you must have the `onnxruntime` python package installed (this can be installed from pypi).
 
