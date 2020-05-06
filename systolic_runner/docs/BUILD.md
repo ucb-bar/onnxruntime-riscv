@@ -1,3 +1,5 @@
+## Building
+
 To build, first ensure that you have risc-v toolchain setup, built with`esp-tools`
 (from Chipyard, use `/scripts/build-toolchains.sh esp-tools`). Note that to run with `spike,` you will need to
 patch `pk` to no-op the futex and tid syscalls as follows:
@@ -46,6 +48,31 @@ in my experience it has worked fine.
 This will build with debug symbols – for release mode (`-O3` you can use `./build.sh --config=Release --parallel`).
 
 To build the `image-net` runner, use the same command you used for building ORT, (i.e. if you built in release mode, use `./build.sh --config=Release`)
+
+### Building for Firesim
+
+When building for running with Firesim (as opposed to `spike pk`), you must add the following to the beginning of `runner.cpp` in the imagenet runner to prevent page-fault related issues.
+
+```
+  if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+      perror("mlockall failed");
+      exit(1);
+    }
+```
+
+You must also add to the end of `systolic_include.h` in `onnxruntime/core/mlas/lib/systolic/systolic_include.h` the following to ensure that Gemmini flushes the TLB for subsequent runs in a new process.
+
+```
+__attribute__((constructor))
+void cleargemmini() {
+  gemmini_flush(0);
+}
+```
+
+
+## Running
+
+Please see the README on imagenet runner for documentation on how to use it. Sample quantized models are provided in the releases/ folder, or you can perform post-training quantization yourself using the quantization tool in the systolic_runner folder.
 
 
 
