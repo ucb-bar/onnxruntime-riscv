@@ -17,6 +17,7 @@
 #include "tensor_helper.h"
 #include "cmd_args.h"
 #include "labels.h"
+#include <sys/mman.h>
 
 const char* imagenet_labels[1000] = IMAGENET_LABELS;
 
@@ -28,6 +29,11 @@ unsigned long long read_cycles()
 }
 
 int main(int argc, char* argv[]) {
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+      perror("mlockall failed");
+      exit(1);
+    }
+
   setbuf(stdout, NULL);
   printf("Loaded runner program\n");
 

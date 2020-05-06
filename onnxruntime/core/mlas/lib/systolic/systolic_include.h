@@ -719,4 +719,9 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
   tiled_matmul_auto(dim_I, dim_J, dim_K, dim_K, dim_J, dim_J, dim_J, A, B, D, C, act, shift, relu6_shift, repeating_bias, tiled_matmul_type);
 }
 
+__attribute__((constructor))
+void cleargemmini() {
+  gemmini_flush(0);
+}
+
 #endif  // SRC_MAIN_C_SYSTOLIC_H

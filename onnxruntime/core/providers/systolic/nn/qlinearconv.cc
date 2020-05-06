@@ -181,7 +181,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
     auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(int8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
   } else {
-    printf("1x1 case!\n");
+    //printf("1x1 case!\n");
   }
 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
@@ -405,7 +405,7 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
       col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
     }
   } else {
-    printf("1x1 case!\n");
+    //printf("1x1 case!\n");
   }
 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
