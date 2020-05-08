@@ -22,7 +22,7 @@ cd $DIR
 
 # NOTE: If you're NOT building for the first time adding "--parallel" when invoking this script will parallelize build
 # requires python3.6 or higher
-python3 $DIR/tools/ci_build/build.py --arm --disable_contrib_ops --build_dir=build "$@"
+python3 $DIR/tools/ci_build/build.py --arm  --build_dir=build "$@"
 
 # On first build, it might fail on linking binary, complaining about missing atomics (this is despite having -latomic).
 # Rebuilding fixes this for some reason. This started happening after the version bump subsequent to commit 4db932, as there were some CMake file changes in those commits.
@@ -44,3 +44,5 @@ fi
 
 # For MNN
 #cmake .. -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_VERSION=1 -DCMAKE_SYSTEM_PROCESSOR=riscv -DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DCMAKE_EXE_LINKER_FLAGS=" -static -Wl,--whole-archive -lpthread -latomic -Wl,--no-whole-archive"
+
+/scratch/pranavprakash/chipyard/esp-tools-install/bin/riscv64-unknown-linux-gnu-g++  -march=rv64imafdc -mabi=lp64d -Wno-error=attributes -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -Wall -Wextra -ffunction-sections -fdata-sections -Werror -Wno-deprecated-copy -Wno-parentheses -O3 -DNDEBUG -DGSL_UNENFORCED_ON_CONTRACT_VIOLATION  -latomic -static CMakeFiles/onnxruntime_training_mnist.dir/scratch/pranavprakash/onnxruntime/onnxruntime/orttraining/orttraining/models/mnist/main.cc.o CMakeFiles/onnxruntime_training_mnist.dir/scratch/pranavprakash/onnxruntime/onnxruntime/orttraining/orttraining/models/mnist/mnist_data_provider.cc.o  -o onnxruntime_training_mnist  libonnxruntime_training_runner.a libonnxruntime_training.a libonnxruntime_session.a libonnxruntime_optimizer.a libonnxruntime_providers.a libonnxruntime_util.a libonnxruntime_framework.a libonnxruntime_util.a libonnxruntime_graph.a libonnxruntime_common.a libonnxruntime_mlas.a onnx/libonnx.a onnx/libonnx_proto.a external/protobuf/cmake/libprotobuf-lite.a external/re2/libre2.a tensorboard/libtensorboard.a external/nsync/libnsync_cpp.a -ldl -Wl,--whole-archive -lpthread -latomic -lrt -Wl,--no-whole-archive

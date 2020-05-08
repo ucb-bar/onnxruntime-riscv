@@ -136,6 +136,8 @@ Status TrainingSession::ConfigureForTraining(
     // send node's output as the start tensor to build gradient graph
     GetPipelineSendOutput(model_->MainGraph(), loss_name);
   }
+
+  printf("Line 140, loss_name empty? %d\n", (int) loss_name.empty());
   if (loss_name.empty()) {
     const optional<LossFunctionInfo> loss_function_info =
         config.loss_function_config.has_value()
@@ -146,6 +148,8 @@ Status TrainingSession::ConfigureForTraining(
         loss_scale_input_name.has_value() ? &loss_scale_input_name.value() : nullptr, loss_name));
   }
 
+
+  printf("Configured loss function\n");
   ORT_ENFORCE(
       !loss_scale_input_name.has_value() || !loss_scale_input_name.value().empty(),
       "loss_scale_input_name should not be set to an empty string.");
@@ -179,6 +183,7 @@ Status TrainingSession::ConfigureForTraining(
                                  << weight_names_stream.str();
   }
 
+  printf("Building gradient graph\n");
   ORT_RETURN_IF_ERROR(BuildGradientGraph(
       weight_names_to_train, loss_name, config.set_gradients_as_graph_outputs));
 
@@ -336,12 +341,14 @@ static Status BuildGradientGraphInternal(Graph& graph,
                                          const std::string& loss_function_output_name,
                                          const std::unordered_set<std::string>& node_arg_names_to_train,
                                          const bool set_gradient_as_graph_output = false) {
+  printf("Building gradient graph\n");
   // Compute the gradient graph def.
   GradientGraphBuilder grad_graph_builder(&graph,
                                           {loss_function_output_name},
                                           node_arg_names_to_train,
                                           loss_function_output_name,
                                           set_gradient_as_graph_output);
+  printf("Finished constructor gradient graph\n");
   return grad_graph_builder.Build();
 }
 
@@ -526,6 +533,7 @@ Status TrainingSession::BuildGradientGraph(const std::unordered_set<std::string>
                                                  loss_function_output_name,
                                                  weights_to_train_,
                                                  set_gradient_as_graph_output));
+  printf("Finished building gradient graph\n");
 
   return DoPostLoadProcessing(*model_);
 }

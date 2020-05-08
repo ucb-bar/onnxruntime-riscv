@@ -490,6 +490,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAveragePoolGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMaxPoolGradient) {
+  printf("Getting max pool gradient\n");
   return std::vector<NodeDef>{
       NodeDef("MaxPoolGrad",
               {GO(0), O(1)},

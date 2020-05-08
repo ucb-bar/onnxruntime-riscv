@@ -33,8 +33,8 @@ static SessionOptions SESSION_OPTION = {
     0,                                 //session_log_verbosity_level
     5,                                 //max_num_graph_transformation_steps
     TransformerLevel::Level1,          //graph_optimization_level
-    {},                                //intra_op_param
-    {},                                //inter_op_param
+    {1},                                //intra_op_param
+    {1},                                //inter_op_param
     overrides,                         //free_dimension_overrides
     true,                              //use_per_session_threads
     true                               //thread_pool_allow_spinning
@@ -62,6 +62,7 @@ TrainingRunner::TrainingRunner(Parameters params, const Environment& env, Sessio
 }
 
 Status TrainingRunner::Initialize() {
+  printf("Initializing in training runner\n");
   ORT_RETURN_IF_ERROR(session_.Load(params_.model_path));
 
   TrainingSession::TrainingConfiguration config{};
@@ -133,8 +134,11 @@ Status TrainingRunner::Initialize() {
 
   TrainingSession::TrainingConfigurationResult config_result{};
 
+  printf("Configuring for training\n");
   ORT_RETURN_IF_ERROR(session_.ConfigureForTraining(config, config_result));
 
+
+  printf("Finished configuring for training\n");
   if (config_result.mixed_precision_config_result.has_value()) {
     const std::string& loss_scale_input_name =
         config_result.mixed_precision_config_result.value().loss_scale_input_name;

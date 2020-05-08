@@ -28,13 +28,27 @@ GradientDef GetGradientForOp(const Node* node,
       "Gradients are supported for opset version" + std::to_string(node->Op()->SinceVersion()) +
           "Upgrade your model to use opset" + std::to_string(GRADIENT_OP_VERSION));
           */
+  printf("Getting gradient builder instance\n");
   auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(node->OpType(),
                                                                             node,
                                                                             output_args_need_grad,
                                                                             input_args_need_grad);
 
+  printf("Finished getting gradient builder instance\n");
   ORT_ENFORCE(gradient_builder != nullptr,
               "The gradient builder has not been registered:", node->OpType());
+
+
+  printf("Node type %s\n", node->OpType().c_str());
+  printf("Output args need grad:\n");
+  for (const std::string& str : output_args_need_grad) {
+    printf("\t %s\n", str.c_str());
+  }
+  printf("Input args need grad:\n");
+  for (const std::string& str : input_args_need_grad) {
+    printf("\t %s\n", str.c_str());
+  }
+
 
   return gradient_builder->GetGradientDefs();
 }

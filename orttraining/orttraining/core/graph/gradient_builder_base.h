@@ -37,9 +37,21 @@ class GradientBuilderBase {
   virtual ~GradientBuilderBase() {}
 
   GradientDef GetGradientDefs() const {
+    printf("Getting gradient node defs\n");
+    printf("Node input defs: %d\n", (int) node_->InputDefs().size());
+    for (size_t i = 0; i < node_->InputDefs().size(); i++) {
+      printf("\t%s\n", node_->InputDefs()[i]->Name().c_str());
+    }
+
+    printf("Node output defs: %d\n", (int) node_->OutputDefs().size());
+    for (size_t i = 0; i < node_->OutputDefs().size(); i++) {
+      printf("\t%s\n", node_->OutputDefs()[i]->Name().c_str());
+    }
+
     GradientDef node_defs = GetGradientDefsImpl();
     for (size_t i = 0; i < node_defs.size(); ++i) {
       NodeDef& node_def = node_defs[i];
+      printf("gradient op type %s\n", node_def.op_type.c_str());
       if (node_def.name.empty()) {
         node_def.name = Name(node_def.op_type + "_" + std::to_string(i));
       }

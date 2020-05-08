@@ -165,6 +165,8 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 }
 
 int main(int argc, char* args[]) {
+  setbuf(stdout, NULL);
+  printf("Setting up logger\n");
   // setup logger
   string default_logger_id{"Default"};
   logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
@@ -177,11 +179,13 @@ int main(int argc, char* args[]) {
   unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(nullptr, env).IsOK());
 
+  printf("Setting up training params\n");
   // setup training params
   TrainingRunner::Parameters params;
   RETURN_IF_FAIL(ParseArguments(argc, args, params));
   setup_training_params(params);
 
+  printf("Setting up data\n");
   // setup data
   auto device_count = params.mpi_context.world_size;
   std::vector<string> feeds{"X", "labels"};
@@ -195,11 +199,20 @@ int main(int argc, char* args[]) {
     return -1;
   }
 
+  printf("Starting training data loader\n");
   // start training session
   auto training_data_loader = std::make_shared<SingleDataLoader>(trainingData, feeds);
+
+  printf("Starting test data loader\n");
   auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
+
+  printf("Starting runner\n");
   auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
+
+  printf("Running initialize\n");
   RETURN_IF_FAIL(runner->Initialize());
+  printf("Running run\n");
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
+  printf("Running end training\n");
   RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));
 }

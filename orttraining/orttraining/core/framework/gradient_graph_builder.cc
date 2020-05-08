@@ -123,6 +123,7 @@ Status GradientGraphBuilder::CheckNodeArgsReachable(const NodeSet& reachable_nod
 }
 
 Status GradientGraphBuilder::Build() {
+  printf("Called into gradient graph build\n");
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logging::LoggingManager::DefaultLogger());
   ORT_RETURN_IF_ERROR(opt_ret);
 
@@ -138,6 +139,8 @@ Status GradientGraphBuilder::Build() {
   }
 
   NodeSet reachable_nodes = ReverseBFS(y_nodes_);
+
+  printf("Finished reverse BFS\n");
 
   ORT_RETURN_IF_ERROR(CheckNodeArgsReachable(reachable_nodes));
 
@@ -170,6 +173,8 @@ Status GradientGraphBuilder::Build() {
     }
   }
 
+  printf("Finished backprop determineer\n");
+
   // so far, visited are the minimum node in between
   // visited_node_args are the node_args involved
 
@@ -187,7 +192,9 @@ Status GradientGraphBuilder::Build() {
       }
     }
 
+    printf("Getting gradient for op\n");
     GradientDef node_defs = GetGradientForOp(node, output_args_need_grad, input_args_need_grad);
+    printf("Finished getting gradient for op\n");
 
     // updates arg name if gradient accumulation is needed
     for (auto& op_def : node_defs) {
@@ -205,6 +212,8 @@ Status GradientGraphBuilder::Build() {
     gradient_graph_defs.AddNodeDefs(node_defs);
   }
 
+  printf("Finished vist\n");
+
   // Accumulate Gradients
   for (auto gradient_pair : gradients_to_accumulate_) {
     gradient_graph_defs.AddNodeDefs(
@@ -220,6 +229,8 @@ Status GradientGraphBuilder::Build() {
       gradient_graph_defs.AddGraphOutputs({GradientBuilderBase::GradientName(x_node_arg->Name())});
     }
   }
+
+  printf("Finished accumulate gradient\n");
 
   return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs);
 }
