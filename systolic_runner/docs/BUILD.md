@@ -73,9 +73,10 @@ Please follow the [FireSim documentation](https://docs.fires.im/en/latest/) for 
 
 * Change line 70 (`regs->status |= SR_FS_INITIAL;`) to `regs->status |= SR_FS_INITIAL | SR_XS_INITIAL`).
 
-(You may also encounter "You seem to have the current working directory in your" error when building buildroot for FireMarshal. In this case, please patch `firemarshal/wlutil/br/buildroot/support/dependencies/dependencies.sh` as follows:
+(You may also encounter "You seem to have the current working directory in your PATH environment variable" error when building buildroot for FireMarshal. In this case, please patch `firemarshal/wlutil/br/buildroot/support/dependencies/dependencies.sh` as follows):
 
-``` # An empty PATH is technically possible, but in practice we would not
+```
+# An empty PATH is technically possible, but in practice we would not
 
  # even arrive here if that was the case.
 
@@ -89,7 +90,8 @@ Please follow the [FireSim documentation](https://docs.fires.im/en/latest/) for 
 -       ;;
  (*"
  "*)    printf "\n"
-        printf "Your PATH contains a newline (\\\n) character.\n"```
+        printf "Your PATH contains a newline (\\\n) character.\n"
+```
 
 ## Running
 
