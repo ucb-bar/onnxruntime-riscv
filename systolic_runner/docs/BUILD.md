@@ -4,9 +4,6 @@ To build, first ensure that you have risc-v toolchain setup, built with`esp-tool
 (from Chipyard, use `/scripts/build-toolchains.sh esp-tools`). Note that to run with `spike,` you will need to
 patch `pk` to no-op the futex and tid syscalls as follows:
 
-To run this with spike you'll need to patch `pk` to no-op the futex and tid syscall:
-
-
 
 ```
 --- a/pk/syscall.h
@@ -42,6 +39,9 @@ diff --git a/pk/syscall.c b/pk/syscall.c
    };
  ```
  
+Please also ensure that the proxy kernel is patched to enable RoCC extensions, as is shown in commit 
+https://github.com/riscv/riscv-pk/commit/c53de08b9ba719f3e7b02fc1a029d194a190da48
+ 
 Once you have riscv g++ in your `PATH`, clone this repo and `git submodule update --init --recursive`.
 Then run `./build.sh --parallel`. Note that while Microsoft claims cmake might not get the dependency order right for `--parallel`,
 in my experience it has worked fine.
@@ -69,12 +69,28 @@ void cleargemmini() {
 }
 ```
 
+Please follow the [FireSim documentation](https://docs.fires.im/en/latest/) for instructions on how to use FireSim to run the built binary. When building the FireMarshal workload using buildroot linux, you will need to enable RoCC Extensions by patching `arch/riscv/kernel/process.c` in `firemarshal/riscv-linux` (if this is not done, you may encounter "Unhandled signal 4" trap):
+
+* Change line 70 (`regs->status |= SR_FS_INITIAL;`) to `regs->status |= SR_FS_INITIAL | SR_XS_INITIAL`).
+
+(You may also encounter "You seem to have the current working directory in your" error when building buildroot for FireMarshal. In this case, please patch `firemarshal/wlutil/br/buildroot/support/dependencies/dependencies.sh` as follows:
+
+``` # An empty PATH is technically possible, but in practice we would not
+
+ # even arrive here if that was the case.
+
+ case ":${PATH:-unset}:" in
+
+-(*::*|*:.:*)
+-       echo
+-       echo "You seem to have the current working directory in your"
+-       echo "PATH environment variable. This doesn't work."
+-       exit 1
+-       ;;
+ (*"
+ "*)    printf "\n"
+        printf "Your PATH contains a newline (\\\n) character.\n"```
 
 ## Running
 
 Please see the README on imagenet runner for documentation on how to use it. Sample quantized models are provided in the releases/ folder, or you can perform post-training quantization yourself using the quantization tool in the systolic_runner folder.
-
-
-
-
- 
