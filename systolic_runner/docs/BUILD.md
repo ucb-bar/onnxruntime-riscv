@@ -1,8 +1,11 @@
 ## Building
 
-To build, first ensure that you have risc-v toolchain setup, built with`esp-tools`
-(from Chipyard, use `/scripts/build-toolchains.sh esp-tools`). Note that to run with `spike,` you will need to
-patch `pk` to no-op the futex and tid syscalls as follows:
+To build, first ensure that you have the Risc-V toolchain setup, built with`esp-tools`
+(from Chipyard, use `/scripts/build-toolchains.sh esp-tools`).
+
+To run using `spike`, please first pull `master` for `riscv-isa-sim` in `esp-tools`.
+
+You will next need to patch `riscv-pk` to no-op the futex and tid syscalls as follows:
 
 
 ```
@@ -39,8 +42,10 @@ diff --git a/pk/syscall.c b/pk/syscall.c
    };
  ```
  
-Please also ensure that the proxy kernel is patched to enable RoCC extensions, as is shown in commit 
+Finally please also double check that the proxy kernel is patched to enable RoCC extensions (should be done by default), as is shown in commit 
 https://github.com/riscv/riscv-pk/commit/c53de08b9ba719f3e7b02fc1a029d194a190da48
+
+You can rebuild spike + pk via `./build-spike-pk.sh`
  
 Once you have riscv g++ in your `PATH`, clone this repo and `git submodule update --init --recursive`.
 Then run `./build.sh --parallel`. Note that while Microsoft claims cmake might not get the dependency order right for `--parallel`,
