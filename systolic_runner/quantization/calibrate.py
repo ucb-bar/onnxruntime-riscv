@@ -23,6 +23,7 @@ from data_preprocess import load_batch, preprocess_mxnet_raw, \
 import re
 import subprocess
 import json
+import math
 
 # Candidate nodes for quantization. Calibration will be done for these nodes only
 # When more nodes are extended to support quantization, add them to this list
@@ -183,10 +184,10 @@ def calculate_scale_zeropoint(next_nodes, rmin, rmax, mode):
 
     if mode == 'int8':
         max_range = max(abs(rmin), abs(rmax))
-        scale = (np.float32(max_range)) / 127 if not np.isclose(rmin, rmax) else np.float32(1)
+        scale = (np.float32(max_range)) / 127 if not math.isclose(max_range, 0, abs_tol=1e-8) else np.float32(1)
         zero_point = np.int8(0)
     else:
-        scale = np.float32((rmax - rmin) / 255 if not np.isclose(rmin, rmax) else np.float32(1))
+        scale = np.float32((rmax - rmin) / 255 if not math.isclose(rmin, rmax, abs_tol=1e-8) else np.float32(1))
         initial_zero_point = (0 - rmin) / scale
         zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
 
