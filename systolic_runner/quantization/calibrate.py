@@ -183,10 +183,10 @@ def calculate_scale_zeropoint(next_nodes, rmin, rmax, mode):
 
     if mode == 'int8':
         max_range = max(abs(rmin), abs(rmax))
-        scale = (np.float32(max_range)) / 127 if rmin != rmax else np.float32(1)
+        scale = (np.float32(max_range)) / 127 if not np.isclose(rmin, rmax) else np.float32(1)
         zero_point = np.int8(0)
     else:
-        scale = np.float32((rmax - rmin) / 255 if rmin != rmax else np.float32(1))
+        scale = np.float32((rmax - rmin) / 255 if not np.isclose(rmin, rmax) else np.float32(1))
         initial_zero_point = (0 - rmin) / scale
         zero_point = np.uint8(round(max(0, min(255, initial_zero_point))))
 

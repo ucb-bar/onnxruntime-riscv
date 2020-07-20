@@ -134,12 +134,12 @@ def quantize_data(data, quantize_range, qType):
 
     if qType == onnx_proto.TensorProto.INT8:
         max_range = max(abs(rmin), abs(rmax))
-        scale = (float(max_range) * 2) / quantize_range
+        scale = (float(max_range) * 2) / quantize_range if not np.isclose(rmin, rmax) else 1.0
         zero_point = 0
         # signed byte type
         quantized_data = (np.asarray(data) / scale).round().astype('b')
     elif qType == onnx_proto.TensorProto.UINT8:
-        scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
+        scale = (float(rmax) - rmin) / quantize_range if not np.isclose(rmin, rmax) else 1.0
         zero_point = round((0 - rmin) / scale)  # round to nearest integer
         quantized_data = ((np.asarray(data) / scale).round() + zero_point).astype('B')  # unsigned byte type
     else:
