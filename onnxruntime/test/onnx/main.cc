@@ -392,6 +392,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #else
       fprintf(stderr, "Systolic is not supported in this build");
       return -1;
+#endif
     }
     if (enable_armnn) {
 #ifdef USE_ARMNN

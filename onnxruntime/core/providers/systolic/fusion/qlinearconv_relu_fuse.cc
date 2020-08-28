@@ -54,7 +54,7 @@ void qlinearconv_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, st
       LOGS_DEFAULT(INFO) << "Fusing " << node->OpType() << " and " << next_node->OpType();
       capability->sub_graph->nodes.push_back(next_node->Index());
       auto meta_def = getFusedQlinearConvReluMeta(node, next_node.operator->(), node->OpType() == "QLinearConv_nhwc");
-      capability->sub_graph->SetMetaDef(meta_def);
+      capability->sub_graph->SetMetaDef(std::move(meta_def));
     }
   }
   LOGS_DEFAULT(INFO) << "Finished systolic fusing";

@@ -109,6 +109,8 @@ Abstract:
 #endif
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
+#else
+#define MLAS_TARGET_CPU_ONLY
 #endif
 
 //

@@ -17,6 +17,29 @@ Abstract:
 
 #include "mlasi.h"
 
+//
+// Define the parameters to execute segments of a SGEMM operation on worker
+// threads.
+//
+
+struct MLAS_SGEMM_WORK_BLOCK {
+    CBLAS_TRANSPOSE TransA;
+    CBLAS_TRANSPOSE TransB;
+    size_t K;
+    size_t lda;
+    size_t ldb;
+    size_t ldc;
+    float alpha;
+    float beta;
+    struct SEGMENT {
+        size_t M;
+        size_t N;
+        const float* A;
+        const float* B;
+        float* C;
+    } Segments[MLAS_MAXIMUM_THREAD_COUNT];
+};
+
 
 #if defined(MLAS_TARGET_CPU_ONLY)
 
@@ -149,28 +172,6 @@ Return Value:
 
 #define MLAS_SGEMM_TRANSA_ROWS              12
 
-//
-// Define the parameters to execute segments of a SGEMM operation on worker
-// threads.
-//
-
-struct MLAS_SGEMM_WORK_BLOCK {
-    CBLAS_TRANSPOSE TransA;
-    CBLAS_TRANSPOSE TransB;
-    size_t K;
-    size_t lda;
-    size_t ldb;
-    size_t ldc;
-    float alpha;
-    float beta;
-    struct SEGMENT {
-        size_t M;
-        size_t N;
-        const float* A;
-        const float* B;
-        float* C;
-    } Segments[MLAS_MAXIMUM_THREAD_COUNT];
-};
 
 void
 MlasSgemmMultiplyBeta(

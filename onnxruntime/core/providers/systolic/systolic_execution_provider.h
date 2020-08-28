@@ -30,11 +30,13 @@ class SystolicExecutionProvider : public IExecutionProvider {
  public:
   explicit SystolicExecutionProvider(const SystolicExecutionProviderInfo& info)
       : IExecutionProvider{onnxruntime::kSystolicExecutionProvider}, provider_info_(info) {
-    DeviceAllocatorRegistrationInfo device_info{OrtMemTypeDefault,
-                                                [](int) {
-                                                  auto memory_info = onnxruntime::make_unique<OrtMemoryInfo>(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator);
-                                                  return onnxruntime::make_unique<TAllocator>(std::move(memory_info)); },
-                                                std::numeric_limits<size_t>::max()};
+  DeviceAllocatorRegistrationInfo device_info(
+      {OrtMemTypeDefault,
+       [](int) {
+         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator));
+       },
+       std::numeric_limits<size_t>::max()});
+
     SetupFusedRules();
 
     bool create_arena = info.create_arena;
