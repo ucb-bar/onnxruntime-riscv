@@ -245,6 +245,7 @@ Return Value:
 
         BiasAddition.LoadNext(Bias);
 
+#if !defined(MLAS_TARGET_CPU_ONLY)
         if (n >= 4) {
 
             do {
@@ -256,6 +257,7 @@ Return Value:
 
             } while (n >= 4);
         }
+#endif
 
         while (n > 0) {
 

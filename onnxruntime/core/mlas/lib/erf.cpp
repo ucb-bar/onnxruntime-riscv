@@ -125,6 +125,7 @@ Return Value:
 
 --*/
 {
+#if !defined(MLAS_TARGET_CPU_ONLY)
     while (N >= 4) {
         MLAS_FLOAT32X4 Value = MlasLoadFloat32x4(Input);
         MLAS_FLOAT32X4 NegZero = MlasBroadcastFloat32x4(MlasErfConstants.ErfNegZero);
@@ -184,6 +185,7 @@ Return Value:
         Output += 4;
         N -= 4;
     }
+#endif
 
     while (N > 0) {
         float Value = *Input++;

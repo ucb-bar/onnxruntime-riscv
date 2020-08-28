@@ -1267,9 +1267,11 @@ Return Value:
             ReductionBufferRemaining = 0;
         }
 
+#if !defined(MLAS_TARGET_CPU_ONLY)
         if (ReductionBufferRemaining >= int64_t(WorkBlock.InputShape[Dimensions - 1])) {
             PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
         }
+#endif
     }
 
 #ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL
