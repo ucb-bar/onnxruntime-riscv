@@ -18,7 +18,8 @@ import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
 from quantize import quantize, QuantizationMode
 from data_preprocess import load_batch, preprocess_mxnet_raw, \
-                            preprocess_caffe_raw, preprocess_caffe2_raw
+                            preprocess_caffe_raw, preprocess_caffe2_raw, \
+                            preprocess_rcnn_raw
 
 import re
 import subprocess
@@ -274,6 +275,8 @@ def load_single_test_data(test_data_dir, num_expected_inputs,
             tensor = preprocess_caffe_raw(tensor)
         elif preprocess_method == 'caffe2':
             tensor = preprocess_caffe2_raw(tensor)
+        elif preprocess_method == 'rcnn':
+            tensor = preprocess_rcnn_raw(tensor)
         inputs.append(tensor)
     return inputs
 
@@ -312,7 +315,7 @@ def main():
         type=str,
         required=True,
         choices=[
-            'mxnet', 'caffe', 'caffe2', 'None'
+            'mxnet', 'caffe', 'caffe2', 'rcnn', 'None'
         ],
         help="Refer to Readme.md for guidance on choosing this option.")
     parser.add_argument('--mode',

@@ -196,14 +196,14 @@ int main(int argc, char* argv[]) {
       unsigned char b = *(data++);
 
       if (cmd["preprocess"].as<std::string>() == "caffe2") {
-        input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
+        input_tensor_values[(0*224 + i)*224 + j] = b - 104.00698793;
         input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
-        input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;  
+        input_tensor_values[(2*224 + i)*224 + j] = r - 122.67891434;  
       } 
       else if (cmd["preprocess"].as<std::string>() == "caffe") {
-        input_tensor_values[(0*224 + i)*224 + j] = (b - 123.68)*0.017;
+        input_tensor_values[(0*224 + i)*224 + j] = (b - 103.94)*0.017;
         input_tensor_values[(1*224 + i)*224 + j] = (g - 116.78)*0.017;
-        input_tensor_values[(2*224 + i)*224 + j] = (r - 103.94)*0.017;  
+        input_tensor_values[(2*224 + i)*224 + j] = (r - 123.68)*0.017;  
       } else if (cmd["preprocess"].as<std::string>() == "mxnet") {
         input_tensor_values[(0*224 + i)*224 + j] = (r/255.0 - 0.485)/0.229;
         input_tensor_values[(1*224 + i)*224 + j] = (g/255.0 - 0.456)/0.224;

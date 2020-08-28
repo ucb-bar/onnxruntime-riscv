@@ -51,9 +51,10 @@ def preprocess_caffe_raw(raw_image):
     g_channel = raw_image[:, 1, :, :]
     b_channel = raw_image[:, 2, :, :]
 
-    r_channel = (r_channel - 103.94)*0.017
+    b_channel = (b_channel - 103.94)*0.017
     g_channel = (g_channel - 116.78)*0.017
-    b_channel = (b_channel - 123.68)*0.017
+    r_channel = (r_channel - 123.68)*0.017
+    
     return np.stack([b_channel, g_channel, r_channel], axis=1)
 
 def preprocess_caffe2_raw(raw_image):
@@ -61,10 +62,22 @@ def preprocess_caffe2_raw(raw_image):
     g_channel = raw_image[:, 1, :, :]
     b_channel = raw_image[:, 2, :, :]
 
-    r_channel = (r_channel - 104.00698793)
+    b_channel = (b_channel - 104.00698793)
     g_channel = (g_channel - 116.66876762)
-    b_channel = (b_channel - 122.67891434)
+    r_channel = (r_channel - 122.67891434)
+    
     return np.stack([b_channel, g_channel, r_channel], axis=1)
+
+def preprocess_rcnn_raw(raw_image):
+    r_channel = raw_image[0, :, :]
+    g_channel = raw_image[1, :, :]
+    b_channel = raw_image[2, :, :]
+
+    b_channel = (b_channel - 104.00698793)
+    g_channel = (g_channel - 116.66876762)
+    r_channel = (r_channel - 122.67891434)
+    
+    return np.stack([b_channel, g_channel, r_channel])
 
 def preprocess_method2(image_filepath, height, width):
     '''
