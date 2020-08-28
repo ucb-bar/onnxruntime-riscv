@@ -17,6 +17,129 @@ Abstract:
 
 #include "mlasi.h"
 
+
+#if defined(MLAS_TARGET_CPU_ONLY)
+
+void MlasSgemmOperation(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const float* B,
+    size_t ldb,
+    float beta,
+    float* C,
+    size_t ldc)
+/*++
+Routine Description:
+    This routine implements the single precision matrix/matrix multiply
+    operation (SGEMM).
+Arguments:
+    TransA - Supplies the transpose operation for matrix A.
+    TransB - Supplies the transpose operation for matrix B.
+    M - Supplies the number of rows of matrix A and matrix C.
+    N - Supplies the number of columns of matrix B and matrix C.
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
+    A - Supplies the address of matrix A.
+    lda - Supplies the first dimension of matrix A.
+    B - Supplies the address of matrix B.
+    ldb - Supplies the first dimension of matrix B.
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
+    C - Supplies the address of matrix C.
+    ldc - Supplies the first dimension of matrix C.
+Return Value:
+    None.
+--*/
+{
+  // BLAS Implementation from https://github.com/garymacindoe/cuda-cholesky/blob/master/blas/sgemm.c
+  // Under MIT License
+
+  if (TransA == CblasNoTrans) {
+    if (TransB == CblasNoTrans) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++) {
+          const float* a = A + (m * lda);
+          const float* b = B + n;
+          float* c = C + (m * ldc) + n;
+          float sum = 0.0f;
+
+          for (size_t k = 0; k < K; k++) {
+            sum += (*b * *a);
+            b += ldb;
+            a += 1;
+          }
+
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
+        }
+      }
+
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++) {
+          const float* a = A + (m * lda);
+          const float* b = B + (n * ldb);
+          float* c = C + (m * ldc) + n;
+          float sum = 0.0f;
+
+          for (size_t k = 0; k < K; k++) {
+            sum += (*b * *a);
+            b += 1;
+            a += 1;
+          }
+
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
+        }
+      }
+    }
+
+  } else {
+    if (TransB == CblasNoTrans) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++) {
+          const float* a = A + m;
+          const float* b = B + n;
+          float* c = C + (m * ldc) + n;
+          float sum = 0.0f;
+
+          for (size_t k = 0; k < K; k++) {
+            sum += (*b * *a);
+            b += ldb;
+            a += lda;
+          }
+
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
+        }
+      }
+
+    } else {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++) {
+          const float* a = A + m;
+          const float* b = B + (n * ldb);
+          float* c = C + (m * ldc) + n;
+          float sum = 0.0f;
+
+          for (size_t k = 0; k < K; k++) {
+            sum += (*b * *a);
+            b += 1;
+            a += lda;
+          }
+
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
+        }
+      }
+    }
+  }
+}
+
+#else
+
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -1072,6 +1195,8 @@ Return Value:
         }
     }
 }
+
+#endif
 
 void
 MlasSgemmOperationThreaded(
