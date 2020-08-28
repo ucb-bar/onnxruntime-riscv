@@ -30,6 +30,8 @@ import math
 # When more nodes are extended to support quantization, add them to this list
 # Values are the relevant input indices that should be quantized
 QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1]}
+# Binary ops that need to be checked for floating-point before quantizing
+BINARY_OPS_TO_QUANTIZE = ['Add', 'Mul']
 
 
 def get_subsequent_nodes(model, index, edge):
@@ -38,6 +40,15 @@ def get_subsequent_nodes(model, index, edge):
         if (edge in node.input):
             matches.append(node.op_type)
     return matches
+
+def can_quantize_name(node, name, value_infos, idx = None):
+    if node.op_type in QUANTIZATION_CANDIDATES and (not idx or idx in QUANTIZATION_CANDIDATES[node.op_type]):
+        return True
+    if node.op_type in BINARY_OPS_TO_QUANTIZE and name in value_infos.keys():
+        vi = value_infos[name]
+        if vi.type.HasField('tensor_type') and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
+            return True
+    return False
 
 
 def create_reduce_nodes(edge_to_reduce, added_nodes, added_outputs,
@@ -69,23 +80,26 @@ def augment_graph(model, static):
         parameter model: loaded FP32 ONNX model to quantize
         return: augmented ONNX model
     '''
+    shape_inferred = onnx.shape_inference.infer_shapes(model)
+    value_infos = {vi.name: vi for vi in shape_inferred.graph.value_info} 
+    value_infos.update({vi.name: vi for vi in shape_inferred.graph.input})
+
     added_nodes = []
     added_outputs = []
     reduced_edges = []
     i = 0
     for node in model.graph.node:
-        if node.op_type in QUANTIZATION_CANDIDATES:
+        if node.op_type in QUANTIZATION_CANDIDATES or node.op_type in BINARY_OPS_TO_QUANTIZE:
             output_name = node.output[0]
-            create_reduce_nodes(output_name, added_nodes, added_outputs,
-                                reduced_edges)
+            if can_quantize_name(node, output_name, value_infos):
+                create_reduce_nodes(output_name, added_nodes, added_outputs,
+                                    reduced_edges)
             # In dynamic quantization we can just worry about outputs of QUANTIZATION_CANDIDATES
             # In static mode we need the inputs for those as well
             if static:
                 for idx, input_name in enumerate(node.input):
-                    if idx in QUANTIZATION_CANDIDATES[
-                            node.op_type] and input_name not in reduced_edges:
-                        create_reduce_nodes(input_name, added_nodes,
-                                            added_outputs, reduced_edges)
+                    if can_quantize_name(node, input_name, value_infos, idx) and input_name not in reduced_edges:
+                        create_reduce_nodes(input_name, added_nodes, added_outputs, reduced_edges)
 
     augmented_model = copy.deepcopy(model)
     augmented_model.graph.node.extend(added_nodes)
@@ -226,20 +240,17 @@ def calculate_quantization_params(model, quantization_thresholds, static,
 
     quantization_params = {}
     for index, node in enumerate(model.graph.node):
-        if node.op_type in QUANTIZATION_CANDIDATES:
+        if node.op_type in QUANTIZATION_CANDIDATES or BINARY_OPS_TO_QUANTIZE:
             node_output_name = node.output[0]
-            if (node_output_name == '3'):
-                import pdb; pdb.set_trace()
-            assert (node_output_name in quantization_thresholds)
-            node_thresholds = quantization_thresholds[node_output_name]
-            node_params = calculate_scale_zeropoint(
-                get_subsequent_nodes(model, index, node_output_name),
-                node_thresholds[0], node_thresholds[1], mode)
-            quantization_params[node_output_name] = node_params
+            if node_output_name in quantization_thresholds:
+                node_thresholds = quantization_thresholds[node_output_name]
+                node_params = calculate_scale_zeropoint(
+                    get_subsequent_nodes(model, index, node_output_name),
+                    node_thresholds[0], node_thresholds[1], mode)
+                quantization_params[node_output_name] = node_params
             if static:
                 for idx, node_input_name in enumerate(node.input):
-                    if idx in QUANTIZATION_CANDIDATES[node.op_type]:
-                        assert (node_input_name in quantization_thresholds)
+                    if node_input_name in quantization_thresholds:
                         if node_input_name not in quantization_params:
                             node_thresholds = quantization_thresholds[
                                 node_input_name]
@@ -294,7 +305,6 @@ def load_test_data(test_data_dir, num_expected_inputs, max_to_load,
             load_single_test_data(test_data_dir, num_expected_inputs,
                                   preprocess_method)
         ]
-
 
 def main():
     # Parsing command-line arguments
