@@ -228,6 +228,8 @@ def calculate_quantization_params(model, quantization_thresholds, static,
     for index, node in enumerate(model.graph.node):
         if node.op_type in QUANTIZATION_CANDIDATES:
             node_output_name = node.output[0]
+            if (node_output_name == '3'):
+                import pdb; pdb.set_trace()
             assert (node_output_name in quantization_thresholds)
             node_thresholds = quantization_thresholds[node_output_name]
             node_params = calculate_scale_zeropoint(

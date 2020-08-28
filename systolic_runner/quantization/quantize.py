@@ -317,6 +317,8 @@ class ONNXQuantizer:
                     new_list += self._quantize_gather_ops(node, new_list)
                 elif node.op_type == 'Relu' or node.op_type == 'Clip':
                     new_list += self._handle_activation_ops(node, new_list)
+                elif node.op_type == 'Constant':
+                    raise ValueError("Cannot handle constant node. Use the onnx transform to convert to initializer")
                 else:
                     new_list += self._handle_other_ops(node, new_list)
 
@@ -673,9 +675,10 @@ class ONNXQuantizer:
 
         if self.static:
             if data_found == False:
+                import pdb; pdb.set_trace()
                 raise ValueError(
                     "Quantization parameters are not specified for param {}."
-                    "In static mode quantization params for inputs and outputs of odes to be quantized are required.".
+                    "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".
                     format(input_name))
 
             qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], [output_name],
@@ -812,6 +815,10 @@ class ONNXQuantizer:
         bias_initializer = _find_by_name(bias_name, self.model.graph.initializer)
         bias_data = self.find_weight_data(bias_initializer)
         quantized_bias_name = bias_name + "_quantized"
+
+        if bias_name in self.quantized_value_map:
+            print("Bias already in quantized value map. This is unusual, but maybe you have a weird netowrk.")
+            return self.quantized_value_map[bias_name].q_name
 
         # input scale is not provided and this input is dynamically quantized so it is not pre-computed at this point
         # so resort to dynamic quantization for bias
@@ -1034,6 +1041,11 @@ class ONNXQuantizer:
 
     def _quantize_gather_ops(self, node, new_nodes_list):
         assert (node.op_type == "Gather")
+
+        # If the input to this node is not quantized, don't bother with trying to quantize it
+        if node.input[0] not in self.quantized_value_map:
+            return [node]
+
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self._quantize_inputs(node, [0], new_nodes_list)
 
