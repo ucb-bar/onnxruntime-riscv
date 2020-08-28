@@ -14,6 +14,9 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SetD3D12Resources)
   (ID3D12Device* device, ID3D12CommandQueue* queue);
 
+  STDMETHOD(SetMetacommandsEnabled)
+  (int enabled);
+
   STDMETHOD(GetD3D12Device)
   (_Outptr_ ID3D12Device** device);
 
@@ -23,6 +26,12 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SetBatchSizeOverride)
   (uint32_t batch_size_override);
 
+  STDMETHOD(SetNamedDimensionOverrides)
+  (wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides);
+
+  STDMETHOD(SetIntraOpNumThreadsOverride)
+  (uint32_t intra_op_num_threads);
+
   STDMETHOD(CreateEngine)
   (_Outptr_ IEngine** out);
 
@@ -30,7 +39,10 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<ID3D12Device> device_ = nullptr;
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_ = nullptr;
+  bool metacommands_enabled_ = true;
   std::optional<uint32_t> batch_size_override_;
+  wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
+  uint32_t intra_op_num_threads_override_;
 };
 
 }  // namespace _winml

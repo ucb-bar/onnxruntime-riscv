@@ -451,6 +451,12 @@ TEST_P(BatchTest, BatchSupport) {
     if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source && LearningModelDeviceKind::Cpu == param.device_kind) {
         return;
     }
+    if (LearningModelDeviceKind::Cpu != param.device_kind ||
+        VideoFrameSource::FromDirect3DSurface == param.video_frame_source ||
+        VideoFrameSource::FromDirect3DSurface == param.output_video_frame_source ||
+        VideoFrameSource::FromUnsupportedD3DSurface == param.output_video_frame_source) {
+        GPUTEST;
+    }
 
     // create model, device and session
     PrepareModelSessionBinding(param.model_file_name, param.device_kind, optimized_batch_size);
@@ -526,7 +532,24 @@ TEST_P(BatchTest, BatchSupport) {
         }
     }
 }
-
+INSTANTIATE_TEST_SUITE_P(BatchTest, BatchTest,
+    testing::Combine(
+        testing::Values(
+            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"fish_720.png", L"fish_720.png"}), 2, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720.png"}), 2, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch2.onnx", Image, std::vector<std::wstring>({L"fish_720_Gray.png", L"fish_720.png"}), 2, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch3.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8_Batch3.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"kitten_224.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8_tensor_Batch3.onnx", Tensor, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8_freeDimInput_Batch10.onnx", Image, std::vector<std::wstring>({}), 10, false),
+            std::make_tuple(L"fns-candy_Bgr8.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, false),
+            std::make_tuple(L"fns-candy_Bgr8.onnx", Image, std::vector<std::wstring>({L"1080.jpg", L"fish_720_Gray.png", L"fish_720.png"}), 3, true)),
+        testing::Values(Bound, Unbound),
+        testing::Values(Async, Sync),
+        testing::Values(FromSoftwareBitmap, FromDirect3DSurface),
+        testing::Values(FromSoftwareBitmap, FromDirect3DSurface, FromUnsupportedD3DSurface),
+        testing::Values(LearningModelDeviceKind::DirectX, LearningModelDeviceKind::Cpu)
+    ));
 TEST_F(ImageTests, LoadBindEvalModelWithoutImageMetadata) {
     GPUTEST;
 
@@ -593,12 +616,12 @@ TEST_F(ImageTests, ImageMetaDataTest) {
     // supported image metadata
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataRgb8_SRGB_0_255.onnx", BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Rgba8, true);
+    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",   BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
+    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx",   BitmapAlphaMode::Premultiplied, BitmapPixelFormat::Bgra8, true);
 
     // unsupported image metadata
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgra8_SRGB_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataRgba8_SRGB_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Rgba8, false);
-    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
-    ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_16_235.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
     ValidateOutputImageMetaData(L"Add_ImageNet1920WithImageMetadataBgr8_LINEAR_0_255.onnx", BitmapAlphaMode::Straight, BitmapPixelFormat::Bgra8, false);
 }

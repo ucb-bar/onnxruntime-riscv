@@ -44,6 +44,19 @@ TensorProto ToTensor<onnxruntime::MLFloat16>(const std::vector<onnxruntime::MLFl
   }
   return t;
 }
+
+bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
+                const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
+  if (l.has_dim_value()) {
+    return r.has_dim_value() && l.dim_value() == r.dim_value();
+  } else if (l.has_dim_param()) {
+    return r.has_dim_param() && l.dim_param() == r.dim_param() && !l.dim_param().empty();
+  } else {
+    // l is unknown - has neither dim_value nor dim_param
+  }
+
+  return false;
+}
 }  // namespace ONNX_NAMESPACE
 
 namespace {
@@ -287,9 +300,6 @@ struct UnInitializeParam {
   size_t preallocated_size;
   ONNXTensorElementDataType ele_type;
 };
-
-
-
 
 ORT_API_STATUS_IMPL(OrtInitializeBufferForTensor, _In_opt_ void* input, size_t input_len,
                     enum ONNXTensorElementDataType type) {
@@ -688,7 +698,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   auto dims = gsl::make_span<const int64_t>(dense.dims().data(), dense.dims().size());
 
   // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
-  size_t sparse_bytes;
+  size_t sparse_bytes = 0;
   ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(sparse_values, &sparse_bytes));
 
   if (type != TensorProto_DataType_STRING) {

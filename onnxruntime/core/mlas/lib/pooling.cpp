@@ -21,7 +21,8 @@ Abstract:
 // threads.
 //
 
-struct MLAS_WORK_BLOCK {
+struct MLAS_POOL_WORK_BLOCK
+{
     MLAS_POOLING_KIND PoolingKind;
     size_t InputShape[3];
     size_t InputSize;
@@ -38,7 +39,7 @@ struct MLAS_WORK_BLOCK {
 typedef
 void
 (MLAS_POOL_KERNEL_ROUTINE)(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -79,7 +80,7 @@ struct MLAS_MAXIMUM_POOLING
 
     static float Reduce(float Reduction, float Value)
     {
-        return (std::max)(Reduction, Value);
+        return std::max(Reduction, Value);
     }
 
     static MLAS_FLOAT32X4 Reduce(MLAS_FLOAT32X4 Reduction, MLAS_FLOAT32X4 Value)
@@ -87,27 +88,10 @@ struct MLAS_MAXIMUM_POOLING
         return MlasMaximumFloat32x4(Reduction, Value);
     }
 
-#if defined(MLAS_NEON64_INTRINSICS)
-
-    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction)
+    static float Reduce(MLAS_FLOAT32X4 Reduction)
     {
-        return vmaxvq_f32(Reduction);
+        return MlasReduceMaximumFloat32x4(Reduction);
     }
-
-#elif defined(MLAS_NEON32_INTRINSICS)
-
-    static float32x2_t ReducePairwise(float32x2_t Vector0, float32x2_t Vector1)
-    {
-        return vpmax_f32(Vector0, Vector1);
-    }
-#elif defined(MLAS_TARGET_CPU_ONLY)
-
-    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction) {
-      float max = std::max({Reduction[0], Reduction[1], Reduction[2], Reduction[3]});
-      return max;
-    }
-
-#endif
 
     static float AveragePool(float Reduction, float Size)
     {
@@ -175,30 +159,10 @@ struct MLAS_AVERAGE_POOLING
         return MlasAddFloat32x4(Reduction, Value);
     }
 
-#if defined(MLAS_NEON64_INTRINSICS)
-
-    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction)
+    static float Reduce(MLAS_FLOAT32X4 Reduction)
     {
-        Reduction = vpaddq_f32(Reduction, Reduction);
-        Reduction = vpaddq_f32(Reduction, Reduction);
-
-        return vgetq_lane_f32(Reduction, 0);
+        return MlasReduceAddFloat32x4(Reduction);
     }
-
-#elif defined(MLAS_NEON32_INTRINSICS)
-
-    static float32x2_t ReducePairwise(float32x2_t Vector0, float32x2_t Vector1)
-    {
-        return vpadd_f32(Vector0, Vector1);
-    }
-
-#elif defined(MLAS_TARGET_CPU_ONLY)
-
-    static float ReduceFloat32x4(MLAS_FLOAT32X4 Reduction) {
-      return Reduction[0] + Reduction[1] + Reduction[2] + Reduction[3];
-    }
-
-#endif
 
     static float AveragePool(float Reduction, float Size)
     {
@@ -284,7 +248,7 @@ struct MLAS_AVERAGE_POOLING
 template<typename PoolingType>
 void
 MlasPool1DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -329,8 +293,8 @@ Return Value:
             const int64_t iwStart64 = pw * StrideWidth - PaddingLeftWidth;
             const int64_t iwEnd64 = iwStart64 + KernelWidth;
 
-            const size_t iwStart = size_t((std::max)(iwStart64, int64_t(0)));
-            const size_t iwEnd = size_t((std::min)(iwEnd64, int64_t(InputWidth)));
+            const size_t iwStart = size_t(std::max(iwStart64, int64_t(0)));
+            const size_t iwEnd = size_t(std::min(iwEnd64, int64_t(InputWidth)));
 
             float m = PoolingType::InitialValue();
 
@@ -354,7 +318,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool2DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -406,16 +370,16 @@ Return Value:
             const int64_t ihStart64 = ph * StrideHeight - PaddingLeftHeight;
             const int64_t ihEnd64 = ihStart64 + KernelHeight;
 
-            const size_t ihStart = size_t((std::max)(ihStart64, int64_t(0)));
-            const size_t ihEnd = size_t((std::min)(ihEnd64, int64_t(InputHeight)));
+            const size_t ihStart = size_t(std::max(ihStart64, int64_t(0)));
+            const size_t ihEnd = size_t(std::min(ihEnd64, int64_t(InputHeight)));
 
             for (size_t pw = 0; pw < OutputWidth; pw++) {
 
                 const int64_t iwStart64 = pw * StrideWidth - PaddingLeftWidth;
                 const int64_t iwEnd64 = iwStart64 + KernelWidth;
 
-                const size_t iwStart = size_t((std::max)(iwStart64, int64_t(0)));
-                const size_t iwEnd = size_t((std::min)(iwEnd64, int64_t(InputWidth)));
+                const size_t iwStart = size_t(std::max(iwStart64, int64_t(0)));
+                const size_t iwEnd = size_t(std::min(iwEnd64, int64_t(InputWidth)));
 
                 float m = PoolingType::InitialValue();
 
@@ -442,7 +406,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool2DVectorKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -598,7 +562,7 @@ Return Value:
                 MLAS_FLOAT32X4 Reduction = MlasLoadFloat32x4(ReductionInput++);
 
                 while (ReductionInput < ReductionInputEnd) {
-                  Reduction = PoolingType::Reduce(Reduction, MlasLoadFloat32x4(ReductionInput++));
+                    Reduction = PoolingType::Reduce(Reduction, MlasLoadFloat32x4(ReductionInput++));
                 }
 
                 if (PoolingKind == MlasAveragePoolingExcludePad) {
@@ -612,14 +576,15 @@ Return Value:
                     if (OutputWidthRemaining < 4) {
 
                         if (OutputWidthRemaining >= 2) {
-                          MlasStoreLowHalfFloat32x4(Output, Reduction);
 
-                          if (OutputWidthRemaining > 2) {
-                            MlasStoreLaneFloat32x4<2>(Output + 2, Reduction);
+                            MlasStoreLowHalfFloat32x4(Output, Reduction);
+
+                            if (OutputWidthRemaining > 2) {
+                                MlasStoreLaneFloat32x4<2>(Output + 2, Reduction);
                             }
 
                         } else {
-                          MlasStoreLaneFloat32x4<0>(Output, Reduction);
+                            MlasStoreLaneFloat32x4<0>(Output, Reduction);
                         }
 
                         Output += OutputWidthRemaining;
@@ -635,18 +600,16 @@ Return Value:
                 } else {
 
                     if (OutputWidthRemaining == 1) {
-                      MlasStoreLaneFloat32x4<0>(Output++, Reduction);
-                      break;
+                        MlasStoreLaneFloat32x4<0>(Output++, Reduction);
+                        break;
                     }
 
-#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS) || defined(MLAS_TARGET_CPU_ONLY)
-                    MlasStoreLaneFloat32x4<0>(Output, Reduction);
-                    MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
-#elif defined(MLAS_SSE2_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS)
                     Reduction = _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(2, 0, 2, 0));
                     MlasStoreLowHalfFloat32x4(Output, Reduction);
 #else
-#error Unsupported architecture.
+                    MlasStoreLaneFloat32x4<0>(Output, Reduction);
+                    MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #endif
 
                     Output += 2;
@@ -665,7 +628,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool3DKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -723,24 +686,24 @@ Return Value:
             const int64_t idStart64 = pd * StrideDepth - PaddingLeftDepth;
             const int64_t idEnd64 = idStart64 + KernelDepth;
 
-            const size_t idStart = size_t((std::max)(idStart64, int64_t(0)));
-            const size_t idEnd = size_t((std::min)(idEnd64, int64_t(InputDepth)));
+            const size_t idStart = size_t(std::max(idStart64, int64_t(0)));
+            const size_t idEnd = size_t(std::min(idEnd64, int64_t(InputDepth)));
 
             for (size_t ph = 0; ph < OutputHeight; ph++) {
 
                 const int64_t ihStart64 = ph * StrideHeight - PaddingLeftHeight;
                 const int64_t ihEnd64 = ihStart64 + KernelHeight;
 
-                const size_t ihStart = size_t((std::max)(ihStart64, int64_t(0)));
-                const size_t ihEnd = size_t((std::min)(ihEnd64, int64_t(InputHeight)));
+                const size_t ihStart = size_t(std::max(ihStart64, int64_t(0)));
+                const size_t ihEnd = size_t(std::min(ihEnd64, int64_t(InputHeight)));
 
                 for (size_t pw = 0; pw < OutputWidth; pw++) {
 
                     const int64_t iwStart64 = pw * StrideWidth - PaddingLeftWidth;
                     const int64_t iwEnd64 = iwStart64 + KernelWidth;
 
-                    const size_t iwStart = size_t((std::max)(iwStart64, int64_t(0)));
-                    const size_t iwEnd = size_t((std::min)(iwEnd64, int64_t(InputWidth)));
+                    const size_t iwStart = size_t(std::max(iwStart64, int64_t(0)));
+                    const size_t iwEnd = size_t(std::min(iwEnd64, int64_t(InputWidth)));
 
                     float m = PoolingType::InitialValue();
 
@@ -770,7 +733,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPool3DVectorKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -1011,14 +974,12 @@ Return Value:
                             break;
                         }
 
-#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS) || defined(MLAS_TARGET_CPU_ONLY)
-                        MlasStoreLaneFloat32x4<0>(Output, Reduction);
-                        MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
-#elif defined(MLAS_SSE2_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS)
                         Reduction = _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(2, 0, 2, 0));
                         MlasStoreLowHalfFloat32x4(Output, Reduction);
 #else
-#error Unsupported architecture.
+                        MlasStoreLaneFloat32x4<0>(Output, Reduction);
+                        MlasStoreLaneFloat32x4<2>(Output + 1, Reduction);
 #endif
 
                         Output += 2;
@@ -1038,7 +999,7 @@ Return Value:
 template<typename PoolingType>
 void
 MlasPoolGlobalKernel(
-    const MLAS_WORK_BLOCK* WorkBlock,
+    const MLAS_POOL_WORK_BLOCK* WorkBlock,
     size_t ChannelCount,
     const float* Input,
     float* Output
@@ -1092,37 +1053,7 @@ Return Value:
         // Reduce the vector to a single float value.
         //
 
-#if defined(MLAS_NEON64_INTRINSICS) || defined(MLAS_TARGET_CPU_ONLY)
-
-        float ReductionValue = PoolingType::ReduceFloat32x4(Reduction);
-
-#elif defined(MLAS_NEON32_INTRINSICS)
-
-        float32x2_t ReductionLow = vget_low_f32(Reduction);
-        float32x2_t ReductionHigh = vget_high_f32(Reduction);
-
-        ReductionLow = PoolingType::ReducePairwise(ReductionLow, ReductionHigh);
-        ReductionLow = PoolingType::ReducePairwise(ReductionLow, ReductionHigh);
-
-        float ReductionValue = vget_lane_f32(ReductionLow, 0);
-
-#elif defined(MLAS_SSE2_INTRINSICS)
-
-        Reduction = PoolingType::Reduce(Reduction, _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(3, 2, 3, 2)));
-        Reduction = PoolingType::Reduce(Reduction, _mm_shuffle_ps(Reduction, Reduction, _MM_SHUFFLE(1, 1, 1, 1)));
-
-        float ReductionValue = _mm_cvtss_f32(Reduction);
-
-#elif defined(MLAS_VSX_INTRINSICS)
-
-        Reduction = PoolingType::Reduce(Reduction, MLAS_FLOAT32X4(vec_splat((__vector int64_t)Reduction, 1)));
-        Reduction = PoolingType::Reduce(Reduction, vec_splat(Reduction, 1));
-
-        float ReductionValue = Reduction[0];
-
-#else
-#error Unsupported architecture.
-#endif
+        float ReductionValue = PoolingType::Reduce(Reduction);
 
         //
         // Iterate over the remaining input buffer an element at a time.
@@ -1239,7 +1170,7 @@ Return Value:
 
 --*/
 {
-    MLAS_WORK_BLOCK WorkBlock;
+    MLAS_POOL_WORK_BLOCK WorkBlock;
 
     WorkBlock.PoolingKind = PoolingKind;
 
@@ -1248,9 +1179,7 @@ Return Value:
     // and output shapes over the batch and channel counts.
     //
 
-    //TODO: use a safeint here and make sure the result value can fit into int32_t
     size_t TotalChannelCount = size_t(InputShape[0]) * size_t(InputShape[1]);
-
 
     InputShape += 2;
     OutputShape += 2;
@@ -1266,6 +1195,10 @@ Return Value:
     bool AllStridesAreOne = true;
     bool AllPaddingIsZero = true;
     bool AllKernelsAreSmall = true;
+
+    if (Dimensions > 3) {
+        throw std::runtime_error("bad dimensions");
+    }
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
 
@@ -1315,6 +1248,7 @@ Return Value:
     PMLAS_POOL_KERNEL_ROUTINE PoolKernelRoutine = MlasPoolGenericKernels[PoolingKind][Dimensions - 1];
 
     if (InputAndKernelShapeMatch && AllStridesAreOne && AllPaddingIsZero) {
+
         PoolKernelRoutine = MlasPoolGlobalKernels[PoolingKind];
 
     } else if (Dimensions >= 2 && WorkBlock.StrideShape[Dimensions - 1] <= 2 && AllKernelsAreSmall) {
@@ -1333,11 +1267,9 @@ Return Value:
             ReductionBufferRemaining = 0;
         }
 
-#if !defined(MLAS_TARGET_CPU_ONLY)
         if (ReductionBufferRemaining >= int64_t(WorkBlock.InputShape[Dimensions - 1])) {
             PoolKernelRoutine = MlasPoolVectorKernels[PoolingKind][Dimensions - 2];
         }
-#endif
     }
 
 #ifdef MLAS_NO_ONNXRUNTIME_THREADPOOL

@@ -110,6 +110,8 @@ class InferenceSession {
   explicit InferenceSession(const SessionOptions& session_options,
                             const Environment& session_env);
 
+#if !defined(ORT_MINIMAL_BUILD)
+
   /**
     Create a new InferenceSession
     @param session_options Session options.
@@ -150,6 +152,8 @@ class InferenceSession {
                    const void* model_data,
                    int model_data_len);
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   virtual ~InferenceSession();
 
   /**
@@ -161,6 +165,7 @@ class InferenceSession {
     */
   common::Status RegisterExecutionProvider(std::unique_ptr<IExecutionProvider> p_exec_provider) ORT_MUST_USE_RESULT;
 
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     * Register a graph transformer. If you've one to register, call this before invoking Initialize().
     * Calling this API is optional.
@@ -227,6 +232,8 @@ class InferenceSession {
     */
   common::Status Load() ORT_MUST_USE_RESULT;
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   /**
     * Initializes a previously loaded model. Initialization includes but is not
     * limited to graph transformations, construction of kernels, etc.
@@ -238,7 +245,8 @@ class InferenceSession {
 
   common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
                      const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
-                     std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
+                     std::vector<OrtValue>* p_fetches,
+                     const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
 
   /**
     * Run a pre-loaded and pre-intialized model.
@@ -269,7 +277,7 @@ class InferenceSession {
   */
   common::Status NewIOBinding(std::unique_ptr<IOBinding>* io_binding) ORT_MUST_USE_RESULT;
 
-  common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
+  virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
   /**
@@ -318,6 +326,16 @@ class InferenceSession {
    */
   const SessionOptions& GetSessionOptions() const;
 
+  /*
+   * Get the DataTransferManager associated with this session
+   */
+  const DataTransferManager& GetDataTransferManager() const;
+
+  /*
+   * Get all the providers' options this session was initialized with.
+   */
+  const ProviderOptionsMap& GetAllProviderOptions() const;
+
   /**
     * Start profiling on this inference session. This simply turns on profiling events to be
     * recorded. A corresponding EndProfiling has to follow to write profiling data to a file.
@@ -340,7 +358,21 @@ class InferenceSession {
     */
   std::string EndProfiling();
 
+  /**
+    * Search registered execution providers for an allocator that has characteristics
+    * specified within mem_info
+    * @param mem_info is a reference to OrtMemoryInfo that contains required specs
+    * @return a ptr to the allocator or nullptr if not available
+    */
+  AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
+
+  /** 
+    *Get InferenceSession logger.
+    */
+  const logging::Logger* GetLogger() const { return session_logger_; };
+
  protected:
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     * Load an ONNX model.
     * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
@@ -356,6 +388,26 @@ class InferenceSession {
   common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+  bool IsInitialized() const;
+
+  const SessionState& GetSessionState() const {
+    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    return *session_state_;
+  }
+
+  // Use these 2 threadpool methods to get access to the threadpools since they rely on
+  // specific flags in session options
+  // These methods assume that session options have been finalized before the call.
+  onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
+    return session_options_.use_per_session_threads ? thread_pool_.get() : intra_op_thread_pool_from_env_;
+  }
+
+  onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
+    return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
+  }
 
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
@@ -373,15 +425,14 @@ class InferenceSession {
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   std::basic_string<ORTCHAR_T> model_location_;
 
+  // The list of execution providers.
+  ExecutionProviders execution_providers_;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
 
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
-
-  bool HasLocalSchema() const {
-    return !custom_schema_registries_.empty();
-  }
 
   common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
@@ -393,23 +444,17 @@ class InferenceSession {
   const logging::Logger& CreateLoggerForRun(const RunOptions& run_options,
                                             std::unique_ptr<logging::Logger>& new_run_logger);
 
+#if !defined(ORT_MINIMAL_BUILD)
   common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
                       const std::string& event_name) ORT_MUST_USE_RESULT;
 
-  common::Status TransformGraph(onnxruntime::Graph& graph,
-                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
-                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
-                                const InsertCastTransformer& insert_cast_transformer,
-                                SessionState& session_state) ORT_MUST_USE_RESULT;
+  template <typename T>
+  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
 
-  common::Status CreateSubgraphSessionState(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  common::Status InitializeSubgraphSessions(Graph& graph, SessionState& session_state) ORT_MUST_USE_RESULT;
-
-  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level,
-                                         const std::vector<std::string>& custom_list);
-
+  bool HasLocalSchema() const {
+    return !custom_schema_registries_.empty();
+  }
+#endif
   void InitLogger(logging::LoggingManager* logging_manager);
 
   common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
@@ -424,19 +469,33 @@ class InferenceSession {
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
 
   template <typename T>
-  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
-
-  template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  SessionOptions session_options_;
+  // Updates all providers with the allocators from the env based on OrtMemoryInfo
+  void UpdateProvidersWithSharedAllocators();
+
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                         TransformerLevel graph_optimization_level,
+                                         const std::vector<std::string>& custom_list);
+
+  common::Status TransformGraph(onnxruntime::Graph& graph,
+                                const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                const ExecutionProviders& providers, KernelRegistryManager& kernel_registry_manager,
+                                const InsertCastTransformer& insert_cast_transformer,
+                                SessionState& session_state) ORT_MUST_USE_RESULT;
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr_;
+
+  InsertCastTransformer insert_cast_transformer_;
 
   // List of transformers to run. When this list is not empty only the transformers in this list
   // will be run regardless of the level set.
   // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
   std::vector<std::string> transformers_to_enable_;
+#endif
+
+  SessionOptions session_options_;
 
   /// Logging manager if provided.
   logging::LoggingManager* const logging_manager_;
@@ -447,27 +506,10 @@ class InferenceSession {
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
-
- protected:
-  bool IsInitialized() const;
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
   std::unique_ptr<SessionState> session_state_;
 
-  // Use these 2 threadpool methods to get access to the threadpools since they rely on
-  // specific flags in session options
-  // These methods assume that session options have been finalized before the call.
-  onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
-    return session_options_.use_per_session_threads ? thread_pool_.get() : intra_op_thread_pool_from_env_;
-  }
-
-  onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
-    return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
-  }
-
- private:
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
@@ -484,7 +526,14 @@ class InferenceSession {
   bool use_per_session_threads_;
 
   KernelRegistryManager kernel_registry_manager_;
+
+#if !defined(ORT_MINIMAL_BUILD)
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
+
+  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
+  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
+  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+#endif
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
@@ -497,6 +546,7 @@ class InferenceSession {
     MLDataType ml_data_type;
     TensorShape tensor_shape;  // not applicable if the input is non-tensor type
   };
+
   std::unordered_map<std::string, InputDefMetaData> input_def_map_;
   OutputDefList output_def_list_;
 
@@ -509,11 +559,6 @@ class InferenceSession {
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-  InsertCastTransformer insert_cast_transformer_;
-
-  //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
-  //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
-  std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
@@ -545,7 +590,9 @@ class InferenceSession {
   // used to hold the ModelProto parsed in an applicable ctor to be used while calling parameter-less Load()
   ONNX_NAMESPACE::ModelProto model_proto_;
 
-  bool model_loaded_ = false;
+  // Flag indicating if ModelProto has been parsed in an applicable ctor
+  bool is_model_proto_parsed_ = false;
+  const Environment& environment_;
 };
 
 struct SessionIOBinding {
@@ -553,8 +600,10 @@ struct SessionIOBinding {
   SessionIOBinding(InferenceSession* session);
 
   IOBinding* Get();
+  InferenceSession* GetInferenceSession();
 
  private:
+  InferenceSession* sess_;
   std::unique_ptr<IOBinding> binding_;
 };
 

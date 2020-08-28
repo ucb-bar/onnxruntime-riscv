@@ -54,9 +54,15 @@ enum class ArenaExtendStrategy : int32_t {
 // all requests to allocate memory go through this interface.
 class BFCArena : public IArenaAllocator {
  public:
+  static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
+  static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1048576;
+  static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
+
   BFCArena(std::unique_ptr<IDeviceAllocator> resource_allocator,
            size_t total_memory,
-           ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo);
+           ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
+           int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
+           int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK);
 
   ~BFCArena() override;
 
@@ -76,10 +82,6 @@ class BFCArena : public IArenaAllocator {
 
   size_t Max() const override {
     return memory_limit_;
-  }
-
-  const OrtMemoryInfo& Info() const override {
-    return info_;
   }
 
   FencePtr CreateFence(const SessionState* session_state) override {
@@ -321,9 +323,8 @@ class BFCArena : public IArenaAllocator {
   size_t RoundedBytes(size_t bytes);
 
   // Try to add a new memory region that can satisfy an allocation of
-  // 'rounded_bytes' bytes.  Returns true on success and false on
-  // failure.
-  bool Extend(size_t rounded_bytes);
+  // 'rounded_bytes' bytes.
+  Status Extend(size_t rounded_bytes);
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
@@ -446,9 +447,10 @@ class BFCArena : public IArenaAllocator {
 
   AllocatorStats stats_;
 
-  OrtMemoryInfo info_;
-
   std::unordered_map<void*, size_t> reserved_chunks_;
+
+  const int initial_chunk_size_bytes_;
+  const int max_dead_bytes_per_chunk_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };

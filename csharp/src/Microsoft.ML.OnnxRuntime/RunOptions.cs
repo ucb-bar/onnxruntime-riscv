@@ -6,60 +6,77 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
     /// Sets various runtime options. 
-    public class RunOptions: IDisposable
+    public class RunOptions : SafeHandle
     {
-        private IntPtr _nativePtr;
         internal IntPtr Handle
         {
             get
             {
-                return _nativePtr;
+                return handle;
             }
         }
 
 
-        public RunOptions()
+        public RunOptions() 
+            :base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out _nativePtr));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateRunOptions(out handle));
         }
 
+        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
 
         /// <summary>
-        /// LogVerbosityLevel for the Run 
-        /// default == LogLevel.Verbose
+        /// Log Severity Level for the session logs. Default = ORT_LOGGING_LEVEL_WARNING
         /// </summary>
-        public LogLevel LogVerbosityLevel 
+        public OrtLoggingLevel LogSeverityLevel
         {
             get
             {
-                LogLevel level;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunLogVerbosityLevel(_nativePtr, out level));
-                return level;
+                return _logSeverityLevel;
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogVerbosityLevel(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogSeverityLevel(handle, value));
+                _logSeverityLevel = value;
             }
         }
+        private OrtLoggingLevel _logSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
 
+        /// <summary>
+        /// Log Verbosity Level for the session logs. Default = 0. Valid values are >=0.
+        /// This takes into effect only when the LogSeverityLevel is set to ORT_LOGGING_LEVEL_VERBOSE.
+        /// </summary>
+        public int LogVerbosityLevel
+        {
+            get
+            {
+                return _logVerbosityLevel;
+            }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunLogVerbosityLevel(handle, value));
+                _logVerbosityLevel = value;
+            }
+        }
+        private int _logVerbosityLevel = 0;
 
         /// <summary>
         /// Log tag to be used during the run. default = ""
         /// </summary>
-        public string LogId 
+        public string LogId
         {
             get
             {
                 string tag = null;
                 IntPtr tagPtr = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunTag(_nativePtr, out tagPtr));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsGetRunTag(handle, out tagPtr));
                 tag = Marshal.PtrToStringAnsi(tagPtr); // assume ANSI string
                 // should not release the memory of the tagPtr, because it returns the c_str() of the std::string being used inside RunOptions C++ class
                 return tag;
             }
             set
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(_nativePtr, value));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetRunTag(handle, value));
             }
         }
 
@@ -78,12 +95,12 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_terminate && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetTerminate(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsSetTerminate(handle));
                     _terminate = true;
                 }
                 else if (_terminate && !value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsUnsetTerminate(_nativePtr));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRunOptionsUnsetTerminate(handle));
                     _terminate = false;
                 }
             }
@@ -91,28 +108,13 @@ namespace Microsoft.ML.OnnxRuntime
         private bool _terminate = false; //value set to default value of the C++ RunOptions
 
 
-        #region destructors disposers
+        #region SafeHandle
 
-        ~RunOptions()
+        protected override bool ReleaseHandle()
         {
-            Dispose(false);
-        }
-
-
-        public void Dispose()
-        {
-            GC.SuppressFinalize(this);
-            Dispose(true);
-        }
-
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                // cleanup managed resources
-            }
-            NativeMethods.OrtReleaseRunOptions(_nativePtr);
+             NativeMethods.OrtReleaseRunOptions(handle);
+             handle = IntPtr.Zero;
+            return true;
         }
 
         #endregion

@@ -5,6 +5,7 @@
 #include "UniqueOrtPtr.h"
 
 #include <memory>
+#include <mutex>
 
 namespace _winml {
 
@@ -77,8 +78,6 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   () override;
   STDMETHOD(FlushContext)
   () override;
-  STDMETHOD(TrimUploadHeap)
-  () override;
   STDMETHOD(ReleaseCompletedReferences)
   () override;
   STDMETHOD(Sync)
@@ -113,6 +112,9 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
 
   STDMETHOD(GetSequenceOfTensorValues)
   (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
+
+  STDMETHOD(GetNumberOfIntraOpThreads)
+  (uint32_t* num_threads) override;
 
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();

@@ -10,7 +10,7 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/core/framework/mpi_setup.h"
+#include "orttraining/core/framework/mpi_context.h"
 #include "orttraining/models/runner/constant.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
@@ -105,11 +105,12 @@ int main(int argc, char* argv[]) {
 
   InferenceSession session_object{so, *env};
 
+  Status st;
   CUDAExecutionProviderInfo xp_info{static_cast<OrtDevice::DeviceId>(world_rank)};
-  session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
+  st = session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info));
+  ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 
   std::string model_at_rank;
-  Status st;
   if (world_rank == 0) {
     st = session_object.Load(params.model_stage0_name);
     ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());

@@ -220,10 +220,6 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 }
 
-static std::unordered_map<std::string, int> GetOpsetVersionMap(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto) {
-  return std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, static_cast<int>(onnx_func_proto.since_version())}};
-}
-
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const onnxruntime::NodeIndex& node_index,
                            const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
@@ -232,7 +228,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(),
             IOnnxRuntimeOpSchemaRegistryList(),
-            GetOpsetVersionMap(onnx_func_proto), {}, logger),
+            graph.DomainToVersionMap(), {}, logger),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
@@ -268,12 +264,14 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
     int i = 0;
     for (auto& input : cached_op_schema->inputs()) {
-      op_schema_->Input(i, input.GetName(), input.GetDescription(), input.GetTypeStr());
+      op_schema_->Input(i, input.GetName(), input.GetDescription(), input.GetTypeStr(), input.GetOption(),
+                        input.GetIsHomogeneous(), input.GetMinArity());
       ++i;
     }
     i = 0;
     for (auto& output : cached_op_schema->outputs()) {
-      op_schema_->Output(i, output.GetName(), output.GetDescription(), output.GetTypeStr());
+      op_schema_->Output(i, output.GetName(), output.GetDescription(), output.GetTypeStr(), output.GetOption(),
+                         output.GetIsHomogeneous(), output.GetMinArity());
       ++i;
     }
     for (auto& attribute : cached_op_schema->attributes()) {
@@ -296,12 +294,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 
   op_schema_->Finalize();
   //construct body
-  std::unordered_map<std::string, int> domain_to_version;
-  //TODO: set correct domain and version
-  domain_to_version[onnxruntime::kOnnxDomain] = static_cast<int>(onnx_func_proto_.since_version());
   auto& function_body_graph = body_.MainGraph();
-  std::vector<const NodeArg*> graph_inputs(onnx_func_proto_.input_size(), nullptr),
-      graph_outputs(onnx_func_proto_.output_size(), nullptr);
+  std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
+      graph_outputs(node_in_parent_graph->OutputDefs().size(), nullptr);
 
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names

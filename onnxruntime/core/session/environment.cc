@@ -5,9 +5,13 @@
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
-#include "onnx/defs/operator_sets-ml.h"
-#include "onnx/defs/operator_sets-training.h"
+#include "onnx/defs/operator_sets_ml.h"
+#if defined(ENABLE_TRAINING)
+#include "onnx/defs/operator_sets_training.h"
+#endif
+#endif
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
 #endif
@@ -23,13 +27,14 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
+#include "core/session/allocator_impl.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/core/graph/gradient_schema_defs.h"
+#include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -51,6 +56,19 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
   return status;
 }
 
+Status Environment::RegisterAllocator(AllocatorPtr allocator) {
+  const auto& mem_info = allocator->Info();
+  // We don't expect millions of allocators getting registered. Hence linear search should be fine.
+  auto ite = std::find_if(std::begin(shared_allocators_),
+                          std::end(shared_allocators_),
+                          [&mem_info](const AllocatorPtr& alloc_ptr) { return alloc_ptr->Info() == mem_info; });
+  if (ite != shared_allocators_.end()) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Allocator with this OrtMemoryInfo is already registered.");
+  }
+  shared_allocators_.insert(ite, allocator);
+  return Status::OK();
+}
+
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                                const OrtThreadingOptions* tp_options,
                                bool create_global_thread_pools) {
@@ -65,15 +83,16 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     if (to.name == nullptr) {
       to.name = ORT_TSTR("intra-op");
     }
-    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP, nullptr);
+    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     to = tp_options->inter_op_thread_pool_params;
     if (to.name == nullptr) {
       to.name = ORT_TSTR("inter-op");
     }
-    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP, nullptr);
+    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
   }
 
   try {
+#if !defined(ORT_MINIMAL_BUILD)
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
@@ -97,12 +116,18 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       systolic::RegisterSystolicSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
+
+#ifndef DISABLE_ML_OPS
       RegisterOnnxMLOperatorSetSchema();
+#endif
+
+#ifdef ENABLE_TRAINING
       RegisterOnnxTrainingOperatorSetSchema();
+#endif
 
 #ifdef ENABLE_TRAINING
       // preserve this order: this depends on operatorsetschema registration.
-      training::RegisterGradientSchemas();
+      training::RegisterTrainingOpSchemas();
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
@@ -118,7 +143,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types(),
+            OpSchema::all_tensor_types_with_bfloat(),
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
@@ -130,13 +155,14 @@ Internal copy node
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types(),
+            OpSchema::all_tensor_types_with_bfloat(),
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node
 )DOC");
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();

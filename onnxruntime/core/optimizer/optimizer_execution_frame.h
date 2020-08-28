@@ -20,14 +20,15 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
   class Info {
    public:
-    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set);
+    Info(const std::vector<const Node*>& nodes, const InitializedTensorSet& initialized_tensor_set,
+         const IExecutionProvider& execution_provider);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
       }
     }
     AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
-      return cpu_execution_provider_->GetAllocator(info.id, info.mem_type);
+      return execution_provider_.GetAllocator(info.id, info.mem_type);
     }
 
     AllocatorPtr GetAllocator() const {
@@ -48,11 +49,12 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
       return -1;
     }
 
-    const OpKernel* GetKernel(NodeIndex node_id) const;
+    std::unique_ptr<const OpKernel> CreateKernel(const Node* node) const;
+
+    const DataTransferManager& GetDataTransferManager() const { return data_transfer_mgr_; }
 
    private:
     // The optimizer is running on CPU execution provider by default.
-    std::unique_ptr<CPUExecutionProvider> cpu_execution_provider_;
     const int device_id_{0};
     const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
@@ -66,8 +68,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     // munmap memory region and close file descriptor
     std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
+    const IExecutionProvider& execution_provider_;
 
-    std::unordered_map<onnxruntime::NodeIndex, std::unique_ptr<OpKernel>> kernels_;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Info);
   };
 
@@ -82,6 +84,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const override;
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_idx, const TensorShape* shape, size_t nnz) override;
+
+  Status CopyTensor(const Tensor& src, Tensor& dest) const override;
 
   const Info& info_;
 };

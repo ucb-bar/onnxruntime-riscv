@@ -10,9 +10,17 @@
 #include "core/util/thread_utils.h"
 
 namespace onnxruntime {
+
+enum class FreeDimensionOverrideType {
+  Invalid = 0,
+  Denotation = 1,
+  Name = 2
+};
+
 struct FreeDimensionOverride {
-  std::string dimension_denotation;
-  int64_t dimension_override;
+  std::string dim_identifier;
+  FreeDimensionOverrideType dim_identifer_type;
+  int64_t dim_value;
 };
 
 /**
@@ -62,13 +70,34 @@ struct SessionOptions {
   // configuring this makes sense only when you're using parallel executor
   OrtThreadPoolParams inter_op_param;
 
-  // For models with free input dimensions (most commonly batch size), specifies a set of values to override those
-  // free dimensions with, keyed by dimension denotation.
+  // For models with symbolic input dimensions (most commonly batch size), specifies a set of values to override those
+  // symbolic dimensions with, keyed by dimension parameters.
   std::vector<FreeDimensionOverride> free_dimension_overrides;
 
   // By default the session uses its own set of threadpools, unless this is set to false.
   // Use this in conjunction with the CreateEnvWithGlobalThreadPools API.
   bool use_per_session_threads = true;
   bool thread_pool_allow_spinning = true;
+
+  // Deterministic compute is likely not as performant. This option is default to false.
+  bool use_deterministic_compute = false;
+
+  // Stores the configurations for this session
+  // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
+  // The configuration keys and value formats are defined in
+  // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
+  std::unordered_map<std::string, std::string> session_configurations;
 };
+
+// Check if the given SessionOptions has a config using the given config_key
+bool HasSessionConfigEntry(const SessionOptions& options, const std::string& config_key);
+
+// Get the config string of the given SessionOptions using the given config_key
+// If there is no such config, the given default string will be returned
+const std::string GetSessionConfigOrDefault(const SessionOptions& options,
+                                            const std::string& config_key,
+                                            const std::string& default_value);
+
+// Add a config pair (config_key, config_value) to the given SessionOptions
+Status AddSessionConfigEntryImpl(SessionOptions& options, _In_z_ const char* config_key, _In_z_ const char* config_value);
 }  // namespace onnxruntime

@@ -13,7 +13,7 @@
 
 namespace WINMLP {
 
-struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
+struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
   LearningModelSession() = delete;
 
@@ -64,6 +64,9 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   EvaluateFeaturesAsync(
       wfc::IMap<hstring, wf::IInspectable> const features,
       hstring const correlationId);
+
+  STDMETHOD(GetIntraOpNumThreads)
+  (uint32_t* numThreads);
 
  public:
   /* Non-ABI methods */
@@ -121,12 +124,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession> {
   // Synchronization
   CWinMLLock session_creation_lock_;
   CWinMLLock dml_ep_lock_;
-
-  // is_first_evaluate_ is used as a heuristic to determine
-  // when the dml upload heap can be trimmed.
-  bool is_first_evaluate_ = true;
-
-
 };
 
 }  // namespace WINMLP

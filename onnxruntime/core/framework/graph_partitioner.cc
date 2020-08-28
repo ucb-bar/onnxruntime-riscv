@@ -97,7 +97,7 @@ static Node* PlaceNode(Graph& graph, std::unique_ptr<IndexedSubGraph> capability
       auto& fused_node = graph.FuseSubGraph(std::move(capability), node_name);
       fused_node.SetExecutionProviderType(provider_type);
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
-      if (!kernel_registry_mgr.HasImplementationOf(fused_node, provider_type)) {
+      if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, fused_node, provider_type)) {
         return &fused_node;
       }
     }
@@ -197,12 +197,13 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
       if (nullptr == node_func) {
         continue;
       }
-      nodes_need_inline.push_back(&node);
+      nodes_need_inline.push_back(&node);      
     }
-  }
+  }  
+
   for (auto* node : nodes_need_inline) {
     // If the node has a functionbody with no kernel and cannot be inlined
-    // it is a invalid function
+    // it is an invalid function
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
   }
 

@@ -26,6 +26,11 @@ struct OrtRunOptions {
   // So it is possible that only some of the nodes are executed.
   bool only_execute_path_to_fetches = false;
 
+#ifdef ENABLE_TRAINING
+  // Set to 'true' to run in training mode.
+  bool training_mode = true;
+#endif
+
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;
 

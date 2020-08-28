@@ -83,64 +83,64 @@ Return Value:
 
 --*/
 {
-#if !defined(MLAS_TARGET_CPU_ONLY)
-  while (N >= 4) {
-    MLAS_FLOAT32X4 Value = MlasLoadFloat32x4(Input);
+    while (N >= 4) {
 
-    Value = MlasMaximumFloat32x4(MlasBroadcastFloat32x4(MlasTanhConstants.LowerRange), Value);
-    Value = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasTanhConstants.UpperRange), Value);
+        MLAS_FLOAT32X4 Value = MlasLoadFloat32x4(Input);
 
-    MLAS_FLOAT32X4 ValueSquared = MlasMultiplyFloat32x4(Value, Value);
+        Value = MlasMaximumFloat32x4(MlasBroadcastFloat32x4(MlasTanhConstants.LowerRange), Value);
+        Value = MlasMinimumFloat32x4(MlasBroadcastFloat32x4(MlasTanhConstants.UpperRange), Value);
 
-    MLAS_FLOAT32X4 p;
-    p = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_13),
-                                 MlasBroadcastFloat32x4(MlasTanhConstants.alpha_11));
-    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_9));
-    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_7));
-    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_5));
-    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_3));
-    p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_1));
-    p = MlasMultiplyFloat32x4(p, Value);
+        MLAS_FLOAT32X4 ValueSquared = MlasMultiplyFloat32x4(Value, Value);
 
-    MLAS_FLOAT32X4 q;
-    q = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.beta_6),
-                                 MlasBroadcastFloat32x4(MlasTanhConstants.beta_4));
-    q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.beta_2));
-    q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.beta_0));
+        MLAS_FLOAT32X4 p;
+        p = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_13),
+            MlasBroadcastFloat32x4(MlasTanhConstants.alpha_11));
+        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_9));
+        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_7));
+        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_5));
+        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_3));
+        p = MlasMultiplyAddFloat32x4(p, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.alpha_1));
+        p = MlasMultiplyFloat32x4(p, Value);
 
-    MlasStoreFloat32x4(Output, MlasDivideFloat32x4(p, q));
+        MLAS_FLOAT32X4 q;
+        q = MlasMultiplyAddFloat32x4(ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.beta_6),
+            MlasBroadcastFloat32x4(MlasTanhConstants.beta_4));
+        q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.beta_2));
+        q = MlasMultiplyAddFloat32x4(q, ValueSquared, MlasBroadcastFloat32x4(MlasTanhConstants.beta_0));
 
-    Input += 4;
-    Output += 4;
-    N -= 4;
-  }
-#endif
+        MlasStoreFloat32x4(Output, MlasDivideFloat32x4(p, q));
 
-  while (N > 0) {
-    float Value = *Input++;
+        Input += 4;
+        Output += 4;
+        N -= 4;
+    }
 
-    Value = (std::min)(MlasTanhConstants.UpperRange, (std::max)(MlasTanhConstants.LowerRange, Value));
+    while (N > 0) {
 
-    float ValueSquared = Value * Value;
+        float Value = *Input++;
 
-    float p;
-    p = ValueSquared * MlasTanhConstants.alpha_13 + MlasTanhConstants.alpha_11;
-    p = p * ValueSquared + MlasTanhConstants.alpha_9;
-    p = p * ValueSquared + MlasTanhConstants.alpha_7;
-    p = p * ValueSquared + MlasTanhConstants.alpha_5;
-    p = p * ValueSquared + MlasTanhConstants.alpha_3;
-    p = p * ValueSquared + MlasTanhConstants.alpha_1;
-    p = p * Value;
+        Value = std::min(MlasTanhConstants.UpperRange, std::max(MlasTanhConstants.LowerRange, Value));
 
-    float q;
-    q = ValueSquared * MlasTanhConstants.beta_6 + MlasTanhConstants.beta_4;
-    q = q * ValueSquared + MlasTanhConstants.beta_2;
-    q = q * ValueSquared + MlasTanhConstants.beta_0;
+        float ValueSquared = Value * Value;
 
-    *Output++ = (p / q);
+        float p;
+        p = ValueSquared * MlasTanhConstants.alpha_13 + MlasTanhConstants.alpha_11;
+        p = p * ValueSquared + MlasTanhConstants.alpha_9;
+        p = p * ValueSquared + MlasTanhConstants.alpha_7;
+        p = p * ValueSquared + MlasTanhConstants.alpha_5;
+        p = p * ValueSquared + MlasTanhConstants.alpha_3;
+        p = p * ValueSquared + MlasTanhConstants.alpha_1;
+        p = p * Value;
 
-    N -= 1;
-  }
+        float q;
+        q = ValueSquared * MlasTanhConstants.beta_6 + MlasTanhConstants.beta_4;
+        q = q * ValueSquared + MlasTanhConstants.beta_2;
+        q = q * ValueSquared + MlasTanhConstants.beta_0;
+
+        *Output++ = (p / q);
+
+        N -= 1;
+    }
 }
 
 void

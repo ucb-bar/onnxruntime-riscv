@@ -21,11 +21,13 @@ IExecutionProvider* TestCudaExecutionProvider() {
 #endif
 
 #ifdef USE_TENSORRT
+#if 0
 IExecutionProvider* TestTensorrtExecutionProvider() {
   static TensorrtExecutionProviderInfo info;
   static TensorrtExecutionProvider trt_provider(info);
   return &trt_provider;
 }
+#endif
 #endif
 
 #ifdef USE_OPENVINO
@@ -40,6 +42,13 @@ IExecutionProvider* TestOpenVINOExecutionProvider() {
 IExecutionProvider* TestNnapiExecutionProvider() {
   static NnapiExecutionProvider nnapi_provider;
   return &nnapi_provider;
+}
+#endif
+
+#ifdef USE_RKNPU
+IExecutionProvider* TestRknpuExecutionProvider() {
+  static RknpuExecutionProvider rknpu_provider;
+  return &rknpu_provider;
 }
 #endif
 

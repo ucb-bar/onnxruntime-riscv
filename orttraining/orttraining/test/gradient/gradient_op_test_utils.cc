@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -69,11 +70,14 @@ void GradientOpTester::Run(
         }
       }
 
+      training::GradientGraphConfiguration gradient_graph_config;
+      gradient_graph_config.set_gradients_as_graph_outputs = true;
       training::GradientGraphBuilder grad_graph_builder(&graph,
                                                         dy_values,
                                                         weights_to_train,
                                                         "",
-                                                        true);
+                                                        gradient_graph_config,
+                                                        logging::LoggingManager::DefaultLogger());
       status = grad_graph_builder.Build();
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
@@ -142,8 +146,9 @@ void GradientOpTester::Run(
         //if node is not registered for the provider, skip
         node.SetExecutionProviderType(provider_type);
         auto reg = execution_provider->GetKernelRegistry();
-        const KernelCreateInfo* kci = reg->TryFindKernel(node, execution_provider->Type());
-        if (!kci) {
+        const KernelCreateInfo* kci;
+        auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
+        if (!st.IsOK()) {
           auto* node_func = node.GetFunctionBody();
           if (!node_func) {
             valid = false;
@@ -151,8 +156,9 @@ void GradientOpTester::Run(
             for (auto& sub_node : node_func->Body().Nodes()) {
               if (sub_node.OpType() != "Constant") {
                 auto sub_reg = execution_provider->GetKernelRegistry();
-                const KernelCreateInfo* sub_kci = sub_reg->TryFindKernel(sub_node, execution_provider->Type());
-                if (!sub_kci) {
+                const KernelCreateInfo* sub_kci;
+                st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
+                if (!st.IsOK()) {
                   valid = false;
                   break;
                 }
@@ -207,7 +213,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, M
     }
     auto shape = output_data_[i].data_.Get<Tensor>().Shape();
     std::vector<float> values(shape.Size(), 0.0);
-    if (output_index_to_use_as_loss == i) {
+    if (output_index_to_use_as_loss == static_cast<int>(i)) {
       values[data_index_of_output] = 1.0;  //set only one value to one to construct jacobian matrix
     }
     AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.GetDims(), values.data(), values.size(), true);

@@ -13,14 +13,37 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include <windows.h>
 #endif  // USE_DML
 
 namespace winmla = Windows::AI::MachineLearning::Adapter;
 
 #ifdef USE_DML
+
+EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+
+static bool IsCurrentModuleInSystem32() {
+  std::string current_module_path;
+  current_module_path.reserve(MAX_PATH);
+  auto size_module_path = GetModuleFileNameA((HINSTANCE)&__ImageBase, current_module_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_module_path == 0);
+
+  std::string system32_path;
+  system32_path.reserve(MAX_PATH);
+  auto size_system32_path = GetSystemDirectoryA(system32_path.data(), MAX_PATH);
+  FAIL_FAST_IF(size_system32_path == 0);
+
+  return _strnicmp(system32_path.c_str(), current_module_path.c_str(), size_system32_path) == 0;
+}
+
 Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
+  DWORD flags = 0; 
+#ifdef BUILD_INBOX 
+  flags |= IsCurrentModuleInSystem32() ? LOAD_LIBRARY_SEARCH_SYSTEM32 : 0;
+#endif
+
   // Dynamically load DML to avoid WinML taking a static dependency on DirectML.dll
-  wil::unique_hmodule dmlDll(LoadLibraryW(L"DirectML.dll"));
+  wil::unique_hmodule dmlDll(LoadLibraryExA("DirectML.dll", nullptr, flags));
   THROW_LAST_ERROR_IF(!dmlDll);
 
   auto dmlCreateDevice1Fn = reinterpret_cast<decltype(&DMLCreateDevice1)>(
@@ -49,12 +72,13 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 
 namespace onnxruntime {
 void DmlConfigureProviderFactoryDefaultRoundingMode(onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode);
+void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
 }
 
 #endif  // USE_DML
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-                    ID3D12Device* d3d_device, ID3D12CommandQueue* queue) {
+                    ID3D12Device* d3d_device, ID3D12CommandQueue* queue, bool metacommands_enabled) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_device = CreateDmlDevice(d3d_device);
@@ -68,6 +92,8 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   // lifetime and can be large, so shouldn't be rounded.
   // So we create the provider with rounding disabled, and expect the caller to enable it after.
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
+  
+  onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END
@@ -88,16 +114,6 @@ ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderFlushContext, _In_ OrtExecutionP
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
   Dml::FlushContext(dml_provider_internal);
-#endif  // USE_DML
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(winmla::DmlExecutionProviderTrimUploadHeap, _In_ OrtExecutionProvider* dml_provider) {
-  API_IMPL_BEGIN
-#ifdef USE_DML
-  auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
-  Dml::TrimUploadHeap(dml_provider_internal);
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END

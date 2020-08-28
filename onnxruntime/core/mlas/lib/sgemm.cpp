@@ -18,6 +18,15 @@ Abstract:
 #include "mlasi.h"
 
 //
+// Define the number of rows from matrix A to transpose to a local buffer.
+//
+// N.B. AVX processes a maximum of 4 rows, FMA3 processes a maximum of 6
+// rows, and AVX512F processes a maximum of 12 rows.
+//
+
+#define MLAS_SGEMM_TRANSA_ROWS              12
+
+//
 // Define the parameters to execute segments of a SGEMM operation on worker
 // threads.
 //
@@ -39,156 +48,6 @@ struct MLAS_SGEMM_WORK_BLOCK {
         float* C;
     } Segments[MLAS_MAXIMUM_THREAD_COUNT];
 };
-
-#if defined(MLAS_TARGET_CPU_ONLY)
-
-void MlasSgemmOperation(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const float* A,
-    size_t lda,
-    const float* B,
-    size_t ldb,
-    float beta,
-    float* C,
-    size_t ldc)
-/*++
-
-Routine Description:
-
-    This routine implements the single precision matrix/matrix multiply
-    operation (SGEMM).
-
-Arguments:
-
-    TransA - Supplies the transpose operation for matrix A.
-
-    TransB - Supplies the transpose operation for matrix B.
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    beta - Supplies the scalar beta multiplier (see SGEMM definition).
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-Return Value:
-
-    None.
-
---*/
-{
-  // BLAS Implementation from https://github.com/garymacindoe/cuda-cholesky/blob/master/blas/sgemm.c
-  // Under MIT License
-
-  if (TransA == CblasNoTrans) {
-    if (TransB == CblasNoTrans) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const float* a = A + (m * lda);
-          const float* b = B + n;
-          float* c = C + (m * ldc) + n;
-          float sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += ldb;
-            a += 1;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const float* a = A + (m * lda);
-          const float* b = B + (n * ldb);
-          float* c = C + (m * ldc) + n;
-          float sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += 1;
-            a += 1;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-    }
-
-  } else {
-    if (TransB == CblasNoTrans) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const float* a = A + m;
-          const float* b = B + n;
-          float* c = C + (m * ldc) + n;
-          float sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += ldb;
-            a += lda;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const float* a = A + m;
-          const float* b = B + (n * ldb);
-          float* c = C + (m * ldc) + n;
-          float sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += 1;
-            a += lda;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-    }
-  }
-}
-
-#else
-
-//
-// Define the number of rows from matrix A to transpose to a local buffer.
-//
-// N.B. AVX processes a maximum of 4 rows, FMA3 processes a maximum of 6
-// rows, and AVX512F processes a maximum of 12 rows.
-//
-
-#define MLAS_SGEMM_TRANSA_ROWS 12
 
 void
 MlasSgemmMultiplyBeta(
@@ -563,29 +422,15 @@ Return Value:
         t1 = o0.val[1];
         t2 = o1.val[0];
         t3 = o1.val[1];
-#elif defined(MLAS_SSE2_INTRINSICS)
-        // N.B. The MSVC version of _MM_TRANSPOSE4_PS uses shufps which is
-        // slightly larger than the below sequence, so manually expand the
-        // matrix transpose.
-        __m128 z0 = _mm_unpacklo_ps(t0, t1);
-        __m128 z1 = _mm_unpackhi_ps(t0, t1);
-        __m128 z2 = _mm_unpacklo_ps(t2, t3);
-        __m128 z3 = _mm_unpackhi_ps(t2, t3);
-        t0 = _mm_movelh_ps(z0, z2);
-        t1 = _mm_movehl_ps(z2, z0);
-        t2 = _mm_movelh_ps(z1, z3);
-        t3 = _mm_movehl_ps(z3, z1);
-#elif defined(MLAS_VSX_INTRINSICS)
-        __vector float z0 = vec_mergeh(t0, t2);
-        __vector float z1 = vec_mergel(t0, t2);
-        __vector float z2 = vec_mergeh(t1, t3);
-        __vector float z3 = vec_mergel(t1, t3);
-        t0 = vec_mergeh(z0, z2);
-        t1 = vec_mergel(z0, z2);
-        t2 = vec_mergeh(z1, z3);
-        t3 = vec_mergel(z1, z3);
 #else
-#error Unsupported architecture.
+        MLAS_FLOAT32X4 z0 = MlasInterleaveLowFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z1 = MlasInterleaveHighFloat32x4(t0, t2);
+        MLAS_FLOAT32X4 z2 = MlasInterleaveLowFloat32x4(t1, t3);
+        MLAS_FLOAT32X4 z3 = MlasInterleaveHighFloat32x4(t1, t3);
+        t0 = MlasInterleaveLowFloat32x4(z0, z2);
+        t1 = MlasInterleaveHighFloat32x4(z0, z2);
+        t2 = MlasInterleaveLowFloat32x4(z1, z3);
+        t3 = MlasInterleaveHighFloat32x4(z1, z3);
 #endif
 
         MlasStoreAlignedFloat32x4(&D[0], t0);
@@ -780,7 +625,14 @@ Return Value:
                 MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
                 MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[ldb]);
 
-#if defined(MLAS_NEON_INTRINSICS) || defined(MLAS_VSX_INTRINSICS)
+#if defined(MLAS_SSE2_INTRINSICS)
+                __m128 v0 = _mm_unpacklo_ps(t0, t1);
+                __m128 v1 = _mm_unpackhi_ps(t0, t1);
+                _mm_storel_pi((__m64*)&d[0], v0);
+                _mm_storeh_pi((__m64*)&d[16], v0);
+                _mm_storel_pi((__m64*)&d[32], v1);
+                _mm_storeh_pi((__m64*)&d[48], v1);
+#else
                 MlasStoreLaneFloat32x4<0>(&d[0], t0);
                 MlasStoreLaneFloat32x4<0>(&d[1], t1);
                 MlasStoreLaneFloat32x4<1>(&d[16], t0);
@@ -789,15 +641,6 @@ Return Value:
                 MlasStoreLaneFloat32x4<2>(&d[33], t1);
                 MlasStoreLaneFloat32x4<3>(&d[48], t0);
                 MlasStoreLaneFloat32x4<3>(&d[49], t1);
-#elif defined(MLAS_SSE2_INTRINSICS)
-                __m128 v0 = _mm_unpacklo_ps(t0, t1);
-                __m128 v1 = _mm_unpackhi_ps(t0, t1);
-                _mm_storel_pi((__m64*)&d[0], v0);
-                _mm_storeh_pi((__m64*)&d[16], v0);
-                _mm_storel_pi((__m64*)&d[32], v1);
-                _mm_storeh_pi((__m64*)&d[48], v1);
-#else
-#error Unsupported architecture.
 #endif
 
                 d += 2;
@@ -1072,6 +915,13 @@ Return Value:
             return;
         }
 
+#elif defined(MLAS_TARGET_ARM64) && !defined(_WIN32)
+
+        if (TransB == CblasNoTrans) {
+            MlasGemvFloatKernel(A, B, C, K, N, ldb, (beta == 0.0f));
+            return;
+        }
+
 #endif
 
     }
@@ -1222,8 +1072,6 @@ Return Value:
         }
     }
 }
-
-#endif
 
 void
 MlasSgemmOperationThreaded(
@@ -1432,22 +1280,23 @@ Return Value:
 }
 
 void
-    MLASCALL
-    MlasGemm(
-        CBLAS_TRANSPOSE TransA,
-        CBLAS_TRANSPOSE TransB,
-        size_t M,
-        size_t N,
-        size_t K,
-        float alpha,
-        const float* A,
-        size_t lda,
-        const float* B,
-        size_t ldb,
-        float beta,
-        float* C,
-        size_t ldc,
-        MLAS_THREADPOOL* ThreadPool)
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const float* B,
+    size_t ldb,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool
+    )
 /*++
 
 Routine Description:
@@ -1493,11 +1342,12 @@ Return Value:
 
 --*/
 {
-  //
-  // Try to run the operation across multiple threads or fall back to a
-  // single thread based on the GEMM parameters and system configuration.
-  //
-  if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ThreadPool)) {
-    MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
-  }
+    //
+    // Try to run the operation across multiple threads or fall back to a
+    // single thread based on the GEMM parameters and system configuration.
+    //
+
+    if (!MlasSgemmTryMultithread(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, ThreadPool)) {
+        MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    }
 }

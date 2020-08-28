@@ -445,6 +445,12 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     ID3D12DescriptorHeap* ppHeaps[] = {descriptor_heap_.Get()};
     command_list_->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
+    // This code currently re-uses the same decriptors each execution, which is unsafe if previous executions are in flight.
+    if (fence_completion_value_ > 0)
+    {
+        device_cache.WaitForFenceValue(fence_completion_value_);
+    }
+
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize);
     CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize);
     {
@@ -471,6 +477,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
     WINML_THROW_IF_FAILED(command_list_->Close());
     ID3D12CommandList* pComputeToGPUCLs[] = {command_list_.Get()};
     device_cache.GetCommandQueue()->ExecuteCommandLists(ARRAYSIZE(pComputeToGPUCLs), pComputeToGPUCLs);
+    fence_completion_value_ = device_cache.QueueFenceToD3D12();
   }
 }
 
@@ -500,6 +507,10 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
   }
 
   ResetCommandList(device_cache);
+
+  auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pInputTensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+  command_list_->ResourceBarrier(1, &barrier);
+
   command_list_->CopyBufferRegion(readback_heap_.Get(), 0, pInputTensor, singleVideoFramebufferSize * batchIdx, singleVideoFramebufferSize);
 
   WINML_THROW_IF_FAILED(command_list_->Close());
@@ -602,8 +613,24 @@ void TensorToVideoFrameConverter::ConvertCPUTensorToSoftwareBitmap(
   ImageTensorChannelType targetChannelType = _winmli::GetChannelTypeFromSoftwareBitmap(softwareBitmap);
 
   if (tensorDesc.dataType == kImageTensorDataTypeFloat32) {
-    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<float>(tensorDesc.channelType, targetChannelType, static_cast<float*>(pCPUTensor), bufferWidth, height, width, pData));
+    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<float>(
+      tensorDesc.channelType,
+      targetChannelType, 
+      tensorDesc.pixelRange, 
+      static_cast<float*>(pCPUTensor),
+      bufferWidth, 
+      height,
+      width,
+      pData));
   } else if (tensorDesc.dataType == kImageTensorDataTypeFloat16) {
-    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<DirectX::PackedVector::HALF>(tensorDesc.channelType, targetChannelType, static_cast<DirectX::PackedVector::HALF*>(pCPUTensor), bufferWidth, height, width, pData));
+    WINML_THROW_IF_FAILED(CpuDetensorizer::Detensorize<DirectX::PackedVector::HALF>(
+      tensorDesc.channelType,
+      targetChannelType,
+      tensorDesc.pixelRange,
+      static_cast<DirectX::PackedVector::HALF*>(pCPUTensor),
+      bufferWidth,
+      height,
+      width,
+      pData));
   }
 }

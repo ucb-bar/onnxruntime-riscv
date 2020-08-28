@@ -5,7 +5,7 @@
 #endif
 
 #include "dnnl_func_kernel.h"
-#include "core/common/exceptions.h"
+#define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/dnnl/dnnl_common.h"
 #include "core/providers/dnnl/subgraph/dnnl_conv.h"
@@ -15,7 +15,6 @@
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
-#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -64,7 +63,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "Conv-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlConv<T>> kernel;
-        kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -73,7 +72,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "Conv-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlConv<T>> kernel;
-        kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlConv<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         kernel->fuse_relu_ = true;
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -83,7 +82,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "Relu-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlRelu<T>> kernel;
-        kernel = std::make_shared<DnnlRelu<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlRelu<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -92,7 +91,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "BatchNormalization-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlBatchNorm<T>> kernel;
-        kernel = std::make_shared<DnnlBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlBatchNorm<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -101,7 +100,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "BatchNormalization-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlBatchNorm<T>> kernel;
-        kernel = std::make_shared<DnnlBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlBatchNorm<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         kernel->fuse_relu_ = true;
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -111,7 +110,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "Conv-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlConvBatchNorm<T>> kernel;
-        kernel = std::make_shared<DnnlConvBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlConvBatchNorm<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -120,7 +119,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "Conv-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlConvBatchNorm<T>> kernel;
-        kernel = std::make_shared<DnnlConvBatchNorm<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlConvBatchNorm<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         kernel->fuse_relu_ = true;
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
@@ -130,7 +129,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "MaxPool-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlPool<T>> kernel;
-        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -139,7 +138,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "GlobalMaxPool-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlPool<T>> kernel;
-        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -148,7 +147,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "AveragePool-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlPool<T>> kernel;
-        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -157,7 +156,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "GlobalAveragePool-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlPool<T>> kernel;
-        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlPool<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -166,7 +165,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "LRN-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlLrn<T>> kernel;
-        kernel = std::make_shared<DnnlLrn<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlLrn<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -175,7 +174,7 @@ class SubgraphPrimitive : public PrimitiveBase {
         std::ostringstream os;
         os << "Sum-" << dnnl_node.node_index << "-";
         std::shared_ptr<DnnlSum<T>> kernel;
-        kernel = std::make_shared<DnnlSum<T>>(dnnl_node, params.provider, params.attributes, os.str());
+        kernel = std::make_shared<DnnlSum<T>>(dnnl_node, params.provider, *params.attributes, os.str());
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
         }
@@ -223,11 +222,8 @@ class SubgraphPrimitivePool : public PrimitivePool<T> {
       auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
       auto tensor_shape = ort.GetTensorShape(tensor_info);
       ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-      auto shape = tensor_shape.data();
-      auto dim = tensor_shape.size();
 
-      TensorShape x_shape(shape, dim);
-      dnnl::memory::dims src_dims(x_shape.GetDims().begin(), x_shape.GetDims().end());
+      dnnl::memory::dims src_dims(tensor_shape);
       AddDimsToKey(dims_str, src_dims);
     }
 
@@ -261,8 +257,7 @@ Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* c
     primitive->UpdateProvider(params_);
     status = primitive->Compute(api, context);
   } catch (const dnnl::error& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status,
-                           ", message: ", e.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.what());
   }
   return status;
 }

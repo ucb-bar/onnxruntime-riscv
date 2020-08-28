@@ -49,7 +49,7 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
   int64_t left_k = transa ? left_shape[left_num_dims - 2] : left_shape[left_num_dims - 1];
 
   if (right_num_dims >= 3) {
-    int64_t right_p = right_shape.SizeToDimension(right_num_dims-2);
+    int64_t right_p = right_shape.SizeToDimension(right_num_dims - 2);
     if (left_p != right_p) {
       return false;
     }
@@ -91,10 +91,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-  ORT_RETURN_IF_NOT(strcmp(Y->Location().name, CUDA) == 0, "Output should be allocated on CUDA");
 
-  CudaT one = ToCudaType<T>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0)
+    return Status::OK();
+
+  const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
+  const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   cublasOperation_t transA = transa ? CUBLAS_OP_T : CUBLAS_OP_N;
   cublasOperation_t transB = transb ? CUBLAS_OP_T : CUBLAS_OP_N;
@@ -102,7 +105,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int ldb = transb ? static_cast<int>(helper.K()) : static_cast<int>(helper.N());
   const int ldc = static_cast<int>(helper.N());
   int64_t stride_A, stride_B, stride_C, batch_count;
-
+  auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),
@@ -111,24 +114,25 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.N()),
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
-        &one,
+        &alpha,
         reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
         ldb,
         reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
         lda,
         &zero,
         reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
-        ldc));
+        ldc,
+        device_prop));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
-             transa, transb, stride_A, stride_B, stride_C, batch_count)) {
+                                      transa, transb, stride_A, stride_B, stride_C, batch_count)) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(Base::CublasHandle(),
                                                           transB,
                                                           transA,
                                                           static_cast<int>(helper.N()),
                                                           static_cast<int>(helper.M()),
                                                           static_cast<int>(helper.K()),
-                                                          &one,
+                                                          &alpha,
                                                           reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
                                                           ldb,
                                                           stride_B,
@@ -139,7 +143,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
                                                           ldc,
                                                           stride_C,
-                                                          static_cast<int>(batch_count)));
+                                                          static_cast<int>(batch_count),
+                                                          device_prop));
+
     return Status::OK();
   }
 
@@ -162,7 +168,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       static_cast<int>(helper.N()),
       static_cast<int>(helper.M()),
       static_cast<int>(helper.K()),
-      &one,
+      &alpha,
       right_arrays.GpuPtr(),
       ldb,
       left_arrays.GpuPtr(),
@@ -170,7 +176,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       &zero,
       output_arrays.GpuPtr(),
       ldc,
-      static_cast<int>(helper.OutputOffsets().size())));
+      static_cast<int>(helper.OutputOffsets().size()),
+      device_prop));
 
   return Status::OK();
 }

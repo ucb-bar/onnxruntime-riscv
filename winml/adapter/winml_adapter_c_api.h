@@ -213,7 +213,7 @@ struct WinmlAdapterApi {
     * OrtSessionOptionsAppendExecutionProvider_DML
 	 * This api is used to add the DML EP to OrtSessionOptions.
     */
-  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(_In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue, bool metacommands_enabled)NO_EXCEPTION;
 
   // OrtSession methods
 
@@ -287,6 +287,14 @@ struct WinmlAdapterApi {
 
   // Dml methods (TODO need to figure out how these need to move to session somehow...)
 
+    /**
+    * SessionGetNumberOfIntraOpThreads
+     * This api returns the number of intra operator threads set on the OrtSession.
+    *
+    * WinML uses this to determine that the correct number of threads was set correctly through OrtSessionOptions.
+    */
+  OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(_In_ OrtSession* session, _Out_ uint32_t* num_threads)NO_EXCEPTION;
+
   /**
     * DmlExecutionProviderSetDefaultRoundingMode
 	 * This api is used to configure the DML EP to turn on/off rounding.
@@ -302,14 +310,6 @@ struct WinmlAdapterApi {
     * WinML communicates directly with DML to perform this as an optimization.
     */
   OrtStatus*(ORT_API_CALL* DmlExecutionProviderFlushContext)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
-
-  /**
-    * DmlExecutionProviderTrimUploadHeap
-	 * This api is used to trim the upload heap in the DML EP.
-    * 
-    * WinML communicates directly with DML to perform this as an optimization.
-    */
-  OrtStatus*(ORT_API_CALL* DmlExecutionProviderTrimUploadHeap)(_In_ OrtExecutionProvider* dml_provider)NO_EXCEPTION;
 
   /**
     * DmlExecutionProviderReleaseCompletedReferences

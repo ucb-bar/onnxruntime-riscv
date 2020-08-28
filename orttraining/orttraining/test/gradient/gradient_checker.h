@@ -26,8 +26,13 @@ struct TensorInfo {
   TensorInfo(const std::initializer_list<int64_t>& shape,
              bool has_gradient = true,
              std::function<float(float)>* transformer = nullptr,
-             MLDataType data_type = DataTypeImpl::GetTensorType<float>())
-      : shape(shape), has_gradient(has_gradient), transformer(transformer), data_type(data_type) {}
+             MLDataType data_type = DataTypeImpl::GetTensorType<float>(),
+             const std::vector<std::string>& dim_params = std::vector<std::string>{})
+      : shape(shape),
+        has_gradient(has_gradient),
+        transformer(transformer),
+        data_type(data_type),
+        dim_params(dim_params) {}
 
   TensorInfo(const TensorShape& shape,
              bool has_gradient = true,
@@ -39,6 +44,7 @@ struct TensorInfo {
   bool has_gradient;
   std::function<float(float)>* transformer;
   MLDataType data_type;
+  std::vector<std::string> dim_params;
 };
 
 // TODO: This class currently assumes the inputs share types and the outputs share a type.
@@ -70,7 +76,9 @@ class GradientChecker {
       // because the gradient op does not handle the case. We have to use this flag
       // to disable check for not having gradient cases in order to pass those test.
       // Remove this flag when the gradient op is fixed.
-      bool check_not_have_gradient = true);
+      bool check_not_have_gradient = true,
+      // Also check gradient builder for op for cases where input shapes are not available
+      bool check_not_have_shape_inferencing = false);
 
   Status ComputeGradientError(
       const training::OpDef& op_def,
@@ -78,18 +86,25 @@ class GradientChecker {
       const std::vector<TensorInfo>& y_infos,
       JAC_T* max_error,
       std::vector<std::vector<X_T>> x_datas,
-      const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {});
+      const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {},
+      // TODO: Ideally it shall check for not has_gradient cases. But some tests are failing
+      // because the gradient op does not handle the case. We have to use this flag
+      // to disable check for not having gradient cases in order to pass those test.
+      // Remove this flag when the gradient op is fixed.
+      bool check_not_have_gradient = true,
+      // Also check gradient builder for op for cases where input shapes are not available
+      bool check_not_have_shape_inferencing = false);
 
  private:
   Status InitJacobians(const std::vector<TensorInfo>& x_infos,
                        const std::vector<TensorInfo>& y_infos,
                        std::vector<std::vector<JAC_T>>* jacobians);
 
-  std::vector<OrtValue> EvaluateFunctionAtInput(OpTester& op_tester, 
-                                                 const std::vector<TensorInfo>& x_infos,
-                                                 const std::vector<TensorInfo>& y_infos,
-                                                 std::vector<std::vector<X_T>>* x_datas,
-                                                 std::vector<std::vector<Y_T>>* y_datas);
+  std::vector<OrtValue> EvaluateFunctionAtInput(OpTester& op_tester,
+                                                const std::vector<TensorInfo>& x_infos,
+                                                const std::vector<TensorInfo>& y_infos,
+                                                std::vector<std::vector<X_T>>* x_datas,
+                                                std::vector<std::vector<Y_T>>* y_datas);
 
   Status InitOpTesterWithGraph(OpTester& op_tester,
                                const std::vector<TensorInfo>& x_infos,
@@ -100,11 +115,11 @@ class GradientChecker {
                                const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 
   Status InitOpTesterWithGradGraph(OpTester& op_tester,
-                               const std::vector<TensorInfo>& x_infos,
-                               const std::vector<TensorInfo>& y_infos,
-                               std::vector<std::vector<X_T>>* x_datas,
-                               std::vector<std::vector<Y_T>>* y_datas,
-                               const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
+                                   const std::vector<TensorInfo>& x_infos,
+                                   const std::vector<TensorInfo>& y_infos,
+                                   std::vector<std::vector<X_T>>* x_datas,
+                                   std::vector<std::vector<Y_T>>* y_datas,
+                                   const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
 
   Status ComputeTheoreticalJacobianTranspose(const training::OpDef& op_def,
                                              const std::vector<TensorInfo>& x_infos,
@@ -112,7 +127,8 @@ class GradientChecker {
                                              std::vector<std::vector<X_T>>* x_datas,
                                              std::vector<std::vector<Y_T>>* y_datas,
                                              std::vector<std::vector<JAC_T>>* jacobian_ts,
-                                             const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
+                                             const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
+                                             bool add_shape = true);
 
   Status ComputeNumericJacobianTranspose(const training::OpDef& op_def,
                                          const std::vector<TensorInfo>& x_infos,
@@ -121,7 +137,8 @@ class GradientChecker {
                                          std::vector<std::vector<X_T>>* x_datas,
                                          std::vector<std::vector<Y_T>>* y_datas,
                                          std::vector<std::vector<JAC_T>>* jacobian_ts,
-                                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes);
+                                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
+                                         bool add_shape = true);
 
   Status ComputeGradientErrorInternal(const training::OpDef& op_name,
                                       const std::vector<TensorInfo>& x_infos,
@@ -130,7 +147,8 @@ class GradientChecker {
                                       std::vector<std::vector<Y_T>>* y_datas,
                                       JAC_T* max_error,
                                       const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes,
-                                      bool check_not_have_gradient = true);
+                                      bool check_not_have_gradient = true,
+                                      bool check_not_have_shape_inferencing = false);
 };
 }  // namespace test
 }  // namespace onnxruntime
