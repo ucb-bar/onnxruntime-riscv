@@ -2891,10 +2891,11 @@ int
 __cdecl
 #endif
 main(
-    void
+    int argc, char *argv[]  __attribute__((unused))
     )
 {
-
+    setbuf(stdout, NULL);
+    
 #ifdef USE_SYSTOLIC
     printf("Systolic Matmul tests.\n");
     onnxruntime::make_unique<MlasSystolicMatmulTest>(argc - 1)->ExecuteShort();

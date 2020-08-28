@@ -115,15 +115,18 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_aren
 #endif
 }
 
-<<<<<<< HEAD
 std::unique_ptr<IExecutionProvider> DefaultSystolicExecutionProvider(bool enable_arena) {
 #ifdef USE_SYSTOLIC
   return CreateExecutionProviderFactory_Systolic(enable_arena)->CreateProvider();
-=======
+#else
+  ORT_UNUSED_PARAMETER(enable_arena);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena) {
 #ifdef USE_ARMNN
   return CreateExecutionProviderFactory_ArmNN(enable_arena)->CreateProvider();
->>>>>>> a7ce5b2be183fbac33904b609ee2f604a80dc2e7
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;
