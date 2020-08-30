@@ -16,9 +16,6 @@
 
 #include "tensor_helper.h"
 #include "cmd_args.h"
-#include "labels.h"
-
-const char* imagenet_labels[1000] = IMAGENET_LABELS;
 
 unsigned long long read_cycles()
 {
@@ -153,11 +150,6 @@ int main(int argc, char* argv[]) {
     }
     printf("]\n");
   }
-
-  if (output_node_names.size() > 1) {
-    printf("ERROR: Graph has multiple output nodes defined. Please specify an output manually.\n");
-    return -1;
-  }
   
   //*************************************************************************
   // Similar operations to get output node information.
@@ -167,8 +159,6 @@ int main(int argc, char* argv[]) {
   //*************************************************************************
   // Score the model using sample data, and inspect values
 
-  size_t input_tensor_size = 3 * 224 * 224;  // simplify ... using known dim values to calculate size
-                                             // use OrtGetTensorShapeElementCount() to get official size!
 
   printf("Loading image\n");
 
@@ -185,33 +175,22 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  
+  input_node_dims[1] = dimY;
+  input_node_dims[2] = dimX;
+  size_t input_tensor_size = 3 * dimX * dimY;  // simplify ... using known dim values to calculate size
+                                             // use OrtGetTensorShapeElementCount() to get official size!  
   float *input_tensor_values = new float[input_tensor_size];
 
   
-  for (int i = 0; i < 224; i++) {
-    for (int j = 0; j < 224; j++) {
+  for (int i = 0; i < dimY; i++) {
+    for (int j = 0; j < dimX; j++) {
       unsigned char r = *(data++);
       unsigned char g = *(data++);
       unsigned char b = *(data++);
 
-      if (cmd["preprocess"].as<std::string>() == "caffe2") {
-        input_tensor_values[(0*224 + i)*224 + j] = b - 122.67891434;
-        input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
-        input_tensor_values[(2*224 + i)*224 + j] = r - 104.00698793;  
-      } 
-      else if (cmd["preprocess"].as<std::string>() == "caffe") {
-        input_tensor_values[(0*224 + i)*224 + j] = (b - 123.68)*0.017;
-        input_tensor_values[(1*224 + i)*224 + j] = (g - 116.78)*0.017;
-        input_tensor_values[(2*224 + i)*224 + j] = (r - 103.94)*0.017;  
-      } else if (cmd["preprocess"].as<std::string>() == "mxnet") {
-        input_tensor_values[(0*224 + i)*224 + j] = (r/255.0 - 0.485)/0.229;
-        input_tensor_values[(1*224 + i)*224 + j] = (g/255.0 - 0.456)/0.224;
-        input_tensor_values[(2*224 + i)*224 + j] = (b/255.0 - 0.406)/0.225;  
-      } else {
-        std::cout << "Unknown preprocess option: " << cmd["preprocess"].as<std::string>() << std::endl;
-        exit(1);
-      }
+      input_tensor_values[(0*dimY + i)*dimX + j] = b - 102.9801;
+      input_tensor_values[(1*dimY + i)*dimX + j] = g - 115.9465;
+      input_tensor_values[(2*dimY + i)*dimX + j] = r - 122.7717;  
     }
   }
   printf("First few image values %f %f %f\n", input_tensor_values[0], input_tensor_values[1], input_tensor_values[2]);
@@ -222,27 +201,65 @@ int main(int argc, char* argv[]) {
 
   // create input tensor object from data values
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size, input_node_dims.data(), 4);
+  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size, input_node_dims.data(), input_node_dims.size());
   assert(input_tensor.IsTensor());
+
+  printf("Starting inference\n");
 
   auto pre_inference_cycles = read_cycles();
 
   // score model & input tensor, get back output tensor
-  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
+  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), output_node_names.size());
   auto post_inference_cycles = read_cycles();
 
-  assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
+  printf("Number of output tensors %lld\n", output_tensors.size());
 
-  // Get pointer to output tensor float values
-  float* floatarr = output_tensors.front().GetTensorMutableData<float>();
-
-  printf("Element count %ld. Top 5 classes:\n", output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount());
-  auto topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
-  while (!topK.empty()) {
-    std::pair<float, int> val = topK.top();
-    printf("%f %s\n", val.first, imagenet_labels[val.second]);
-    topK.pop();
+  for (int i = 0; i < output_tensors.size(); i++) {
+    printf("Dimensions\n");
+    std::vector<int64_t> output_node_dims = output_tensors[i].GetTensorTypeAndShapeInfo().GetShape();
+    printf("num_dims=%zu: [", output_node_dims.size());
+    for (size_t j = 0; j < output_node_dims.size(); j++) {
+      printf("%jd, ", output_node_dims[j]);
+    }
+    printf("]\n");
   }
+
+  float *boxes = output_tensors[0].GetTensorMutableData<float>();
+  int64_t *labels = output_tensors[1].GetTensorMutableData<int64_t>();
+  float *scores = output_tensors[2].GetTensorMutableData<float>();
+  float *masks = output_tensors[3].GetTensorMutableData<float>();
+
+
+  FILE *f = fopen("boxes.data", "wb");
+  fwrite(boxes, sizeof(float), output_tensors[0].GetTensorTypeAndShapeInfo().GetElementCount(), f);
+  fclose(f);
+
+  f = fopen("labels.data", "wb");
+  fwrite(labels, sizeof(int64_t), output_tensors[1].GetTensorTypeAndShapeInfo().GetElementCount(), f);
+  fclose(f);
+
+  f = fopen("scores.data", "wb");
+  fwrite(scores, sizeof(float), output_tensors[2].GetTensorTypeAndShapeInfo().GetElementCount(), f);
+  fclose(f);
+
+  f = fopen("masks.data", "wb");
+  fwrite(masks, sizeof(float), output_tensors[3].GetTensorTypeAndShapeInfo().GetElementCount(), f);
+  fclose(f);
+
+
+
+  // assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
+
+  // // Get pointer to output tensor float values
+  // float* floatarr = output_tensors.front().GetTensorMutableData<float>();
+
+  // printf("Element count %ld. Top 5 classes:\n", output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount());
+  // auto topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
+  // while (!topK.empty()) {
+  //   std::pair<float, int> val = topK.top();
+  //   printf("%f %s\n", val.first, imagenet_labels[val.second]);
+  //   topK.pop();
+  // }
 
   // score the model, and print scores for first 5 classes
   // for (int i = 0; i < 5; i++)
