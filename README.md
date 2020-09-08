@@ -1,6 +1,3 @@
-# Systolic Quickstart
-Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/systolic/systolic_runner/docs/BUILD.md) in `systolic_runner`(along with other documentation).
-
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline?label=Windows+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)
@@ -10,6 +7,9 @@ Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/systoli
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
 **ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
+
+# Systolic Quickstart
+**Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/systolic/systolic_runner/docs/BUILD.md) in `systolic_runner`(along with other documentation).**
 
 
 Many users can benefit from ONNX Runtime, including those looking to:
