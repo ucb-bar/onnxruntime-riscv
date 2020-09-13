@@ -2640,37 +2640,49 @@ public:
 };
 
 #ifdef USE_SYSTOLIC
-
+#define ABS(x) (x < 0 ? -x : x)
+#ifdef SYSTOLIC_INT8
 #define ROUNDING_RIGHT_SHIFT(x, shift) \
     ({((x) >> (shift)) + \
         (((shift) == 0 ? 0 : (((x) >> ((shift)-1)) & 1)) & \
              ((((shift) <= 1 ? 0 : ((x) & ((1 << ((shift)-1)) - 1))) != 0) | (((x) >> (shift)) & 1)));})
+#define ELEM_T_MAX SCHAR_MAX
+#define ELEM_T_MIN SCHAR_MIN
+#define FMT "%d "
+#else
+#define ROUNDING_RIGHT_SHIFT(x, shift) \
+    ((x) / (1 << (shift)))
+#define ELEM_T_MAX 3.4028235E38
+#define ELEM_T_MIN -3.4028235E38
+#define FMT "%f "
+#endif
 
+template<typename elem_t, typename acc_t>
 class MlasSystolicMatmulTest : public MlasTestBase
 {
 private:
-    MatrixGuardBuffer<int8_t> BufferA;
-    MatrixGuardBuffer<int8_t> BufferB;
-    MatrixGuardBuffer<int8_t> BufferC;
-    MatrixGuardBuffer<int8_t> BufferCReference;
-    MatrixGuardBuffer<int32_t> BufferBias;
+    MatrixGuardBuffer<elem_t> BufferA;
+    MatrixGuardBuffer<elem_t> BufferB;
+    MatrixGuardBuffer<elem_t> BufferC;
+    MatrixGuardBuffer<elem_t> BufferCReference;
+    MatrixGuardBuffer<acc_t> BufferBias;
     char acceleration_type_;
 
-    inline int8_t saturate(int32_t num, int shift, bool relu) {
+    inline elem_t saturate(acc_t num, int shift, bool relu) {
         num = ROUNDING_RIGHT_SHIFT(num, shift);
         // Clip result
-        num = num > SCHAR_MAX ? SCHAR_MAX : (num < SCHAR_MIN ? SCHAR_MIN : num);
+        num = num > ELEM_T_MAX ? ELEM_T_MAX : (num < ELEM_T_MIN ? ELEM_T_MIN : num);
         if (relu) {
             num = num < 0 ? 0 : num;
         }
         return num;
     }
 
-    void mymatmul(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out,
-                  int shift, bool relu, const int32_t* bias = nullptr) {
+    void mymatmul(int dimI, int dimJ, int dimK, const elem_t* in1, const elem_t* in2, elem_t* out,
+                  int shift, bool relu, const acc_t* bias = nullptr) {
         for (int i = 0; i < dimI; i++) {
             for (int j = 0; j < dimJ; j++) {
-                int32_t res = 0;
+                acc_t res = 0;
                 for (int k = 0; k < dimK; k++) {
                     res += in1[i * dimK + k] * in2[k * dimJ + j];
                 }
@@ -2679,8 +2691,8 @@ private:
         }
     }
 
-    void NaiveCPUMultiplyi8i8_i8(int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2, int8_t* out,
-                                 int divisor, bool relu, const int32_t* bias = nullptr) {
+    void NaiveCPUMultiply(int dimI, int dimJ, int dimK, const elem_t* in1, const elem_t* in2, elem_t* out,
+                                 int divisor, bool relu, const acc_t* bias = nullptr) {
         bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
         if (!isPowerOf2) {
             throw std::runtime_error("Divisor passed to systolic matmul must be power of 2");
@@ -2693,50 +2705,50 @@ private:
     void Test(size_t M, size_t N, size_t K, int divisor, int tolerance, bool relu = false) 
     {
         printf("Testing...\n");
-        const int8_t* A = BufferA.GetBuffer(K * M);
-        const int8_t* B = BufferB.GetBuffer(N * K);
-        const int32_t* Bias = BufferBias.GetBuffer(N * M);
-        int8_t* C = BufferC.GetBuffer(N * M);
-        int8_t* CReference = BufferCReference.GetBuffer(N * M);
+        const elem_t* A = BufferA.GetBuffer(K * M);
+        const elem_t* B = BufferB.GetBuffer(N * K);
+        const acc_t* Bias = BufferBias.GetBuffer(N * M);
+        elem_t* C = BufferC.GetBuffer(N * M);
+        elem_t* CReference = BufferCReference.GetBuffer(N * M);
 
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
         SystolicMultiply(acceleration_type_, relu, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
-        NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor, relu, Bias);
+        NaiveCPUMultiply(M, N, K, A, B, CReference, divisor, relu, Bias);
 
         for (size_t f = 0; f < M * N; f++) {
-            if (abs(C[f] - CReference[f]) > tolerance) {
+            if (ABS(C[f] - CReference[f]) > tolerance) {
                 printf("A matrix:\n");
                 for (size_t m = 0; m < M; m++) {
                     for (size_t k = 0; k < K; k++) {
-                        printf("%d ", A[m * K + k]);
+                        printf(FMT, A[m * K + k]);
                     }
                     printf("\n");
                 }
                 printf("B matrix:\n");
                 for (size_t k = 0; k < K; k++) {
                     for (size_t n = 0; n < N; n++) {
-                        printf("%d ", B[k * N + n]);
+                        printf(FMT, B[k * N + n]);
                     }
                     printf("\n");
                 }
                 printf("C matrix:\n");
                 for (size_t m = 0; m < M; m++) {
                     for (size_t n = 0; n < N; n++) {
-                        printf("%d ", C[m * N + n]);
+                        printf(FMT, C[m * N + n]);
                     }
                     printf("\n");
                 }
                 printf("C_ref matrix:\n");
                 for (size_t m = 0; m < M; m++) {
                     for (size_t n = 0; n < N; n++) {
-                        printf("%d ", CReference[m*N + n]);
+                        printf(FMT, CReference[m*N + n]);
                     }
                     printf("\n");
                 }
 
-                printf("mismatch M=%zd, N=%zd, K=%zd, divisor=%d, relu=%d. Diff=%d!\n", M, N, K, divisor, relu, abs(C[f] - CReference[f]) );
+                printf("mismatch M=%zd, N=%zd, K=%zd, divisor=%d, relu=%d. Diff=" FMT "!\n", M, N, K, divisor, relu, ABS(C[f] - CReference[f]) );
                 return;
             }
         }
@@ -2897,9 +2909,16 @@ main(
     setbuf(stdout, NULL);
     
 #ifdef USE_SYSTOLIC
+#define UNUSED(x) (void)(x)
+    UNUSED(argc); // Suppress spurious argc warning
+#undef UNUSED
 #ifdef SYSTOLIC_INT8
     printf("Systolic Int8 Matmul tests.\n");
-    onnxruntime::make_unique<MlasSystolicMatmulTest>(argc - 1)->ExecuteShort();
+    onnxruntime::make_unique<MlasSystolicMatmulTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
+#endif
+#ifdef SYSTOLIC_FP32
+    printf("Systolic Fp32 Matmul tests.\n");
+    onnxruntime::make_unique<MlasSystolicMatmulTest<float, float>>(argc - 1)->ExecuteShort();
 #endif
 #endif
 
