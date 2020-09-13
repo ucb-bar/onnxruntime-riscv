@@ -12,7 +12,7 @@ To build the `image-net` runner, use the same command you used for building ORT,
 
 ### Building for Firesim
 
-When building for running with Firesim (as opposed to `spike pk`), you must add the following to the beginning of `runner.cpp` in the imagenet runner to prevent page-fault related issues.
+When building for running with Firesim (as opposed to `spike pk`), you must add the following to the beginning of `main` in `runner.cpp` in the `imagenet_runner` to prevent page-fault related issues.
 
 ```
   if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
@@ -20,6 +20,8 @@ When building for running with Firesim (as opposed to `spike pk`), you must add 
       exit(1);
     }
 ```
+
+(You may also need to `#include <sys/mman.h>`).
 
 You must also add to the end of `systolic_include.h` in `onnxruntime/core/mlas/lib/systolic/systolic_include.h` the following to ensure that Gemmini flushes the TLB for subsequent runs in a new process.
 

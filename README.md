@@ -1,6 +1,3 @@
-# Systolic Quickstart
-Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/systolic/systolic_runner/docs/BUILD.md) in `systolic_runner`(along with other documentation).
-
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20CPU%20CI%20Pipeline?label=Windows+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=9)
@@ -9,8 +6,16 @@ Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/systoli
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Linux%20GPU%20CI%20Pipeline?label=Linux+GPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=12)
 [![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/MacOS%20CI%20Pipeline?label=MacOS+CPU)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=13)
 
-**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
+# Systolic Quickstart
 
+This is a fork of upstream onnxruntime modified to work on riscv platforms and particularly focused on supporting the Gemmini accelerator. Gemmini is not necessarily *required* though, so this should also be suitable for those wanting to perform cpu-only inference on a riscv platform -- although this is less thoroughly tested so may not be as performant (the main blocker I can think of is that the `sgemm` kernel is implemented via naive matmul; ideally this should be linked with a proper BLAS implementation, but since floating point inference was not the main goal with this fork – rather, running quantized networks was – that is still a todo).
+
+Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/systolic/systolic_runner/docs/BUILD.md) in `systolic_runner`(along with other documentation) for information on cross-compiling and usage instructions.
+
+---
+
+
+**ONNX Runtime** is a cross-platform **inferencing and training accelerator** compatible with many popular ML/DNN frameworks, including PyTorch, TensorFlow/Keras, scikit-learn, and more. **[aka.ms/onnxruntime](https://aka.ms/onnxruntime)**
 
 Many users can benefit from ONNX Runtime, including those looking to:
 * Improve inference performance for a wide variety of ML models
