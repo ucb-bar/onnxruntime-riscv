@@ -2702,7 +2702,7 @@ private:
         std::fill_n(C, M * N, -1);
         std::fill_n(CReference, M * N, -1);
 
-        SystolicMultiplyi8i8_i8(acceleration_type_, relu, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
+        SystolicMultiply(acceleration_type_, relu, M, N, K, A, B, C, divisor, /*real_multiplier (unused)= */0, Bias);
         NaiveCPUMultiplyi8i8_i8(M, N, K, A, B, CReference, divisor, relu, Bias);
 
         for (size_t f = 0; f < M * N; f++) {

@@ -79,7 +79,7 @@ Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) cons
   unsigned int rounded_divisor = nearestPowerOfTwo(y_scale_data / (a_scale_data * b_scale_data));
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
+    SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                             /*relu= */ false,
                             static_cast<int>(helper.M()),
                             static_cast<int>(helper.N()),

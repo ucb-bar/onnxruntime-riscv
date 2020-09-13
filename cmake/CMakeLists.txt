@@ -58,6 +58,8 @@ option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_MKLML "Build the default cpu provider with MKL-ML binary dependency" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_USE_SYSTOLIC "Whether to use Systolic to accelerate matmul" OFF)
+option(onnxruntime_SYSTOLIC_INT8 "If Systolic is enabled, whether to use for int8 ops" ON)
+option(onnxruntime_SYSTOLIC_FP32 "If Systolic is enabled, whether to use for fp32 ops" ON)
 option(onnxruntime_USE_NGRAPH "Build with nGraph support" OFF)
 option(onnxruntime_USE_OPENBLAS "Use openblas" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -818,6 +820,14 @@ include_directories(
 
 if(onnxruntime_USE_SYSTOLIC)
   add_definitions(-DUSE_SYSTOLIC=1)
+endif()
+
+if(onnxruntime_SYSTOLIC_INT8)
+  add_definitions(-DSYSTOLIC_INT8=1)
+endif()
+
+if(onnxruntime_SYSTOLIC_FP32)
+  add_definitions(-DSYSTOLIC_FP32=1)
 endif()
 
 if(onnxruntime_USE_OPENVINO)

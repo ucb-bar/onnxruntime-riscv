@@ -247,7 +247,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
       /**
        * Note that when quantizing we will have transposed the weight matrix so that it holds the correct values
        */
-      SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
+      SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                               /*relu= */ fused_relu_,
                               static_cast<int>(output_image_size),
                               static_cast<int>(M / conv_attrs_.group),
@@ -497,7 +497,7 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
         start_time = profiler.StartTime();
       }
 
-      SystolicMultiplyi8i8_i8(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
+      SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                               /*relu= */ fused_relu_,
                               static_cast<int>(M / conv_attrs_.group),
                               static_cast<int>(output_image_size),
