@@ -28,7 +28,7 @@ inline tiled_matmul_type_t get_accelerator_mode(int mode) {
 }
 
 void SystolicMultiplyi8i8_i8(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
-                             const elem_t* in1, const elem_t* in2, elem_t* out, int divisor, __attribute__((unused)) float real_multiplier, const int32_t* bias) {
+                             const elem_t* in1, const elem_t* in2, elem_t* out, int divisor, __attribute__((unused)) float real_multiplier, const acc_t* bias) {
   printf("Called into systolic matmul!\n");
   bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
   if (!isPowerOf2) {
@@ -47,7 +47,7 @@ void SystolicMultiplyi8i8_i8(char accelerator_mode, bool relu,
                              const elem_t* in2, int strideIn2,
                              elem_t* out, int strideOut,
                              int divisor, __attribute__((unused)) float real_multiplier,
-                             const int32_t* bias, int strideBias, bool repeating_bias) {
+                             const acc_t* bias, int strideBias, bool repeating_bias) {
   printf("Called into systolic matmul!\n");
   bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
   if (!isPowerOf2) {
