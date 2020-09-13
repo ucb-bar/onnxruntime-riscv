@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+#ifdef SYSTOLIC_INT8
+
 TEST(ConvTest, QLinearConvNHWCSignedTiny2DTest) {
   OpTester test("QLinearConv_nhwc", 10);
 
@@ -38,6 +40,8 @@ TEST(ConvTest, QLinearConvNHWCSignedTiny2DTest) {
   session_options.intra_op_param.thread_pool_size = 1;
   test.Run(session_options);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

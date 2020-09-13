@@ -9,6 +9,8 @@ namespace test {
 
 namespace {
 
+#ifdef SYSTOLIC_INT8
+
 TEST(ConvTest, QLinearConvSignedTiny2DTest) {
   OpTester test("QLinearConv", 10);
 
@@ -636,6 +638,8 @@ TEST(ConvTest, QLinearConvSignedWithBiasSimple2DTest) {
   session_options.intra_op_param.thread_pool_size = 1;
   test.Run(session_options);
 }
+
+#endif
 
 }  // namespace
 }  // namespace test

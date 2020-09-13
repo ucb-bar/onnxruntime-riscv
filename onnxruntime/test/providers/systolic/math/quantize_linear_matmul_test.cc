@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+#ifdef SYSTOLIC_INT8
+
 /**
  *  Equivalent Python implementation:
  *
@@ -256,6 +258,8 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8WithRoundedShift) {
   session_options.intra_op_param.thread_pool_size = 1;
   test.Run(session_options);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

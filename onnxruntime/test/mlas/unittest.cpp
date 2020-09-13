@@ -2897,8 +2897,10 @@ main(
     setbuf(stdout, NULL);
     
 #ifdef USE_SYSTOLIC
-    printf("Systolic Matmul tests.\n");
+#ifdef SYSTOLIC_INT8
+    printf("Systolic Int8 Matmul tests.\n");
     onnxruntime::make_unique<MlasSystolicMatmulTest>(argc - 1)->ExecuteShort();
+#endif
 #endif
 
     //

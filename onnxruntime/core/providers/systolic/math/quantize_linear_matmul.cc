@@ -8,6 +8,8 @@
 #include "core/providers/systolic/systolic_execution_provider.h"
 #include "core/providers/systolic/helper/helper.h"
 
+#ifdef SYSTOLIC_INT8
+
 namespace onnxruntime {
 namespace systolic {
 
@@ -95,3 +97,5 @@ Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) cons
 
 } // namespace systolic
 }  // namespace onnxruntime
+
+#endif

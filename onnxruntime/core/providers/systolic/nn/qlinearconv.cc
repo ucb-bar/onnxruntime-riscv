@@ -11,6 +11,8 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/common/safeint.h"
 
+#ifdef SYSTOLIC_INT8
+
 namespace onnxruntime {
 namespace systolic {
 
@@ -544,3 +546,5 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
 
 }  // namespace systolic
 }  // namespace onnxruntime
+
+#endif
