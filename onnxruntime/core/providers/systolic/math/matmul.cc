@@ -16,11 +16,21 @@ namespace systolic {
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMul,
     kOnnxDomain,
-    1,
+    9,
     float,
     kSystolicExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     MatMul<float>);
+
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+    MatMul,
+    kOnnxDomain,
+    1, 8,
+    float,
+    kSystolicExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    MatMul<float>);
+
 
 template <typename T>
 Status MatMul<T>::Compute(OpKernelContext* ctx) const {

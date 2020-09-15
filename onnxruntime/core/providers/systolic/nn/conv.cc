@@ -16,16 +16,21 @@
 namespace onnxruntime {
 namespace systolic {
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     Conv,
     kOnnxDomain,
-    1,
-    float,
+    11,
     kSystolicExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Conv<float>);
 
-
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Conv,
+    kOnnxDomain,
+    1, 10,
+    kSystolicExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Conv<float>);
 
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
