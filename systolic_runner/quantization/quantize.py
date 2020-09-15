@@ -729,8 +729,16 @@ class ONNXQuantizer:
         reshape_input = [quantized_bias_name]
 
         # Add tensors for the shape to be reshaped to
-        _add_initializer_if_not_present(self.model.graph, "reshape_shape", [1, -1, 1, 1], [4],
+        weight = _find_by_name(node.input[1], self.model.graph.initializer)
+        if weight is None:
+            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+
+        reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
+        reshape_shape[1] = -1
+
+        _add_initializer_if_not_present(self.model.graph, "reshape_shape", reshape_shape, [len(weight.dims)],
                                         onnx_proto.TensorProto.INT64)
+                                        
         reshape_input.append('reshape_shape')
         reshape_op_output = node.output[0] + "_reshape"
         reshape_node = onnx.helper.make_node("Reshape", reshape_input, [reshape_op_output],

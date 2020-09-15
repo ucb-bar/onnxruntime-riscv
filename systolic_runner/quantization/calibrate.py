@@ -240,24 +240,23 @@ def calculate_quantization_params(model, quantization_thresholds, static,
 
     quantization_params = {}
     for index, node in enumerate(model.graph.node):
-        if node.op_type in QUANTIZATION_CANDIDATES or BINARY_OPS_TO_QUANTIZE:
-            node_output_name = node.output[0]
-            if node_output_name in quantization_thresholds:
-                node_thresholds = quantization_thresholds[node_output_name]
-                node_params = calculate_scale_zeropoint(
-                    get_subsequent_nodes(model, index, node_output_name),
-                    node_thresholds[0], node_thresholds[1], mode)
-                quantization_params[node_output_name] = node_params
-            if static:
-                for idx, node_input_name in enumerate(node.input):
-                    if node_input_name in quantization_thresholds:
-                        if node_input_name not in quantization_params:
-                            node_thresholds = quantization_thresholds[
-                                node_input_name]
-                            node_params = calculate_scale_zeropoint(
-                                [], node_thresholds[0], node_thresholds[1],
-                                mode)
-                            quantization_params[node_input_name] = node_params
+        node_output_name = node.output[0]
+        if node_output_name in quantization_thresholds:
+            node_thresholds = quantization_thresholds[node_output_name]
+            node_params = calculate_scale_zeropoint(
+                get_subsequent_nodes(model, index, node_output_name),
+                node_thresholds[0], node_thresholds[1], mode)
+            quantization_params[node_output_name] = node_params
+        if static:
+            for idx, node_input_name in enumerate(node.input):
+                if node_input_name in quantization_thresholds:
+                    if node_input_name not in quantization_params:
+                        node_thresholds = quantization_thresholds[
+                            node_input_name]
+                        node_params = calculate_scale_zeropoint(
+                            [], node_thresholds[0], node_thresholds[1],
+                            mode)
+                        quantization_params[node_input_name] = node_params
 
     return quantization_params
 
