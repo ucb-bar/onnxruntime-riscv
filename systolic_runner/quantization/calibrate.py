@@ -16,7 +16,7 @@ from PIL import Image
 import onnx
 import onnxruntime
 from onnx import helper, TensorProto, numpy_helper
-from quantize import quantize, QuantizationMode
+from quantizer.quantize import quantize, QuantizationMode
 from data_preprocess import load_batch, preprocess_mxnet_raw, \
                             preprocess_caffe_raw, preprocess_caffe2_raw, \
                             preprocess_rcnn_raw
@@ -192,7 +192,6 @@ def calculate_scale_zeropoint(next_nodes, rmin, rmax, mode):
         if rmin < 0:
             rmin = 0
     elif 'Relu' in next_nodes and len(next_nodes) > 1:
-        # TODO: Add Relu to QUANTIZATION_CANDIDATES (-> QLinearRelu), and update calibrate.py
         raise ValueError(
             "Not reducing output range as output also goes to non-Relu nodes: {}"
             .format(next_nodes))

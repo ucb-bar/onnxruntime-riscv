@@ -1,6 +1,8 @@
 import onnx
 import argparse
 from onnx import optimizer
+from .quant_utils import generate_identified_filename
+from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 
 def get_args():
@@ -9,6 +11,20 @@ def get_args():
     parser.add_argument("--output", required=True, help="output model")
     args = parser.parse_args()
     return args
+
+def optimize_model(model_path: Path):
+    '''
+        Generate model that applies graph optimization (constant folding,etc.)
+        parameter model_path: path to the original onnx model
+        return: optimized onnx model
+    '''
+    opt_model_path = generate_identified_filename(model_path, "-opt")
+    sess_option = SessionOptions()
+    sess_option.optimized_model_filepath = opt_model_path.as_posix()
+    sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
+    _ = InferenceSession(model_path.as_posix(), sess_option)
+    optimized_model = onnx.load(opt_model_path.as_posix())
+    return optimized_model
 
 def replace_gemm_with_matmul(model):
     nodes_to_remove = []
