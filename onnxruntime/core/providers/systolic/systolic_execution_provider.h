@@ -30,13 +30,6 @@ class SystolicExecutionProvider : public IExecutionProvider {
  public:
   explicit SystolicExecutionProvider(const SystolicExecutionProviderInfo& info)
       : IExecutionProvider{onnxruntime::kSystolicExecutionProvider}, provider_info_(info) {
-  DeviceAllocatorRegistrationInfo device_info(
-      {OrtMemTypeDefault,
-       [](int) {
-         return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator));
-       },
-       std::numeric_limits<size_t>::max()});
-
     SetupFusedRules();
 
     bool create_arena = info.create_arena;
@@ -52,7 +45,14 @@ class SystolicExecutionProvider : public IExecutionProvider {
     create_arena = false;
 #endif
 
-    InsertAllocator(CreateAllocator(device_info, 0, create_arena));
+  AllocatorCreationInfo device_info{
+      [](int) {
+        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator));
+      },
+      0,
+      create_arena};
+
+    InsertAllocator(CreateAllocator(device_info));
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;

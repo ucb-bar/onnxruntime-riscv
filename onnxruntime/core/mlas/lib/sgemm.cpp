@@ -162,6 +162,58 @@ Return Value:
   }
 }
 
+
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    size_t lda,
+    const float* B,
+    size_t ldb,
+    float beta,
+    float* C,
+    size_t ldc,
+    MLAS_THREADPOOL* ThreadPool __attribute__((unused))
+    )
+/*++
+Routine Description:
+    This routine implements the single precision matrix/matrix multiply
+    operation (SGEMM).
+Arguments:
+    TransA - Supplies the transpose operation for matrix A.
+    TransB - Supplies the transpose operation for matrix B.
+    M - Supplies the number of rows of matrix A and matrix C.
+    N - Supplies the number of columns of matrix B and matrix C.
+    K - Supplies the number of columns of matrix A and the number of rows of
+        matrix B.
+    alpha - Supplies the scalar alpha multiplier (see SGEMM definition).
+    A - Supplies the address of matrix A.
+    lda - Supplies the first dimension of matrix A.
+    B - Supplies the address of matrix B.
+    ldb - Supplies the first dimension of matrix B.
+    beta - Supplies the scalar beta multiplier (see SGEMM definition).
+    C - Supplies the address of matrix C.
+    ldc - Supplies the first dimension of matrix C.
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+Return Value:
+    None.
+--*/
+{
+    //
+    // Try to run the operation across multiple threads or fall back to a
+    // single thread based on the GEMM parameters and system configuration.
+    //
+
+    MlasSgemmOperation(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
 #else
 
 //
@@ -1186,8 +1238,6 @@ Return Value:
     }
 }
 
-#endif
-
 void
 MlasSgemmPackedOperation(
     CBLAS_TRANSPOSE TransA,
@@ -1774,3 +1824,5 @@ Return Value:
         PackedB = (float*)PackedB + AlignedN * CountK;
     }
 }
+
+#endif

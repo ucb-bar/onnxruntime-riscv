@@ -771,7 +771,7 @@ if (onnxruntime_USE_SYSTOLIC)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_systolic_cc_srcs})
   add_library(onnxruntime_providers_systolic ${onnxruntime_providers_systolic_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_systolic onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf safeint_interface)
+  onnxruntime_add_include_to_target(onnxruntime_providers_systolic onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf safeint_interface flatbuffers)
   add_dependencies(onnxruntime_providers_systolic ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_systolic PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_systolic PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
