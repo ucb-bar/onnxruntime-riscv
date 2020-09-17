@@ -56,12 +56,13 @@ def display_objdetect_image(image, boxes, labels, scores, masks, score_threshold
     plt.savefig("annotated.png")
 
 
-NUM_CLASSES = 40
+
 
 img = Image.open('../images/preprocessed.jpg')
 
+labels = np.fromfile("../labels.data", dtype=np.int64)
+NUM_CLASSES = labels.size
 boxes = np.fromfile("../boxes.data", dtype=np.float32).reshape((NUM_CLASSES, 4))
-labels = np.fromfile("../labels.data", dtype=np.int64).reshape((NUM_CLASSES))
 scores = np.fromfile("../scores.data", dtype=np.float32).reshape((NUM_CLASSES))
 masks = np.fromfile("../masks.data", dtype=np.float32).reshape((NUM_CLASSES, 1, 28, 28))
 display_objdetect_image(img, boxes, labels, scores, masks)
