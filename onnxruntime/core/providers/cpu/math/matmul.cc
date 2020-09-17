@@ -17,7 +17,7 @@ class MatMul final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-#if !defined(USE_MKLML_FOR_BLAS) && !defined(USE_SYSTOLIC)
+#if !defined(USE_MKLML_FOR_BLAS)
 
 template <>
 class MatMul<float> final : public OpKernel {
@@ -116,7 +116,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-#if !defined(USE_MKLML_FOR_BLAS) && !defined(USE_SYSTOLIC)
+#if !defined(USE_MKLML_FOR_BLAS)
 
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
   is_packed = false;

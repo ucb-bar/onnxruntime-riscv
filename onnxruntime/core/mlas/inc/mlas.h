@@ -242,8 +242,6 @@ MlasGemm(
 // Buffer packing routines.
 //
 
-#ifndef USE_SYSTOLIC
-
 size_t
 MLASCALL
 MlasGemmPackBSize(
@@ -280,8 +278,6 @@ MlasGemmPackB(
     bool BIsSigned,
     void* PackedB
     );
-
-#endif
 
 //
 // Convolution routines.

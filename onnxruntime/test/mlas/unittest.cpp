@@ -249,7 +249,6 @@ public:
     }
 };
 
-#ifndef USE_SYSTOLIC
 
 template<typename T>
 class MlasFgemmTestBase<T, true> : public MlasTestBase
@@ -282,7 +281,6 @@ private:
     MatrixGuardBuffer<uint8_t> BufferBPacked;
 };
 
-#endif
 
 template<typename T, bool Packed>
 class MlasFgemmTest : public MlasFgemmTestBase<T, Packed>
@@ -2938,10 +2936,8 @@ RunThreadedTests(
 {
     printf("SGEMM tests.\n");
     onnxruntime::make_unique<MlasFgemmTest<float, false>>()->ExecuteShort();
-    #ifndef USE_SYSTOLIC
     printf("SGEMM packed tests.\n");
     onnxruntime::make_unique<MlasFgemmTest<float, true>>()->ExecuteShort();
-    #endif
 #ifdef MLAS_HAS_DGEMM
     printf("DGEMM tests.\n");
     onnxruntime::make_unique<MlasFgemmTest<double, false>>()->ExecuteShort();

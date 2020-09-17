@@ -163,7 +163,7 @@ Abstract:
 // Define the prototypes of the platform optimized routines.
 //
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_CPU_ONLY)
 
 typedef
 size_t
@@ -526,7 +526,7 @@ extern "C" {
     MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelFma3;
     MLAS_GEMM_DOUBLE_KERNEL MlasGemmDoubleKernelAvx512F;
 #endif
-#elif defined(MLAS_TARGET_POWER)
+#elif defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_CPU_ONLY)
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
