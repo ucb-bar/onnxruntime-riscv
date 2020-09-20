@@ -5,8 +5,10 @@
 #include <assert.h>
 #include <iostream>
 #include <vector>
+#include <fstream>
 #include <systolic/systolic_provider_factory.h>
 #include <onnxruntime_cxx_api.h>
+
 #ifdef USE_CUSTOM_OP_LIBRARY
 #include "custom_op_library.h"
 #endif
@@ -18,6 +20,19 @@
 #include "cmd_args.h"
 #include "labels.h"
 
+bool has_suffix(const std::string &str, const std::string &suffix)
+{
+    return str.size() >= suffix.size() &&
+           str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+int getLabelOfBatchImage(const std::string &path) {
+  size_t lastidx = path.find_last_of("/\\");
+  size_t secondlastidx = path.find_last_of("/\\", lastidx - 1);
+  return std::stoi(path.substr(secondlastidx + 1, (lastidx - secondlastidx - 1)));
+}
+
+
 const char* imagenet_labels[1000] = IMAGENET_LABELS;
 
 unsigned long long read_cycles()
@@ -25,6 +40,105 @@ unsigned long long read_cycles()
     unsigned long long cycles;
     asm volatile ("rdcycle %0" : "=r" (cycles));
     return cycles;
+}
+
+std::vector<int> inferOnImage(const std::string &path, const std::string &preprocess, Ort::Session &session,
+                  const std::vector<const char*> &input_node_names,
+                  const std::vector<int64_t> &input_node_dims,
+                  const std::vector<const char*> &output_node_names) {
+  size_t input_tensor_size = 3 * 224 * 224;  // simplify ... using known dim values to calculate size
+                                             // use OrtGetTensorShapeElementCount() to get official size!
+  printf("Loading image\n");
+
+  int dimX, dimY, numChannels;
+  unsigned char *data = stbi_load(path.c_str(), &dimX, &dimY, &numChannels, 0);
+  unsigned char *orig_data = data;
+
+  if (data == nullptr) {
+    printf("Could not load image\n");
+    exit(-1);
+  }
+  printf("Image dimensions: %d %d %d\n", dimX, dimY, numChannels);
+  if (numChannels != 3) {
+    printf("Loaded image has more than 3 channels. Use JPG instead of PNG\n");
+    exit(-1);
+  }
+
+  
+  std::vector<float> input_tensor_values(input_tensor_size);
+
+  
+  for (int i = 0; i < 224; i++) {
+    for (int j = 0; j < 224; j++) {
+      unsigned char r = *(data++);
+      unsigned char g = *(data++);
+      unsigned char b = *(data++);
+
+      if (preprocess == "caffe2") {
+        input_tensor_values[(0*224 + i)*224 + j] = b - 104.00698793;
+        input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
+        input_tensor_values[(2*224 + i)*224 + j] = r - 122.67891434;  
+      } 
+      else if (preprocess == "caffe") {
+        input_tensor_values[(0*224 + i)*224 + j] = (b - 103.94)*0.017;
+        input_tensor_values[(1*224 + i)*224 + j] = (g - 116.78)*0.017;
+        input_tensor_values[(2*224 + i)*224 + j] = (r - 123.68)*0.017;  
+      } else if (preprocess == "mxnet") {
+        input_tensor_values[(0*224 + i)*224 + j] = (r/255.0 - 0.485)/0.229;
+        input_tensor_values[(1*224 + i)*224 + j] = (g/255.0 - 0.456)/0.224;
+        input_tensor_values[(2*224 + i)*224 + j] = (b/255.0 - 0.406)/0.225;  
+      } else {
+        std::cout << "Unknown preprocess option: " << preprocess << std::endl;
+        exit(1);
+      }
+    }
+  }
+  stbi_image_free(orig_data);
+  printf("First few image values %f %f %f\n", input_tensor_values[0], input_tensor_values[1], input_tensor_values[2]);
+
+  // initialize input data with values in [0.0, 1.0]
+  // for (unsigned int i = 0; i < input_tensor_size; i++)
+  //   input_tensor_values[i] = (float)i / (input_tensor_size + 1);
+
+  // create input tensor object from data values
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size, input_node_dims.data(), 4);
+  assert(input_tensor.IsTensor());
+
+  auto pre_inference_cycles = read_cycles();
+
+  // score model & input tensor, get back output tensor
+  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
+  auto post_inference_cycles = read_cycles();
+
+  assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
+
+  // Get pointer to output tensor float values
+  float* floatarr = output_tensors.front().GetTensorMutableData<float>();
+
+  printf("Element count %ld. Top 5 classes:\n", output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount());
+  auto topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
+  std::vector<int> topFive; topFive.reserve(5);
+  while (!topK.empty()) {
+    std::pair<float, int> val = topK.top();
+    topFive.push_back(val.second);
+    assert(val.second < 1000 && "Returned label out of bounds");
+    printf("%f %s\n", val.first, imagenet_labels[val.second]);
+    topK.pop();
+  }
+
+  // score the model, and print scores for first 5 classes
+  // for (int i = 0; i < 5; i++)
+  //   printf("Score for class [%d] =  %f\n", i, floatarr[i]);
+
+  // Results should be as below...
+  // Score for class[0] = 0.000045
+  // Score for class[1] = 0.003846
+  // Score for class[2] = 0.000125
+  // Score for class[3] = 0.001180
+  // Score for class[4] = 0.001317
+  printf("Done! Inference took %llu cycles \n", (post_inference_cycles - pre_inference_cycles));
+  return topFive;
 }
 
 int main(int argc, char* argv[]) {
@@ -45,10 +159,6 @@ int main(int argc, char* argv[]) {
   }
   
   printf("Using systolic in mode %d\n", cmd["execution"].as<int>());
-
-  // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
-  // session (we also need to include cuda_provider_factory.h above which defines it)
-  // #include "cuda_provider_factory.h"
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(session_options, /*use_arena=*/ 1, /*accelerator_mode=*/ (char) cmd["execution"].as<int>()));
 
   // Sets graph optimization level
@@ -69,11 +179,6 @@ int main(int argc, char* argv[]) {
     Ort::ThrowOnError(RegisterCustomOps((OrtSessionOptions*) session_options, OrtGetApiBase()));
   }
 #endif
-
-  //*************************************************************************
-  // create session and load model into memory
-  // using squeezenet version 1.3
-  // URL = https://github.com/onnx/models/tree/master/squeezenet
 
   const char* model_path = cmd["model"].as<std::string>().c_str();
 
@@ -159,101 +264,37 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   
-  //*************************************************************************
-  // Similar operations to get output node information.
-  // Use OrtSessionGetOutputCount(), OrtSessionGetOutputName()
-  // OrtSessionGetOutputTypeInfo() as shown above.
+  if (has_suffix(cmd["image"].as<std::string>(), ".txt"))
+  {
+    int topFiveRight = 0;
+    int topOneRight = 0;
+    int totalCases = 0;
+    // Batch inference
+    std::ifstream batch_in(cmd["image"].as<std::string>());
+    std::string path;
+    while (std::getline(batch_in, path)) {
+      if (path.empty()) continue;
+      totalCases += 1;
+      std::vector<int> topFiveOut = inferOnImage(path, cmd["preprocess"].as<std::string>(),
+                  session, input_node_names, input_node_dims, output_node_names);
+      int expected_label = getLabelOfBatchImage(path);
+      assert(expected_label < 1000 && "Expected label out of bounds");
+      printf("Expected was %d - %s\n", expected_label, imagenet_labels[expected_label]);
 
-  //*************************************************************************
-  // Score the model using sample data, and inspect values
-
-  size_t input_tensor_size = 3 * 224 * 224;  // simplify ... using known dim values to calculate size
-                                             // use OrtGetTensorShapeElementCount() to get official size!
-
-  printf("Loading image\n");
-
-  int dimX, dimY, numChannels;
-  unsigned char *data = stbi_load(cmd["image"].as<std::string>().c_str(), &dimX, &dimY, &numChannels, 0);
-
-  if (data == nullptr) {
-    printf("Could not load image\n");
-    return -1;
-  }
-  printf("Image dimensions: %d %d %d\n", dimX, dimY, numChannels);
-  if (numChannels != 3) {
-    printf("Loaded image has more than 3 channels. Use JPG instead of PNG\n");
-    return -1;
-  }
-
-  
-  float *input_tensor_values = new float[input_tensor_size];
-
-  
-  for (int i = 0; i < 224; i++) {
-    for (int j = 0; j < 224; j++) {
-      unsigned char r = *(data++);
-      unsigned char g = *(data++);
-      unsigned char b = *(data++);
-
-      if (cmd["preprocess"].as<std::string>() == "caffe2") {
-        input_tensor_values[(0*224 + i)*224 + j] = b - 104.00698793;
-        input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
-        input_tensor_values[(2*224 + i)*224 + j] = r - 122.67891434;  
-      } 
-      else if (cmd["preprocess"].as<std::string>() == "caffe") {
-        input_tensor_values[(0*224 + i)*224 + j] = (b - 103.94)*0.017;
-        input_tensor_values[(1*224 + i)*224 + j] = (g - 116.78)*0.017;
-        input_tensor_values[(2*224 + i)*224 + j] = (r - 123.68)*0.017;  
-      } else if (cmd["preprocess"].as<std::string>() == "mxnet") {
-        input_tensor_values[(0*224 + i)*224 + j] = (r/255.0 - 0.485)/0.229;
-        input_tensor_values[(1*224 + i)*224 + j] = (g/255.0 - 0.456)/0.224;
-        input_tensor_values[(2*224 + i)*224 + j] = (b/255.0 - 0.406)/0.225;  
-      } else {
-        std::cout << "Unknown preprocess option: " << cmd["preprocess"].as<std::string>() << std::endl;
-        exit(1);
+      for (int i = 0; i < topFiveOut.size(); i++) {
+        if (topFiveOut[i] == expected_label) {
+          topFiveRight += 1;
+          topOneRight += (i == topFiveOut.size() - 1);
+          break;
+        }
       }
     }
+    printf("Top five right: %d/%d\n", topFiveRight, totalCases);
+    printf("Top one right: %d/%d\n", topOneRight, totalCases);
+  } else {
+    inferOnImage(cmd["image"].as<std::string>(), cmd["preprocess"].as<std::string>(),
+                  session, input_node_names, input_node_dims, output_node_names);
   }
-  printf("First few image values %f %f %f\n", input_tensor_values[0], input_tensor_values[1], input_tensor_values[2]);
-
-  // initialize input data with values in [0.0, 1.0]
-  // for (unsigned int i = 0; i < input_tensor_size; i++)
-  //   input_tensor_values[i] = (float)i / (input_tensor_size + 1);
-
-  // create input tensor object from data values
-  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size, input_node_dims.data(), 4);
-  assert(input_tensor.IsTensor());
-
-  auto pre_inference_cycles = read_cycles();
-
-  // score model & input tensor, get back output tensor
-  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
-  auto post_inference_cycles = read_cycles();
-
-  assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
-
-  // Get pointer to output tensor float values
-  float* floatarr = output_tensors.front().GetTensorMutableData<float>();
-
-  printf("Element count %ld. Top 5 classes:\n", output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount());
-  auto topK = getTopK(floatarr, output_tensors.front().GetTensorTypeAndShapeInfo().GetElementCount(), 5);
-  while (!topK.empty()) {
-    std::pair<float, int> val = topK.top();
-    printf("%f %s\n", val.first, imagenet_labels[val.second]);
-    topK.pop();
-  }
-
-  // score the model, and print scores for first 5 classes
-  // for (int i = 0; i < 5; i++)
-  //   printf("Score for class [%d] =  %f\n", i, floatarr[i]);
-
-  // Results should be as below...
-  // Score for class[0] = 0.000045
-  // Score for class[1] = 0.003846
-  // Score for class[2] = 0.000125
-  // Score for class[3] = 0.001180
-  // Score for class[4] = 0.001317
-  printf("Done! Inference took %llu cycles \n", (post_inference_cycles - pre_inference_cycles));
+ 
   return 0;
 }

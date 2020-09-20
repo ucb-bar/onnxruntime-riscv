@@ -1,5 +1,6 @@
 *.json
 *.data
 **/ort_test
+**/batch_image.txt
 quantization/models/*
 halide_interop/model_converter/generated/*

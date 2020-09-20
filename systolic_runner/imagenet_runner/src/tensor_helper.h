@@ -6,7 +6,7 @@ template <typename T>
 min_pq<T> getTopK(T* arr, int length, size_t k) {
     min_pq<T> pq;
     for (int i = 0; i < length; i++) {
-        if (pq.size() <= k) {
+        if (pq.size() < k) {
             pq.push(std::make_pair(arr[i], i));
         } else if (arr[i] > pq.top().first) {
             pq.pop();
