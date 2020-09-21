@@ -166,6 +166,20 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
                 float(max(clean_merged_dict[added_node_output_names[i + 1]]))
             ]) for i in range(0, len(added_node_output_names), 2)
         ]
+    elif calib_mode == 'mean':
+        pairs = [
+            tuple([
+                float(np.mean(clean_merged_dict[added_node_output_names[i]])),
+                float(np.mean(clean_merged_dict[added_node_output_names[i + 1]]))
+            ]) for i in range(0, len(added_node_output_names), 2)
+        ]
+    elif calib_mode == 'median':
+        pairs = [
+            tuple([
+                float(np.median(clean_merged_dict[added_node_output_names[i]])),
+                float(np.median(clean_merged_dict[added_node_output_names[i + 1]]))
+            ]) for i in range(0, len(added_node_output_names), 2)
+        ]
     else:
         raise ValueError(
             'Unknown value for calib_mode. Currently only naive mode is supported.'
