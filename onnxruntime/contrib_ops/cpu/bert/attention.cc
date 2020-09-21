@@ -12,6 +12,21 @@
 
 using onnxruntime::concurrency::ThreadPool;
 
+#define PRINT_QUANTIZATION_SCALES
+
+#ifdef PRINT_QUANTIZATION_SCALES
+
+#define USE_MKLML_FOR_BLAS
+
+void PrintQuantizationScale(const float* arr, size_t length, int type, const char* node_name) {
+    auto mn_mx = std::minmax_element(arr, arr + length);
+    printf("QUANT_OUT %s %d %f %f\n", node_name, type, *mn_mx.first, *mn_mx.second);
+    return;
+}
+
+#endif
+
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -332,6 +347,14 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       }
     });
   }
+
+
+#ifdef PRINT_QUANTIZATION_SCALES
+      std::string name = this->Info().node().Name();
+      PrintQuantizationScale(Q, batch_size * sequence_length * hidden_size, 0, name.c_str());
+      PrintQuantizationScale(K, batch_size * sequence_length * hidden_size, 1, name.c_str());
+      PrintQuantizationScale(V, batch_size * sequence_length * hidden_size, 2, name.c_str());
+#endif
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,

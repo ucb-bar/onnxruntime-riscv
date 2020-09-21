@@ -53,6 +53,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);
   const Tensor* past_tensor = context->Input<Tensor>(8);
 
+  const Tensor* q_scale_tensor = context->Input<Tensor>(9);
+  const Tensor* k_scale_tensor = context->Input<Tensor>(10);
+  const Tensor* v_scale_tensor = context->Input<Tensor>(11);
+
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(),
                                                  packed_weights_ ? weight_shape_ : weights->Shape(),
                                                  bias->Shape(),
@@ -66,6 +70,31 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(weight_scale_tensor),
                     "weight must be a scalar or 1D tensor of size 1");
   T weight_scale = *(weight_scale_tensor->template Data<T>());
+
+
+  bool has_qkv_scale = false;
+  T q_scale = 1;
+  T k_scale = 1;
+  T v_scale = 1;
+  if (q_scale_tensor != nullptr) {
+    ORT_RETURN_IF_NOT(k_scale_tensor != nullptr && v_scale_tensor != nullptr,
+                      "Must provide all are none of q/k/v scale");
+    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(q_scale_tensor),
+                      "q must be a scalar or 1D tensor of size 1");
+    has_qkv_scale = true;
+    q_scale = *(q_scale_tensor->template Data<T>());
+
+      ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(k_scale_tensor),
+                      "q must be a scalar or 1D tensor of size 1");
+    k_scale = *(k_scale_tensor->template Data<T>());
+
+    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(v_scale_tensor),
+                      "q must be a scalar or 1D tensor of size 1");
+    v_scale = *(v_scale_tensor->template Data<T>());
+  }
+
+  ORT_RETURN_IF_NOT(has_qkv_scale,
+                      "Must provide qkv scale unless quantization #ifdef set");
 
   //T dequant_scale = input_scale * weight_scale;
 
@@ -107,6 +136,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   auto K = Q + batch_size * sequence_length * hidden_size;
   auto V = K + batch_size * sequence_length * hidden_size;
   T* QKV[3] = {Q, K, V};
+  float output_scale[3] = {q_scale, k_scale, v_scale};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
@@ -134,6 +164,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
 
         auto c_int8 = std::make_unique<int8_t[]>(sequence_length * head_size);
+
         SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                          /*relu= */ false,
                          sequence_length,                // M      = S
@@ -146,9 +177,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                          c_int8.get(),                   // C
                          head_size,                      // ldc
                          1,                 // divisor
-                         weight_scale * 5,                  // real multiplier
+                         weight_scale * input_scale / output_scale[qkv_index],                  // real multiplier
                          nullptr,                        // bias
-                         0,                              // strideBias
+                         qkv_index,                              // strideBias
                          false                           // repeating bias
         );
 
@@ -161,7 +192,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
           const float* bias = bias_data + weights_offset;
           for (int m = 0; m < M; m++) {
             for (int n = 0; n < N; n++) {
-                result_data[n] = static_cast<float>(raw_int8_data[n]) * input_scale / 5 + bias[n];
+                result_data[n] = static_cast<float>(raw_int8_data[n]) * output_scale[qkv_index] + bias[n];
             }
             result_data += ldc;
             raw_int8_data += head_size;

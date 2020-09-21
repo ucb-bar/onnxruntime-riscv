@@ -417,6 +417,24 @@ and present state are optional. Present state could appear in output even when p
           "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
           "T3",
           OpSchema::Optional)
+      .Input(
+          9,
+          "output_q_scale",
+          "Q scale",
+          "T3",
+          OpSchema::Optional)
+      .Input(
+          10,
+          "output_k_scale",
+          "K scale",
+          "T3",
+          OpSchema::Optional)
+      .Input(
+          11,
+          "output_v_scale",
+          "V scale",
+          "T3",
+          OpSchema::Optional)
       .Output(
           0,
           "output",
