@@ -577,8 +577,9 @@ class ONNXQuantizer:
             if data_found == False:
                 raise ValueError(
                     "Quantization parameters are not specified for param {}."
+                    "Node is of type {}."
                     "In static mode quantization params for inputs and outputs of nodes to be quantized are required.".
-                    format(input_name))
+                    format(input_name, node.op_type))
 
             qlinear_node = onnx.helper.make_node("QuantizeLinear", [input_name, scale_name, zp_name], [output_name],
                                                  input_name + "_QuantizeLinear")

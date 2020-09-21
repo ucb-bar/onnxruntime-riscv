@@ -29,7 +29,7 @@ import math
 # Candidate nodes for quantization. Calibration will be done for these nodes only
 # When more nodes are extended to support quantization, add them to this list
 # Values are the relevant input indices that should be quantized
-QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1]}
+QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1], 'Attention': [0, 1]}
 # Binary ops that need to be checked for floating-point before quantizing
 BINARY_OPS_TO_QUANTIZE = ['Add', 'Mul']
 
@@ -88,18 +88,22 @@ def augment_graph(model, static):
     added_outputs = []
     reduced_edges = []
     i = 0
+    tensors_to_calibrate = set()
     for node in model.graph.node:
         if node.op_type in QUANTIZATION_CANDIDATES or node.op_type in BINARY_OPS_TO_QUANTIZE:
             output_name = node.output[0]
             if can_quantize_name(node, output_name, value_infos):
-                create_reduce_nodes(output_name, added_nodes, added_outputs,
-                                    reduced_edges)
+                tensors_to_calibrate.add(output_name)
             # In dynamic quantization we can just worry about outputs of QUANTIZATION_CANDIDATES
             # In static mode we need the inputs for those as well
             if static:
                 for idx, input_name in enumerate(node.input):
                     if can_quantize_name(node, input_name, value_infos, idx) and input_name not in reduced_edges:
-                        create_reduce_nodes(input_name, added_nodes, added_outputs, reduced_edges)
+                        tensors_to_calibrate.add(input_name)
+
+
+    for name in tensors_to_calibrate:
+        create_reduce_nodes(name, added_nodes, added_outputs, reduced_edges)
 
     augmented_model = copy.deepcopy(model)
     augmented_model.graph.node.extend(added_nodes)
