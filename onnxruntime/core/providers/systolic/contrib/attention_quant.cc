@@ -9,10 +9,52 @@
 
 using onnxruntime::concurrency::ThreadPool;
 
+// #define PRINT_QUANTIZATION_SCALES
+
 #if defined(SYSTOLIC_INT8) && !defined(DISABLE_CONTRIB_OPS)
 
 namespace onnxruntime {
 namespace systolic {
+
+#ifdef PRINT_QUANTIZATION_SCALES
+
+void PrintQuantizationScale(const float* arr, size_t length, int type, const char* node_name) {
+    auto mn_mx = std::minmax_element(arr, arr + length);
+    printf("QUANT_OUT %s %d %f %f\n", node_name, type, *mn_mx.first, *mn_mx.second);
+    return;
+}
+
+float MultiplyForQuantScalePrint(int dimI, int dimJ, int dimK,
+                             const int8_t* in1, int strideIn1,
+                             const int8_t* in2, int strideIn2,
+                             int8_t* out, int strideOut,
+                             float real_multiplier) {
+
+    std::unique_ptr<float[]> temp = std::make_unique<float[]>(dimI * dimJ);
+    for (int i = 0; i < dimI; i++) {
+      for (int j = 0; j < dimJ; j++) {
+        int32_t result = 0;
+
+        for (int k = 0; k < dimK; k++) {
+            result += (*(in1 + i * strideIn1 + k)) * (*(in2 + k * strideIn2 + j));
+        }
+        *(temp.get() + i * dimJ + j) = result * real_multiplier;
+      }
+    }
+    auto mn_mx = std::minmax_element(temp.get(), temp.get() + dimI * dimJ);
+
+    float scale = std::max(abs(*mn_mx.first), abs(*mn_mx.second)) / 127.0;
+
+    for (int i = 0; i < dimI; i++) {
+      for (int j = 0; j < dimJ; j++) {
+        int x = (int) std::nearbyintf(*(temp.get() + i *dimJ + j) / scale );
+        *(out + i * strideOut + j)  = x > 127 ? 127 : (x < -128 ? -128 : x);
+      }
+    }
+    return scale;
+}
+
+#endif
 
 // These ops are internal-only, so register outside of onnx
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -93,8 +135,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     v_scale = *(v_scale_tensor->template Data<T>());
   }
 
+
+#ifndef PRINT_QUANTIZATION_SCALES
   ORT_RETURN_IF_NOT(has_qkv_scale,
                       "Must provide qkv scale unless quantization #ifdef set");
+#else
+  ORT_UNUSED_PARAMETER(has_qkv_scale);
+#endif
 
   //T dequant_scale = input_scale * weight_scale;
 
@@ -165,6 +212,23 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
         auto c_int8 = std::make_unique<int8_t[]>(sequence_length * head_size);
 
+#ifdef PRINT_QUANTIZATION_SCALES
+
+    float returned_scale = MultiplyForQuantScalePrint(
+                    sequence_length,                // M      = S
+                    head_size,                      // N      = H
+                    hidden_size,                    // K      = NH
+                    input_data + input_offset,      // A
+                    hidden_size,                    // lda    = NH
+                    weights_data + weights_offset,  // B
+                    3 * hidden_size,                // ldb    = 3NH
+                    c_int8.get(),                   // C
+                    head_size,                      // ldc
+                    weight_scale * input_scale     // real multiplier
+  );
+  output_scale[qkv_index] = returned_scale;
+#else
+
         SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                          /*relu= */ false,
                          sequence_length,                // M      = S
@@ -182,6 +246,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                          qkv_index,                              // strideBias
                          false                           // repeating bias
         );
+#endif
 
         {
           int M = sequence_length;
@@ -201,6 +266,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
       }
     });
   }
+
+#ifdef PRINT_QUANTIZATION_SCALES
+      std::string name = this->Info().node().Name();
+      PrintQuantizationScale(Q, batch_size * sequence_length * hidden_size, 0, name.c_str());
+      PrintQuantizationScale(K, batch_size * sequence_length * hidden_size, 1, name.c_str());
+      PrintQuantizationScale(V, batch_size * sequence_length * hidden_size, 2, name.c_str());
+#endif
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past_tensor, output,

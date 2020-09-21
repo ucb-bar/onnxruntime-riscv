@@ -14,6 +14,10 @@ using onnxruntime::concurrency::ThreadPool;
 
 #define PRINT_QUANTIZATION_SCALES
 
+
+namespace onnxruntime {
+namespace contrib {
+
 #ifdef PRINT_QUANTIZATION_SCALES
 
 #define USE_MKLML_FOR_BLAS
@@ -25,10 +29,6 @@ void PrintQuantizationScale(const float* arr, size_t length, int type, const cha
 }
 
 #endif
-
-
-namespace onnxruntime {
-namespace contrib {
 
 template <typename T>
 class Attention : public OpKernel, public AttentionCPUBase {
