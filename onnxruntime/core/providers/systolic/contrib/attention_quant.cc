@@ -67,7 +67,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                     "weight must be a scalar or 1D tensor of size 1");
   T weight_scale = *(weight_scale_tensor->template Data<T>());
 
-  T dequant_scale = input_scale * weight_scale;
+  //T dequant_scale = input_scale * weight_scale;
 
   int8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
@@ -133,7 +133,6 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
 
-        int roundedDivisor = nearestPowerOfTwo(1.0 / dequant_scale);
         auto c_int8 = std::make_unique<int8_t[]>(sequence_length * head_size);
         SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                          /*relu= */ false,
@@ -146,8 +145,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                          3 * hidden_size,                // ldb    = 3NH
                          c_int8.get(),                   // C
                          head_size,                      // ldc
-                         roundedDivisor,                 // divisor
-                         dequant_scale,                  // real multiplier
+                         1,                 // divisor
+                         weight_scale * 5,                  // real multiplier
                          nullptr,                        // bias
                          0,                              // strideBias
                          false                           // repeating bias
@@ -162,7 +161,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
           const float* bias = bias_data + weights_offset;
           for (int m = 0; m < M; m++) {
             for (int n = 0; n < N; n++) {
-                result_data[n] = static_cast<float>(raw_int8_data[n]) * dequant_scale + bias[n];
+                result_data[n] = static_cast<float>(raw_int8_data[n]) * input_scale / 5 + bias[n];
             }
             result_data += ldc;
             raw_int8_data += head_size;
