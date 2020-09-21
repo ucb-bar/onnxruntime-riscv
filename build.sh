@@ -22,7 +22,7 @@ cd $DIR
 
 # NOTE: If you're NOT building for the first time adding "--parallel" when invoking this script will parallelize build
 # requires python3.6 or higher
-python3 $DIR/tools/ci_build/build.py --arm --update --build --disable_contrib_ops --build_dir=build "$@"
+python3 $DIR/tools/ci_build/build.py --arm --update --build --build_dir=build "$@"
 
 # On first build, it might fail on linking binary, complaining about missing atomics (this is despite having -latomic).
 # Rebuilding fixes this for some reason. This started happening after the version bump subsequent to commit 4db932, as there were some CMake file changes in those commits.

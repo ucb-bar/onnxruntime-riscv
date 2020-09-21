@@ -42,6 +42,26 @@ void QGemm(
 #ifdef MLAS_SUPPORTS_GEMM_U8X8
   MlasGemm(M, N, K, lhs_data, lda, lhs_offset, rhs_data, ldb, rhs_offset, rhs_signed, result_data, ldc, thread_pool);
 #else
+
+  if (lda != K || ldb != N || ldc != N) {
+    for (int i = 0; i < M; i++) {
+      for (int j = 0; j < N; j++) {
+        int32_t result = 0;
+
+        for (int k = 0; k < K; k++) {
+          if (rhs_signed) {
+            result += (*(lhs_data + i * lda + k) - lhs_offset) * (*((const int8_t*) rhs_data + k * ldb + j) - (int8_t) rhs_offset);
+          } else {
+            result += (*(lhs_data + i * lda + k) - lhs_offset) * (*(rhs_data + k * ldb + j) - rhs_offset);
+          }
+        }
+
+        *(result_data + i * ldc + j) = result;
+      }
+    }
+    return;
+  }
+
   ORT_ENFORCE(lda == K && ldb == N && ldc == N, "Only RowMajor*RowMajor=RowMajor format is supported");
 
   if (rhs_signed) {
