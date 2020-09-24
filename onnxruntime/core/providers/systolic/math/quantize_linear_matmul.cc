@@ -78,7 +78,6 @@ Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) cons
 
 
   const float real_multiplier = (a_scale_data * b_scale_data) / y_scale_data;
-  unsigned int rounded_divisor = nearestPowerOfTwo(y_scale_data / (a_scale_data * b_scale_data));
 
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
     SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
@@ -89,7 +88,7 @@ Status QLinearMatMul<int8_t, int8_t, int8_t>::Compute(OpKernelContext* ctx) cons
                             a->template Data<int8_t>() + helper.LeftOffsets()[i],
                             b->template Data<int8_t>() + helper.RightOffsets()[i],
                             y->template MutableData<int8_t>() + helper.OutputOffsets()[i],
-                            rounded_divisor, real_multiplier);
+                            real_multiplier);
   }
 
   return Status::OK();

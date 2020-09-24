@@ -240,10 +240,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                          3 * hidden_size,                // ldb    = 3NH
                          c_int8.get(),                   // C
                          head_size,                      // ldc
-                         1,                 // divisor
-                         weight_scale * input_scale / output_scale[qkv_index],                  // real multiplier
+                         weight_scale * input_scale / output_scale[qkv_index],  // real multiplier
                          nullptr,                        // bias
-                         qkv_index,                              // strideBias
+                         0,                              // strideBias
                          false                           // repeating bias
         );
 #endif

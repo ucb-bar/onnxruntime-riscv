@@ -1,8 +1,9 @@
-#ifndef SYSTOLIC_PARAMS_H
-#define SYSTOLIC_PARAMS_H
+#ifndef GEMMINI_PARAMS_H
+#define GEMMINI_PARAMS_H
 
 #include <stdint.h>
 #include <limits.h>
+#include <math.h>
 
 #define DIM 16
 #define ADDR_LEN 32
@@ -23,13 +24,37 @@ typedef int64_t full_t;
 typedef int8_t scale_t;
 typedef uint8_t scale_t_bits;
 
-#define HAS_MVIN_ACC_SCALE
-typedef int8_t scale_acc_t;
-typedef uint8_t scale_acc_t_bits;
+typedef int32_t scale_acc_t;
+typedef uint32_t scale_acc_t_bits;
+
+typedef float acc_scale_t;
+typedef uint32_t acc_scale_t_bits;
 
 #define row_align(blocks) __attribute__((aligned(blocks*DIM*sizeof(elem_t))))
 #define row_align_acc(blocks) __attribute__((aligned(blocks*DIM*sizeof(acc_t))))
 
-#define MVIN_SCALE_ONE 1
+#define MVIN_SCALE_IDENTITY 0
 
-#endif  // SYSTOLIC_PARAMS_H
+#define ACC_SCALE_IDENTITY 1.0
+
+// Rounding right shift equation: https://riscv.github.io/documents/riscv-v-spec/#_vector_fixed_point_rounding_mode_register_vxrm
+#define ROUNDING_RIGHT_SHIFT(x, shift) \
+    ((shift) > 0 ? (((x) >> (shift)) + \
+        (((shift) == 0 ? 0 : (((x) >> ((shift)-1)) & 1)) & \
+             ((((shift) <= 1 ? 0 : ((x) & ((1 << ((shift)-1)) - 1))) != 0) | (((x) >> (shift)) & 1)))) : ((x) << (-(shift))))
+
+/* #define ACC_SCALE(x, scale) \
+     ({float y = (x) * (scale); y > INT_MAX ? INT_MAX : (y < INT_MIN ? INT_MIN : (acc_t)y);})
+*/
+
+#define ACC_SCALE(x, scale) \
+        ({float y = nearbyint((x) * (scale)); y > INT_MAX ? INT_MAX : (y < INT_MIN ? INT_MIN : (acc_t)y);})
+
+#define MVIN_SCALE(x, scale) \
+    ROUNDING_RIGHT_SHIFT(x, scale)
+
+#define ACC_SCALE_T_IS_FLOAT
+#define ACC_SCALE_EXP_BITS 8
+#define ACC_SCALE_SIG_BITS 24
+
+#endif // GEMMINI_PARAMS_H

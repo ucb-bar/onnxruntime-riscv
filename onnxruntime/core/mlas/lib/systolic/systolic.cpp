@@ -28,17 +28,11 @@ inline tiled_matmul_type_t get_accelerator_mode(int mode) {
 }
 
 void SystolicMultiply(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
-                             const elem_t* in1, const elem_t* in2, elem_t* out, int divisor, __attribute__((unused)) float real_multiplier, const acc_t* bias) {
+                             const elem_t* in1, const elem_t* in2, elem_t* out, acc_scale_t real_multiplier, const acc_t* bias) {
   printf("Called into systolic matmul!\n");
-  bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
-  if (!isPowerOf2) {
-    throw std::runtime_error("Divisor passed to systolic matmul must be power of 2");
-  }
-  int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
-
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
   tiled_matmul_auto(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
-                    shift, /*relu6_shift= */ 0, /* repeating_bias= */ 0, get_accelerator_mode(accelerator_mode));
+                    real_multiplier, /*relu6_shift= */ 0, /* repeating_bias= */ 0, get_accelerator_mode(accelerator_mode));
 }
 
 void SystolicMultiply(char accelerator_mode, bool relu,
@@ -46,18 +40,12 @@ void SystolicMultiply(char accelerator_mode, bool relu,
                              const elem_t* in1, int strideIn1,
                              const elem_t* in2, int strideIn2,
                              elem_t* out, int strideOut,
-                             int divisor, __attribute__((unused)) float real_multiplier,
+                            acc_scale_t real_multiplier,
                              const acc_t* bias, int strideBias, bool repeating_bias) {
   printf("Called into systolic matmul!\n");
-  bool isPowerOf2 = divisor && !(divisor & (divisor - 1));
-  if (!isPowerOf2) {
-    throw std::runtime_error("Divisor passed to systolic matmul must be power of 2");
-  }
-  int shift = sizeof(int) * 8 - __builtin_clz(divisor) - 1;
-
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
   tiled_matmul_auto(dimI, dimJ, dimK,
                     strideIn1, strideIn2, strideBias, strideOut,
                     in1, in2, bias, out, /*activation= */ relu,
-                    shift, /*relu6_shift= */ 0, /* repeating_bias= */ repeating_bias, get_accelerator_mode(accelerator_mode));
+                    real_multiplier, /*relu6_shift= */ 0, /* repeating_bias= */ repeating_bias, get_accelerator_mode(accelerator_mode));
 }

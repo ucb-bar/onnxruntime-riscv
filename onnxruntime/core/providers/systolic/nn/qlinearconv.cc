@@ -189,7 +189,6 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
 
   const float real_multiplier = (X_scale_value * W_scale_value) / Y_scale_value;
-  unsigned int rounded_divisor = nearestPowerOfTwo(Y_scale_value / (X_scale_value * W_scale_value));
 
   const auto* Xdata = X->template Data<int8_t>();
   const auto* Wdata = W->template Data<int8_t>();
@@ -257,7 +256,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                               (col_buffer_data == nullptr ? Xdata : col_buffer_data) + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
                               weight_base, static_cast<int>(M / conv_attrs_.group),
                               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
-                              rounded_divisor, real_multiplier,
+                              real_multiplier,
                               Bdata != nullptr ?  Bdata + group_id * B_offset : nullptr, static_cast<int>(M / conv_attrs_.group),
                               /*repeating_bias= */ true);
 
@@ -413,7 +412,6 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
 
   const float real_multiplier = (X_scale_value * W_scale_value) / Y_scale_value;
-  unsigned int rounded_divisor = nearestPowerOfTwo(Y_scale_value / (X_scale_value * W_scale_value));
 
   const auto* Xdata = X->template Data<int8_t>();
   const auto* Wdata = W->template Data<int8_t>();
@@ -507,7 +505,7 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
                               Wdata + group_id * W_offset,
                               col_buffer_data == nullptr ? Xdata : col_buffer_data,
                               Ydata,
-                              rounded_divisor, real_multiplier, broadcast_bias.get());
+                              real_multiplier, broadcast_bias.get());
 
       if (profiling_enabled) {
         std::string dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +

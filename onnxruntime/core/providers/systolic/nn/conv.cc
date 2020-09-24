@@ -150,7 +150,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                       W->template Data<T>() + group_id * W_offset,
                       col_buffer_data == nullptr ? Xdata + group_id * X_offset : col_buffer_data,
                       Ydata + group_id * Y_offset,
-                      /*rounded_scale */ 1, /*float_scale=*/ 1, /* bias= */nullptr);
+                      /*real_multiplier=*/ 1, /* bias= */nullptr);
     }
 
     if (B != nullptr) {

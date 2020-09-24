@@ -2,5 +2,6 @@
 *.data
 **/ort_test
 **/batch_image.txt
+**/bert_qkv.txt
 quantization/models/*
 halide_interop/model_converter/generated/*

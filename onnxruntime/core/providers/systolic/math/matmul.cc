@@ -62,7 +62,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
                             a_data + helper.LeftOffsets()[i],
                             b_data + helper.RightOffsets()[i],
                             y_data + helper.OutputOffsets()[i],
-                            /*rounded_divisor=*/ 1, /*real_multiplier= */ 1);
+                            /*real_multiplier= */ 1);
   }
 
   return Status::OK();
