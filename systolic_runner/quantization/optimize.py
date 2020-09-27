@@ -1,7 +1,8 @@
 import onnx
 import argparse
+from pathlib import Path
 from onnx import optimizer
-from .quant_utils import generate_identified_filename
+from quantizer.quant_utils import generate_identified_filename
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 
@@ -148,7 +149,7 @@ def transforms():
             if init.name == value_info.name:
                 model.graph.input.append(value_info)
 
-    optimized = optimizer.optimize(model, ['extract_constant_to_initializer'])
+    optimized = optimizer.optimize(model, ['extract_constant_to_initializer', 'fuse_bn_into_conv'])
     remove_initializer_from_input(optimized)
     replace_gemm_with_matmul(optimized)
     onnx.save(optimized, args.output)
