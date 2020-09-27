@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cxxopts.hpp"
+#include <vector>
 
 cxxopts::ParseResult parse(int argc, char* argv[]) {
   try {
@@ -11,6 +12,7 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
     options.add_options("Required")
         ("m,model", "ONNX model path", cxxopts::value<std::string>(), "[path]")
         ("i,image", "Image path", cxxopts::value<std::string>(), "[path]")
+        ("r,range", "Batch Process Range", cxxopts::value<std::vector<int>>(), "[Start,End]. 1-indexed, end optional ")
         ("p,preprocess", "Preprocessing mode. Either 'caffe2', 'caffe' or 'mxnet'. "
                           "Alexnet, googlenet, etc. are caffe2 derived models", cxxopts::value<std::string>(), "[caffe/caffe2/mxnet]")
         ("x,execution", "Systolic execution mode. Either 0, 1, or 2 (CPU, OS, WS).", cxxopts::value<int>(), "[0/1/2]");

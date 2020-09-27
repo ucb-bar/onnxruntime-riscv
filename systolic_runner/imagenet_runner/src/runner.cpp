@@ -272,8 +272,29 @@ int main(int argc, char* argv[]) {
     // Batch inference
     std::ifstream batch_in(cmd["image"].as<std::string>());
     std::string path;
+
+    int startLine = 1;
+    int endLine = -1;
+
+    if (cmd.count("range")) {
+      std::vector<int> startEndPair = cmd["range"].as<std::vector<int>>();
+      assert(startEndPair.size() >= 1 && startEndPair.size() <= 2 && "Expected range in form of 'start, end'");
+      startLine = startEndPair[0];
+      if (startEndPair.size() == 2) {
+        endLine = startEndPair[1];
+      }
+    }
+
+    printf("Batch processing lines %d - %d\n", startLine, endLine);
+
+    int curLine = 0;
     while (std::getline(batch_in, path)) {
       if (path.empty()) continue;
+      curLine += 1;
+      if (curLine < startLine || (endLine != -1 && curLine > endLine)) {
+        continue;
+      }
+
       totalCases += 1;
       std::vector<int> topFiveOut = inferOnImage(path, cmd["preprocess"].as<std::string>(),
                   session, input_node_names, input_node_dims, output_node_names);
@@ -288,7 +309,15 @@ int main(int argc, char* argv[]) {
           break;
         }
       }
+
+      if (curLine % 100 == 0) {
+        printf("Checkpoint! Processed up to line %d\n", curLine);
+        printf("Top five right: %d/%d\n", topFiveRight, totalCases);
+        printf("Top one right: %d/%d\n", topOneRight, totalCases);
+      }
     }
+    
+    printf("Finished batch\n");
     printf("Top five right: %d/%d\n", topFiveRight, totalCases);
     printf("Top one right: %d/%d\n", topOneRight, totalCases);
   } else {
