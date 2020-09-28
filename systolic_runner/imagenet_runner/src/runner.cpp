@@ -84,9 +84,9 @@ std::vector<int> inferOnImage(const std::string &path, const std::string &prepro
         input_tensor_values[(1*224 + i)*224 + j] = (g - 116.78)*0.017;
         input_tensor_values[(2*224 + i)*224 + j] = (r - 123.68)*0.017;  
       } else if (preprocess == "mxnet") {
-        input_tensor_values[(0*224 + i)*224 + j] = (r/255.0 - 0.485)/0.229;
+        input_tensor_values[(0*224 + i)*224 + j] = (b/255.0 - 0.406)/0.225;
         input_tensor_values[(1*224 + i)*224 + j] = (g/255.0 - 0.456)/0.224;
-        input_tensor_values[(2*224 + i)*224 + j] = (b/255.0 - 0.406)/0.225;  
+        input_tensor_values[(2*224 + i)*224 + j] = (r/255.0 - 0.485)/0.229;  
       } else {
         std::cout << "Unknown preprocess option: " << preprocess << std::endl;
         exit(1);
