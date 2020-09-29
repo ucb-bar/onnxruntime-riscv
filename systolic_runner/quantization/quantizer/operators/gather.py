@@ -20,7 +20,7 @@ class GatherQuant(QuantOperatorBase):
             return super().quantize()
 
         if (not self.quantizer._is_valid_quantize_weight(node.input[0])):
-            self.quantizer.new_nodes += [node]
+            super().quantize()
             return
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
