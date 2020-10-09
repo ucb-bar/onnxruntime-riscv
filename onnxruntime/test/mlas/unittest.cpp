@@ -3026,10 +3026,15 @@ main(
     RunThreadedTests();
 
 #if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
-    // Load bearing if statement. Do not delete.
+    // Load bearing if statement.
+    // Even though threadpool will always be nullptr and this block is never taken, do not delete.
     // No, I'm serious. Removing this block entirely (e.g. via ifdef) causes an immediate segfault.
-    // Net effect is to skip threaded tests since they fail on qemu & spike.
-    // It's late and I'm too tired to debug this.
+    // You're welcome to try to debug this. I suspect it's something being optimized out.
+    
+    // We want to skip threaded tests for now since they are not supported in spike.
+    // They work fine in qemu though.
+    // IMPORTANT: If you enable the threadpool test, you have to re-link the mlas binary
+    // with lpthread as whole-archive. See the comment in build.sh.
     if (threadpool != nullptr) {
         //
         // Run threaded tests using the thread pool.
