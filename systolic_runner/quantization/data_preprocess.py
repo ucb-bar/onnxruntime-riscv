@@ -62,9 +62,9 @@ def preprocess_caffe2_raw(raw_image):
     g_channel = raw_image[:, 1, :, :]
     b_channel = raw_image[:, 2, :, :]
 
-    b_channel = (b_channel - 104.00698793)
-    g_channel = (g_channel - 116.66876762)
-    r_channel = (r_channel - 122.67891434)
+    b_channel = (b_channel - 103.939)
+    g_channel = (g_channel - 116.779)
+    r_channel = (r_channel - 123.68)
     
     return np.stack([b_channel, g_channel, r_channel], axis=1)
 

@@ -75,9 +75,9 @@ std::vector<int> inferOnImage(const std::string &path, const std::string &prepro
       unsigned char b = *(data++);
 
       if (preprocess == "caffe2") {
-        input_tensor_values[(0*224 + i)*224 + j] = b - 104.00698793;
-        input_tensor_values[(1*224 + i)*224 + j] = g - 116.66876762;
-        input_tensor_values[(2*224 + i)*224 + j] = r - 122.67891434;  
+        input_tensor_values[(0*224 + i)*224 + j] = b - 103.939;
+        input_tensor_values[(1*224 + i)*224 + j] = g - 116.779;
+        input_tensor_values[(2*224 + i)*224 + j] = r - 123.68;  
       } 
       else if (preprocess == "caffe") {
         input_tensor_values[(0*224 + i)*224 + j] = (b - 103.94)*0.017;
@@ -141,9 +141,17 @@ std::vector<int> inferOnImage(const std::string &path, const std::string &prepro
   return topFive;
 }
 
+//#include <sys/mman.h> 
+
 int main(int argc, char* argv[]) {
   setbuf(stdout, NULL);
   printf("Loaded runner program\n");
+
+  // Use for firesim
+  /* if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+      perror("mlockall failed");
+      exit(1);
+  }*/
 
   cxxopts::ParseResult cmd = parse(argc, argv);
   //*************************************************************************
@@ -327,3 +335,4 @@ int main(int argc, char* argv[]) {
  
   return 0;
 }
+
