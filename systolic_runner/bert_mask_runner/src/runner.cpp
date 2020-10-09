@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
+#include <errno.h>
 #include <systolic/systolic_provider_factory.h>
 #include <onnxruntime_cxx_api.h>
 #ifdef USE_CUSTOM_OP_LIBRARY
@@ -243,6 +244,11 @@ int main(int argc, char* argv[]) {
 
   float *probs = output_tensors[0].GetTensorMutableData<float>();
   FILE *f = fopen("outputs/output.data", "wb");
+  if (f == nullptr) {
+    printf("Failed to open output file\n");
+    printf("Error %d \n", errno);
+    return 1;
+  }
   fwrite(probs, sizeof(float), output_tensors[0].GetTensorTypeAndShapeInfo().GetElementCount(), f);
   fclose(f);
 
