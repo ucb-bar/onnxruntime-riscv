@@ -2731,7 +2731,7 @@ public:
 #define ABS(x) (x < 0 ? -x : x)
 #ifdef SYSTOLIC_INT8
 #define ACC_SCALE(x, scale) \
-    ({float y = (x) * (scale); y > INT_MAX ? INT_MAX : (y < INT_MIN ? INT_MIN : (acc_t)y);})
+    ({float y = nearbyint((x) * (scale)); y > INT_MAX ? INT_MAX : (y < INT_MIN ? INT_MIN : (acc_t)y);})
 #define ELEM_T_MAX SCHAR_MAX
 #define ELEM_T_MIN SCHAR_MIN
 #define FMT "%d "
@@ -2785,7 +2785,7 @@ private:
 
     void Test(size_t M, size_t N, size_t K, float scale, int tolerance, bool relu = false) 
     {
-        printf("Testing...\n");
+        printf("Testing... %zu %zu %zu\n", M, N, K);
         const elem_t* A = BufferA.GetBuffer(K * M);
         const elem_t* B = BufferB.GetBuffer(N * K);
         const acc_t* Bias = BufferBias.GetBuffer(N * M);
@@ -2811,6 +2811,13 @@ private:
                 for (size_t k = 0; k < K; k++) {
                     for (size_t n = 0; n < N; n++) {
                         printf(FMT, B[k * N + n]);
+                    }
+                    printf("\n");
+                }
+                printf("Bias matrix:\n");
+                for (size_t m = 0; m < M; m++) {
+                    for (size_t n = 0; n < N; n++) {
+                        printf(FMT, Bias[m * N + n]);
                     }
                     printf("\n");
                 }
@@ -2981,6 +2988,8 @@ RunThreadedTests(
     onnxruntime::make_unique<MlasSoftmaxTest>()->ExecuteShort();
 }
 
+//#include <sys/mman.h>
+
 int
 #if defined(_WIN32)
 __cdecl
@@ -2990,6 +2999,11 @@ main(
     )
 {
     setbuf(stdout, NULL);
+
+    // if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+    //  perror("mlockall failed");
+    //  exit(1);
+    // }
     
 #ifdef USE_SYSTOLIC
 #define UNUSED(x) (void)(x)
