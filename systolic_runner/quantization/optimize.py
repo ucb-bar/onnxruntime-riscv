@@ -68,7 +68,7 @@ def replace_gemm_with_matmul(model):
 def remove_initializer_from_input(model):
     if model.ir_version < 4:
         print(
-            'Model with ir_version below 4 requires to include initilizer in graph input'
+            'Warning: Model with ir_version below 4 requires initializer in graph input, so not removing'
         )
         return
 
@@ -138,6 +138,15 @@ def add_value_info_for_constants(model):
 
     add_const_value_infos_to_graph(model.graph)
 
+
+def sum_to_add(model):
+    '''
+    Convert an add with 2 operators into a sum
+    '''
+    for node in model.graph.node:
+        if node.op_type == 'Sum' and len(node.input) == 2:
+            node.op_type = 'Add'
+
 def transforms():
     args = get_args()
     model = onnx.load(args.input)
@@ -152,6 +161,7 @@ def transforms():
     optimized = optimizer.optimize(model, ['extract_constant_to_initializer', 'fuse_bn_into_conv'])
     remove_initializer_from_input(optimized)
     replace_gemm_with_matmul(optimized)
+    sum_to_add(optimized)
     onnx.save(optimized, args.output)
 
 if __name__ == '__main__':
