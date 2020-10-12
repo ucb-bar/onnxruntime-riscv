@@ -84,6 +84,8 @@ def remove_initializer_from_input(model):
 
 def add_value_info_for_constants(model):
     """
+    https://github.com/onnx/onnx/issues/2995
+    
     Currently onnx.shape_inference doesn't use the shape of initializers, so add
     that info explicitly as ValueInfoProtos.
     Mutates the model.
