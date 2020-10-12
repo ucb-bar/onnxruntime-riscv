@@ -22,12 +22,13 @@ def preprocess(text):
 if __name__ == "__main__":
     cw, cc = preprocess(CONTEXT)
     qw, qc = preprocess(QUERY)
+    # TODO: UNICODE CORRECTNESS. Non-ascii characters crash it for some reason
 
     cw.tofile(os.path.join('inputs', 'context_word.data'), sep="\n", format="%s")
     cc.tofile(os.path.join('inputs', 'context_char.data'), sep="\n", format="%s")
     qw.tofile(os.path.join('inputs', 'query_word.data'), sep="\n", format="%s")
     qc.tofile(os.path.join('inputs', 'query_char.data'), sep="\n", format="%s")
-
+   
     # C and Q
     np.array([cw.shape[0], qw.shape[0]]).tofile(os.path.join('inputs', 'dims.data'))
 
