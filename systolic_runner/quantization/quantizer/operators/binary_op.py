@@ -10,9 +10,8 @@ class QLinearBinaryOp(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
-
-        # Don't bother quantizing if input not already quantized as might reduce performance
-        if node.input[0] not in self.quantizer.quantized_value_map or \
+        # Don't bother quantizing if none of the inputs are quantized as might reduce performance
+        if node.input[0] not in self.quantizer.quantized_value_map and \
            node.input[1] not in self.quantizer.quantized_value_map:
             return super().quantize()
 
