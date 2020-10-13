@@ -9,6 +9,19 @@
 
 namespace onnxruntime {
 
+#ifdef PRINT_QUANTIZATION_SCALES
+
+#define USE_MKLML_FOR_BLAS
+
+template <typename T>
+inline void PrintQuantizationScale(const T* arr, size_t length, int type, const char* node_name) {
+    auto mn_mx = std::minmax_element(arr, arr + length);
+    printf("QUANT_OUT %s %d %f %f\n", node_name, type, (float) *mn_mx.first, (float) *mn_mx.second);
+    return;
+}
+
+#endif
+
 template <typename T>
 class MatMul final : public OpKernel {
  public:
@@ -112,6 +125,17 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
         y_data + helper.OutputOffsets()[i],
         thread_pool);
   }
+
+#ifdef PRINT_QUANTIZATION_SCALES
+  auto inputNames = this->Info().node().InputDefs();
+  ORT_ENFORCE(inputNames.size() == 2, "Found more than 2 inputs to matmul when printing scale?");
+  auto outputNames = this->Info().node().OutputDefs();
+  ORT_ENFORCE(outputNames.size() == 1, "Found more than 1 output of matmul when printing scale?");
+
+  PrintQuantizationScale(a_data, static_cast<size_t>(helper.M()) * static_cast<size_t>(helper.K()), 0, inputNames[0]->Name().c_str());
+  PrintQuantizationScale(b_data, static_cast<size_t>(helper.K()) * static_cast<size_t>(helper.N()), 0, inputNames[1]->Name().c_str());
+  PrintQuantizationScale(y_data, static_cast<size_t>(helper.M()) * static_cast<size_t>(helper.N()), 0, outputNames[0]->Name().c_str());
+#endif
 
   return Status::OK();
 }
