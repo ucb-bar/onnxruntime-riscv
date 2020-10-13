@@ -81,6 +81,8 @@ class ONNXQuantizer:
         onnx_model = shape_inference.infer_shapes(model)
         self.model = ONNXModel(onnx_model)
         self.value_infos = {vi.name: vi for vi in onnx_model.graph.value_info}
+        inputs = {inp.name: inp for inp in onnx_model.graph.input}
+        self.value_infos = {**self.value_infos, **inputs}
         self.per_channel = per_channel  # weight-pack per channel
         self.reduce_range = reduce_range
         self.mode = mode  # QuantizationMode.Value
