@@ -8,7 +8,7 @@ import math
 Quantize Scan
 '''
 
-def calculate_scale_zeropoint(next_nodes, rmin, rmax, mode):
+def calculate_scale_zeropoint(rmin, rmax, mode):
     zp_and_scale = []
     # adjust rmin and rmax such that 0 is included in the range. This is required
     # to make sure zero can be uniquely represented.
@@ -48,7 +48,7 @@ def get_scales():
             else:
                 scales[op_name] = (mn, mx)
 
-    return {k : calculate_scale_zeropoint([], scales[k][0], scales[k][1], 'int8') for k in scales.keys()}
+    return {k : calculate_scale_zeropoint(scales[k][0], scales[k][1], 'int8') for k in scales.keys()}
 
 scales = get_scales()
 
@@ -80,6 +80,7 @@ class Scan(QuantOperatorBase):
         copy_model = onnx_proto.ModelProto()
         copy_model.CopyFrom(dummy_model)
 
+        # Why .__class__? Because python makes importing stuff harder than it needs to be. 
         scan_quantizer = onnx_quantizer.__class__(copy_model, onnx_quantizer.per_channel, onnx_quantizer.reduce_range,
                                        onnx_quantizer.mode,
                                        False, # = static. Using dynamic quantization for Scan body

@@ -3,14 +3,18 @@ from .operators.base_operator import QuantOperatorBase
 from .operators.matmul import MatMulInteger, QLinearMatMul
 from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
-from .operators.scan import Scan
+#from .operators.scan import Scan
 from .operators.gather import GatherQuant
 from .operators.conv import QLinearConv, ConvInteger
 from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
 
-CommonOpsRegistry = {"Gather": GatherQuant, "EmbedLayerNormalization": EmbedLayerNormalizationQuant, "Scan": Scan}
+CommonOpsRegistry = {
+    "Gather": GatherQuant,
+    "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
+#    "Scan": Scan
+}
 
 IntegerOpsRegistry = {
     "Conv": ConvInteger,
