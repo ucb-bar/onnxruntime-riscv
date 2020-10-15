@@ -328,6 +328,9 @@ if (NOT MSVC)
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endif ()
 
+# For riscv platform
+set(onnxruntime_LINK_LIBATOMIC true)
+
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
