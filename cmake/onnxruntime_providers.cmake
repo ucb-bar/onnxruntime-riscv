@@ -308,7 +308,6 @@ if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_shared_cc_srcs})
   add_library(onnxruntime_providers_shared SHARED ${onnxruntime_providers_shared_cc_srcs})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/shared  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -322,6 +321,10 @@ if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_DNNL)
     message(FATAL_ERROR "onnxruntime_providers_shared unknown platform, need to specify shared library exports for it")
   endif()
 
+  install(TARGETS onnxruntime_providers_shared
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_DNNL)
@@ -358,6 +361,10 @@ if (onnxruntime_USE_DNNL)
     message(FATAL_ERROR "onnxruntime_providers_dnnl unknown platform, need to specify shared library exports for it")
   endif()
 
+  install(TARGETS onnxruntime_providers_dnnl
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_TENSORRT)
@@ -446,6 +453,11 @@ if (onnxruntime_USE_TENSORRT)
   else()
     message(FATAL_ERROR "onnxruntime_providers_tensorrt unknown platform, need to specify shared library exports for it")
   endif()
+
+  install(TARGETS onnxruntime_providers_tensorrt
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (onnxruntime_USE_NGRAPH)
@@ -553,6 +565,7 @@ if (onnxruntime_USE_OPENVINO)
     if ((OPENVINO_VERSION VERSION_GREATER_EQUAL "2020.3") OR (WIN32))
       # Link to nGraph from OpenVINO installation
       list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include)
+      list(APPEND OPENVINO_INCLUDE_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/include/ngraph/frontend)
       list(APPEND OPENVINO_LIB_DIR_LIST $ENV{INTEL_OPENVINO_DIR}/deployment_tools/ngraph/lib)
       if (WIN32)
         list(APPEND OPENVINO_LIB_LIST ngraph.lib)

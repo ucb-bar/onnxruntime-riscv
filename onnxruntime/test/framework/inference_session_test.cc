@@ -683,7 +683,7 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   uint64_t before_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::high_resolution_clock::now().time_since_epoch()).count(); // get current time
   session_object.StartProfiling("onnxruntime_profile_start");
-  uint64_t profiling_start_time = session_object.GetProfiling().GetStartTime();
+  uint64_t profiling_start_time = session_object.GetProfiling().GetStartTimeNs();
   uint64_t after_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 
@@ -1869,7 +1869,8 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
   old_opset.AddInput("data", input_shape, input_data);
   old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
   // TensorRT doesn't handle Unsqueeze
-  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // OpenVINO: Disabled temporarily
+  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 #ifdef USE_CUDA
@@ -2158,13 +2159,21 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
 #endif
 }
 
+struct InferenceSessionExposingSessionState : public InferenceSession {
+  InferenceSessionExposingSessionState(const SessionOptions& session_options,
+                                       const Environment& env)
+      : InferenceSession(session_options, env) {
+  }
+  const SessionState& GetSessionState() const { return InferenceSession::GetSessionState(); }
+};
+
 // Global threadpool related tests
 // We test for 4 combinations
-class InferenceSessionTestGlobalThreadPools : public InferenceSession {
+class InferenceSessionTestGlobalThreadPools : public InferenceSessionExposingSessionState {
  public:
   InferenceSessionTestGlobalThreadPools(const SessionOptions& session_options,
                                         const Environment& env)
-      : InferenceSession(session_options, env) {
+      : InferenceSessionExposingSessionState(session_options, env) {
   }
 
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
@@ -2174,8 +2183,6 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSession {
   onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
     return InferenceSession::GetInterOpThreadPoolToUse();
   }
-
-  const SessionState& GetSessionState() { return InferenceSession::GetSessionState(); }
 };
 
 // Test 1: env created WITHOUT global tp / use per session tp (default case): in this case per session tps should be in use
@@ -2331,14 +2338,12 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
 }
 
 // Tests for sharing allocators between sessions
-class InferenceSessionTestSharingAllocator : public InferenceSession {
+class InferenceSessionTestSharingAllocator : public InferenceSessionExposingSessionState {
  public:
   InferenceSessionTestSharingAllocator(const SessionOptions& session_options,
                                        const Environment& env)
-      : InferenceSession(session_options, env) {
+      : InferenceSessionExposingSessionState(session_options, env) {
   }
-
-  const SessionState& GetSessionState() { return InferenceSession::GetSessionState(); }
 };
 
 // Ensure sessions use the same allocator. It uses ORT created allocator.
@@ -2430,5 +2435,86 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_NE(sess1.GetSessionState().GetAllocator(mem_info).get(),
             sess2.GetSessionState().GetAllocator(mem_info).get());
 }
+
+class InferenceSessionTestSharingInitializer : public InferenceSessionExposingSessionState {
+ public:
+  InferenceSessionTestSharingInitializer(const SessionOptions& session_options,
+                                         const Environment& env)
+      : InferenceSessionExposingSessionState(session_options, env) {
+  }
+};
+
+TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
+  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  // create initializer to share between sessions
+  const char* init_name = "W";
+  OrtValue val_to_share_from_allocator;
+  OrtValue val_to_share;
+  std::vector<float> input_data_vec{1., 2., 3., 4., 5., 6.};
+
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
+
+  OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
+  CreateMLValue<float>({3, 2}, input_data_vec.data(), mem_info, &val_to_share);
+
+  // create sessions to share the allocator
+  SessionOptions so1;
+  ASSERT_STATUS_OK(so1.AddInitializer(init_name, &val_to_share));
+
+  // ensure an error is returned when an initializer with the same name is added.
+  ASSERT_FALSE(so1.AddInitializer(init_name, &val_to_share).IsOK());
+
+  // ensure an error is returned when an initializer with a buffer NOT owned by the user is added.
+  ASSERT_FALSE(so1.AddInitializer(init_name, &val_to_share_from_allocator).IsOK());
+
+  InferenceSessionTestSharingInitializer sess1(so1, *env);
+  ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess1.Initialize());
+
+  SessionOptions so2;
+  ASSERT_STATUS_OK(so2.AddInitializer(init_name, &val_to_share));
+  InferenceSessionTestSharingInitializer sess2(so2, *env);
+  ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess2.Initialize());
+
+  SessionOptions so3;
+  InferenceSessionTestSharingInitializer sess3(so3, *env);
+  ASSERT_STATUS_OK(sess3.Load(MODEL_URI));
+  ASSERT_STATUS_OK(sess3.Initialize());
+
+  int so1_idx;
+  ASSERT_STATUS_OK(sess1.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so1_idx));
+  const auto* so1_init_buffer = sess1.GetSessionState().GetInitializedTensors().at(so1_idx).Get<Tensor>().Data<float>();
+
+  int so2_idx;
+  ASSERT_STATUS_OK(sess2.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so2_idx));
+  const auto* so2_init_buffer = sess2.GetSessionState().GetInitializedTensors().at(so2_idx).Get<Tensor>().Data<float>();
+
+  // Ensure session1 stores the same data ptr as the one supplied by the user
+  ASSERT_EQ(so1_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+
+  // Ensure both sessions share the same data ptr
+  ASSERT_EQ(so1_init_buffer, so2_init_buffer);
+
+  int so3_idx;
+  ASSERT_STATUS_OK(sess3.GetSessionState().GetOrtValueNameIdxMap().GetIdx(init_name, so3_idx));
+  const auto* so3_init_buffer = sess3.GetSessionState().GetInitializedTensors().at(so3_idx).Get<Tensor>().Data<float>();
+
+  // Ensure session 3 doesn't share the same data ptr as any other session
+  ASSERT_NE(so3_init_buffer, so1_init_buffer);
+  ASSERT_NE(so3_init_buffer, so2_init_buffer);
+
+  // Ensure session 3 doesn't share the same data ptr as the one supplied by the user for any of the other sessions
+  ASSERT_NE(so3_init_buffer, val_to_share.Get<Tensor>().Data<float>());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
