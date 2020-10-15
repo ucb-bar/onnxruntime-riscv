@@ -24,6 +24,8 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDom
 
 #ifndef DISABLE_CONTRIB_OPS
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, float, QAttention);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearAdd_Relu);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, int8_t, QLinearAdd);
 #endif // contrib ops
 
 #endif // int8
@@ -45,6 +47,8 @@ static Status RegisterSystolicKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearConv_Relu_nhwc)>, 
 #ifndef DISABLE_CONTRIB_OPS
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, float, QAttention)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearAdd_Relu)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, int8_t, QLinearAdd)>,
 #endif // int8
 #endif //contrib ops
 #ifdef SYSTOLIC_FP32
@@ -109,6 +113,9 @@ SystolicExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
 void SystolicExecutionProvider::SetupFusedRules() {
   InsertFusedRules(onnxruntime::systolic::qlinearconv_relu_fuse());
+#ifndef DISABLE_CONTRIB_OPS
+  InsertFusedRules(onnxruntime::systolic::qlinearadd_relu_fuse());
+#endif
 }
 
 }  // namespace onnxruntime

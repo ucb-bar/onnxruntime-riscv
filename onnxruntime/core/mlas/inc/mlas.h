@@ -577,6 +577,21 @@ void SystolicMultiply
 MLASCALL(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2,
          int8_t* out, float real_multiplier, const int32_t* bias = nullptr);
 
+void SystolicAdd
+MLASCALL(char accelerator_mode, bool relu, const int8_t* in1, float in1_scale, const int8_t* in2,
+         float in2_scale,
+         int8_t* out, float out_scale, int dim);
+
+void SystolicAdd
+MLASCALL(char accelerator_mode, bool relu, const int8_t in1, float in1_scale, const int8_t* in2,
+         float in2_scale,
+         int8_t* out, float out_scale, int dim);
+
+void SystolicAdd
+MLASCALL(char accelerator_mode, bool relu, const int8_t *in1, float in1_scale, const int8_t in2,
+         float in2_scale,
+         int8_t* out, float out_scale, int dim);
+
 void SystolicMultiply
 MLASCALL(char accelerator_mode, bool relu,
                             int dimI, int dimJ, int dimK,

@@ -49,3 +49,41 @@ void SystolicMultiply(char accelerator_mode, bool relu,
                     in1, in2, bias, out, /*activation= */ relu,
                     real_multiplier, /*relu6_shift= */ 0, /* repeating_bias= */ repeating_bias, get_accelerator_mode(accelerator_mode));
 }
+
+void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const int8_t* in1, float in1_scale, const int8_t* in2,
+         float in2_scale __attribute__((unused)),
+         int8_t* out, float out_scale, int dim) {
+  printf("Called into systolic add! Relu? %d In1 scale %f, in2 scale %f, out scale %f\n", (int) relu, in1_scale, in2_scale, out_scale);
+  for (int i = 0; i < dim; i++) {
+    int32_t tmp1 = (int) ACC_SCALE(*in1, in1_scale/out_scale);
+    int32_t tmp2 = (int) ACC_SCALE(*in2, in2_scale/out_scale);
+    *out = scale_and_sat(tmp1 + tmp2, relu ? RELU : 0, 1, 0);
+
+    out++;
+    in1++;
+    in2++;
+  }
+}
+
+void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const int8_t in1, float in1_scale, const int8_t* in2,
+         float in2_scale,
+         int8_t* out, float out_scale, int dim) {
+  printf("Called into systolic add!\n");
+  for (int i = 0; i < dim; i++) {
+    *out = scale_and_sat(((in1) * in1_scale + (*in2) * in2_scale)/out_scale, relu ? RELU : 0, 1, 1);
+    out++;
+    in2++;
+  }
+}
+
+void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const int8_t *in1, float in1_scale, const int8_t in2,
+         float in2_scale,
+         int8_t* out, float out_scale, int dim) {
+  printf("Called into systolic add!\n");
+  for (int i = 0; i < dim; i++) {
+    *out = scale_and_sat(((*in1) * in1_scale + (in2) * in2_scale)/out_scale, relu ? RELU : 0, 1, 1);
+    out++;
+    in1++;
+  }
+}
+

@@ -1,4 +1,4 @@
-#include "qlinearconv_relu_fuse.h"
+#include "qlinearadd_relu_fuse.h"
 
 namespace onnxruntime {
 namespace systolic {
@@ -9,15 +9,15 @@ namespace systolic {
  * 
  * Also note that for fusion to occur no execution provider must be assignd to the node beforehand
  */
-std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearConvReluMeta(const Node* qlinearconv, const Node* relu, bool nhwc = false) {
+std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearAddReluMeta(const Node* qlinearadd, const Node* relu) {
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->name = std::string("Fused_QLinearConv_Relu") + (nhwc ? "_nhwc" : "");
+  meta_def->name = std::string("Fused_QLinearAdd_Relu");
   meta_def->domain = "";
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-  meta_def->attributes = qlinearconv->GetAttributes();
+  meta_def->attributes = qlinearadd->GetAttributes(); // Add normally has no attributes, but may as well
 
-  qlinearconv->ForEachWithIndex(qlinearconv->InputDefs(), [&meta_def](const NodeArg& arg, size_t index) {
+  qlinearadd->ForEachWithIndex(qlinearadd->InputDefs(), [&meta_def](const NodeArg& arg, size_t index) {
     ORT_UNUSED_PARAMETER(index);
     LOGS_DEFAULT(INFO) << "\tInput name: " << arg.Name();
     meta_def->inputs.push_back(arg.Name());
@@ -34,17 +34,17 @@ std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearConvRelu
   return meta_def;
 }
 
-void qlinearconv_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<ComputeCapability>>& capabilites) {
+void qlinearadd_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<ComputeCapability>>& capabilites) {
   ORT_UNUSED_PARAMETER(graph);
   ORT_UNUSED_PARAMETER(capabilites);
-  LOGS_DEFAULT(INFO) << "Called into Systolic fuser for QLinearConv + Relu";
+  LOGS_DEFAULT(INFO) << "Called into Systolic fuser for QLinearAdd + Relu";
   for (const auto& capability : capabilites) {
     // Check that we haven't already fused this node
     if (capability->sub_graph->nodes.size() != 1) {
       continue;
     }
     const Node* node = graph.GetNode(capability->sub_graph->nodes[0]);
-    if (node->OpType() != "QLinearConv" && node->OpType() != "QLinearConv_nhwc") {
+    if (node->OpType() != "QLinearAdd") {
       continue;
     }
 
@@ -53,11 +53,11 @@ void qlinearconv_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, st
       auto next_node = node->OutputNodesBegin();
       LOGS_DEFAULT(INFO) << "Fusing " << node->OpType() << " and " << next_node->OpType();
       capability->sub_graph->nodes.push_back(next_node->Index());
-      auto meta_def = getFusedQlinearConvReluMeta(node, next_node.operator->(), node->OpType() == "QLinearConv_nhwc");
+      auto meta_def = getFusedQlinearAddReluMeta(node, next_node.operator->());
       capability->sub_graph->SetMetaDef(std::move(meta_def));
     }
   }
-  LOGS_DEFAULT(INFO) << "Finished systolic fusing for QLinearConv + Relu";
+  LOGS_DEFAULT(INFO) << "Finished systolic fusing for QLinearAdd + Relu";
 }
 
 }  // namespace systolic
