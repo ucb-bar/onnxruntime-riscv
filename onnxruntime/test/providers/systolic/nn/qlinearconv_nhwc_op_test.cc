@@ -36,9 +36,7 @@ TEST(ConvTest, QLinearConvNHWCSignedTiny2DTest) {
 
   test.AddOutput<int8_t>("y", Y_shape, expected_vals);
 
-  SessionOptions session_options;
-  session_options.intra_op_param.thread_pool_size = 1;
-  test.Run(session_options);
+  test.Run();
 }
 
 #endif

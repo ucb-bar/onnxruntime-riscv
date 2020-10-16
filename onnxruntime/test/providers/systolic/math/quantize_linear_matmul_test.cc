@@ -90,9 +90,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8) {
                                           24, 22, 4, 10, 2, 13, 6, 7, 30, 2, 14, 4, 5, -2, -31, 1, -12, -15, -7,
                                             1, -10, 19, -6, -12, 10, 52, 15, -4, 1, 36, 2, 7, -24, 20, -31, \
                                           -13, 19});
-  SessionOptions session_options;
-  session_options.intra_op_param.thread_pool_size = 1;
-  test.Run(session_options);
+  test.Run();
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8WithShift) {
@@ -171,9 +169,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8WithShift) {
                                           -10, 0, 6, -9, 4, 5, 0, 1, 4, -11, -2, -4, -1, -6, 3, -4, 2, -13, 4, \
                                           0, 9, -9, 7, 4, 2, -6, -6, 1, -6, 3, 6, 0, -10, -4, 4, 8, 7, -3, -1, \
                                           8, 10, -4, 7, 5});
-  SessionOptions session_options;
-  session_options.intra_op_param.thread_pool_size = 1;
-  test.Run(session_options);
+  test.Run();
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8WithRoundedShift) {
@@ -254,9 +250,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulInt8WithRoundedShift) {
                                           8, -1, 19, -18, 13, 7, 5, -12, -13, 3, -13, 6, 13, 0, -20, -8, 9, 15, \
                                           14, -6, -3, 17, 19, -8, 14, 10});
                                           
-  SessionOptions session_options;
-  session_options.intra_op_param.thread_pool_size = 1;
-  test.Run(session_options);
+  test.Run();
 }
 
 #endif
