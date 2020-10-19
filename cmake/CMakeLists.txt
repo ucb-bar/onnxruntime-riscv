@@ -328,8 +328,10 @@ if (NOT MSVC)
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endif ()
 
-# For riscv platform
-set(onnxruntime_LINK_LIBATOMIC true)
+if(onnxruntime_USE_SYSTOLIC)
+  # For riscv platform
+  set(onnxruntime_LINK_LIBATOMIC true)
+endif()
 
 set(REPO_ROOT ${PROJECT_SOURCE_DIR}/..)
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
