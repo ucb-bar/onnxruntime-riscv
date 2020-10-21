@@ -56,7 +56,7 @@ public:
         ReleaseBuffer();
     }
 
-    T* GetBuffer(size_t Elements, bool ZeroFill = false)
+    T* GetBuffer(size_t Elements, bool ZeroFill = false, int minVal = 0, int maxVal = 0)
     {
         //
         // Check if the internal buffer needs to be reallocated.
@@ -127,15 +127,15 @@ public:
 
         } else {
 
-            const int MinimumFillValue = -23;
-            const int MaximumFillValue = 23;
+            const int MinimumFillValue = minVal;
+            const int MaximumFillValue = maxVal;
 
             int FillValue = MinimumFillValue;
             T* FillAddress = buffer;
 
             while (FillAddress < GuardAddress) {
 
-                *FillAddress++ = (T)FillValue;
+                *FillAddress++ = FillValue;
 
                 FillValue++;
 
@@ -2741,6 +2741,8 @@ private:
     MatrixGuardBuffer<elem_t> BufferCReference;
     MatrixGuardBuffer<acc_t> BufferBias;
     char acceleration_type_;
+    int minVal = 0;
+    int maxVal = 0;
 
     inline elem_t saturate(acc_t num, float scale, bool relu) {
         num =  ACC_SCALE(num, scale);
@@ -2774,68 +2776,72 @@ private:
     void Test(size_t M, size_t N, size_t K, float scale, int tolerance, bool relu = false) 
     {
         printf("Testing... %zu %zu %zu\n", M, N, K);
-        const elem_t* A = BufferA.GetBuffer(K * M);
-        const elem_t* B = BufferB.GetBuffer(N * K);
-        const acc_t* Bias = BufferBias.GetBuffer(N * M);
-        elem_t* C = BufferC.GetBuffer(N * M);
-        elem_t* CReference = BufferCReference.GetBuffer(N * M);
-
-        std::fill_n(C, M * N, -1);
-        std::fill_n(CReference, M * N, -1);
+        const elem_t* A = BufferA.GetBuffer(K * M, false, minVal, maxVal);
+        const elem_t* B = BufferB.GetBuffer(N * K, false, minVal, maxVal);
+        const acc_t* Bias = BufferBias.GetBuffer(N * M, false, minVal, maxVal);
+        elem_t* C = BufferC.GetBuffer(N * M, false, minVal, maxVal);
+        elem_t* CReference = BufferCReference.GetBuffer(N * M, false, minVal, maxVal);
 
         SystolicMultiply(acceleration_type_, relu, M, N, K, A, B, C, scale, Bias);
         NaiveCPUMultiply(M, N, K, A, B, CReference, scale, relu, Bias);
 
         for (size_t f = 0; f < M * N; f++) {
             if (ABS(C[f] - CReference[f]) > tolerance) {
-                printf("A matrix:\n");
-                for (size_t m = 0; m < M; m++) {
-                    for (size_t k = 0; k < K; k++) {
-                        printf(FMT, A[m * K + k]);
-                    }
-                    printf("\n");
+                if (CReference[f] != 0 || (CReference[f] == 0 && C[f] != 0)) {
+                    printf("Mistmatch idx %d address actual %p, expect %d, actual %d\n", (int) f,  &C[f], CReference[f], C[f]);
                 }
-                printf("B matrix:\n");
-                for (size_t k = 0; k < K; k++) {
-                    for (size_t n = 0; n < N; n++) {
-                        printf(FMT, B[k * N + n]);
-                    }
-                    printf("\n");
-                }
-                printf("Bias matrix:\n");
-                for (size_t m = 0; m < M; m++) {
-                    for (size_t n = 0; n < N; n++) {
-                        printf(FMT, Bias[m * N + n]);
-                    }
-                    printf("\n");
-                }
-                printf("C matrix:\n");
-                for (size_t m = 0; m < M; m++) {
-                    for (size_t n = 0; n < N; n++) {
-                        printf(FMT, C[m * N + n]);
-                    }
-                    printf("\n");
-                }
-                printf("C_ref matrix:\n");
-                for (size_t m = 0; m < M; m++) {
-                    for (size_t n = 0; n < N; n++) {
-                        printf(FMT, CReference[m*N + n]);
-                    }
-                    printf("\n");
-                }
+                // printf("A matrix:\n");
+                // for (size_t m = 0; m < M; m++) {
+                //     for (size_t k = 0; k < K; k++) {
+                //         printf(FMT, A[m * K + k]);
+                //     }
+                //     printf("\n");
+                // }
+                // printf("B matrix:\n");
+                // for (size_t k = 0; k < K; k++) {
+                //     for (size_t n = 0; n < N; n++) {
+                //         printf(FMT, B[k * N + n]);
+                //     }
+                //     printf("\n");
+                // }
+                // printf("Bias matrix:\n");
+                // for (size_t m = 0; m < M; m++) {
+                //     for (size_t n = 0; n < N; n++) {
+                //         printf(FMT, Bias[m * N + n]);
+                //     }
+                //     printf("\n");
+                // }
+                // printf("C matrix:\n");
+                // for (size_t m = 0; m < M; m++) {
+                //     for (size_t n = 0; n < N; n++) {
+                //         printf(FMT, C[m * N + n]);
+                //     }
+                //     printf("\n");
+                // }
+                // printf("C_ref matrix:\n");
+                // for (size_t m = 0; m < M; m++) {
+                //     for (size_t n = 0; n < N; n++) {
+                //         printf(FMT, CReference[m*N + n]);
+                //     }
+                //     printf("\n");
+                // }
 
                 printf("mismatch M=%zd, N=%zd, K=%zd, scale=%f, relu=%d. Diff=" FMT "!\n", M, N, K, scale, relu, ABS(C[f] - CReference[f]) );
+                exit(0);
                 return;
             }
         }
     }
     
 public:
-    void ExecuteShort(void) override
+    void ExecuteShort(int dima = 16, int dimb = 16, int dimc = 16, float f = 0.0625)
     {
         // Should match precisely for exact multiples of systolic size
         printf("Testing exact dimensions with no divisor\n");
-        Test(16, 16, 16, 1, /*tolerance =*/  0);
+        for (int i = 0; i < 100000; i++) {
+            printf("Iter i %d\n", i);
+            Test(dima, dimb, dimc, f, /*tolerance =*/  0);
+        }
         Test(1*16, 2*16, 3*16, 1, /*tolerance =*/  0);
         Test(16, 16, 16, 1, 0, /*relu= */ true);
         Test(1*16, 2*16, 3*16, 1, /*tolerance =*/  0, /*relu= */ true);
@@ -2858,7 +2864,7 @@ public:
     {
     }
 
-    MlasSystolicMatmulTest(char acceleration_type) : acceleration_type_(acceleration_type) {}
+    MlasSystolicMatmulTest(char acceleration_type, int minVal = 0, int maxVal = 0) : acceleration_type_(acceleration_type), minVal{minVal}, maxVal{maxVal} {}
 
 };
 #endif
@@ -2988,10 +2994,10 @@ main(
 {
     setbuf(stdout, NULL);
 
-    // if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
-    //  perror("mlockall failed");
-    //  exit(1);
-    // }
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+     perror("mlockall failed");
+     exit(1);
+    }
     
 #ifdef USE_SYSTOLIC
 #define UNUSED(x) (void)(x)
@@ -2999,7 +3005,7 @@ main(
 #undef UNUSED
 #ifdef SYSTOLIC_INT8
     printf("Systolic Int8 Matmul tests.\n");
-    onnxruntime::make_unique<MlasSystolicMatmulTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
+    onnxruntime::make_unique<MlasSystolicMatmulTest<int8_t, int32_t>>(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]))->ExecuteShort(atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atof(argv[7]));
 #endif
 #ifdef SYSTOLIC_FP32
     printf("Systolic Fp32 Matmul tests.\n");
