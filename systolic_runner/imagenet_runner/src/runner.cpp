@@ -12,6 +12,9 @@
 #ifdef USE_CUSTOM_OP_LIBRARY
 #include "custom_op_library.h"
 #endif
+#ifdef USE_HWACHA
+#include <hwacha/hwacha_provider_factory.h>
+#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -168,6 +171,10 @@ int main(int argc, char* argv[]) {
   
   printf("Using systolic in mode %d\n", cmd["execution"].as<int>());
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(session_options, /*use_arena=*/ 1, /*accelerator_mode=*/ (char) cmd["execution"].as<int>()));
+#ifdef USE_HWACHA
+  printf("Using hwacha\n");
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Hwacha(session_options, /*use_arena=*/ 1));
+#endif
 
   // Sets graph optimization level
   // Available levels are

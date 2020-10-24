@@ -1,21 +1,37 @@
 #!/bin/bash
 release_path="Debug"
-if [ $1 = "--config=Release" ]; then
-	release_path="Release"
-fi
 
+# First determine what path to link against
+for var in "$@"
+do
+    if [ $var = "--config=Release" ]; then
+        release_path="Release"
+    fi
+done
 # I clearly have no idea how to actually write bash scripts. At all.
-echo $1
+echo "Building against ${release_path}"
 root_path=../../
 build_path=${root_path}/build/${release_path}
 
 extra_libs=""
 extra_defs=""
+
+# Check for hwacha support
+for var in "$@"
+do
+	if [ $var = "--use_hwacha" ]; then
+		echo "Building with hwacha support"
+        extra_defs="${extra_defs} -DUSE_HWACHA"
+        extra_libs="${extra_libs} ${build_path}/libonnxruntime_providers_hwacha.a"
+	fi
+done
+
+# Check for halide interop generated custom operators
 if [ -f "${root_path}/systolic_runner/halide_interop/model_converter/generated/libcustom.a" ]; then
     echo "Found custom lib. Building with support for loading it."
-    extra_libs="${root_path}/systolic_runner/halide_interop/model_converter/generated/libcustom.a \
+    extra_libs="${extra_libs} ${root_path}/systolic_runner/halide_interop/model_converter/generated/libcustom.a \
                 ${root_path}/systolic_runner/halide_interop/Halide/bin/halide_runtime.a"
-    extra_defs="-DUSE_CUSTOM_OP_LIBRARY"
+    extra_defs="${extra_defs} -DUSE_CUSTOM_OP_LIBRARY"
 fi
 
 riscv64-unknown-linux-gnu-g++ -O3 -I ${root_path}/include/onnxruntime/core/session -I  ${root_path}/include/onnxruntime/core/providers -march=rv64imafdc -mabi=lp64d -Wno-error=attributes \
