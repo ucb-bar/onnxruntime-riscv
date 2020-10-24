@@ -2719,6 +2719,10 @@ public:
 #include "systolic_unittest.h"
 #endif
 
+#ifdef USE_HWACHA
+#include "hwacha_unittest.h"
+#endif
+
 
 class MlasFindMinMaxElementsTest : public MlasTestBase
 {
