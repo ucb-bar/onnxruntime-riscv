@@ -291,6 +291,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
+        "--use_hwacha", action='store_true', help="Build with Hwacha support")
+    parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_home", help="Path to TensorRT installation dir")
@@ -594,6 +596,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DCMAKE_SYSTEM_NAME=Linux",
         "-DUNIX=True",
         "-Donnxruntime_USE_SYSTOLIC=" + "ON",
+        "-Donnxruntime_USE_HWACHA=" + (
+            "ON" if args.use_hwacha else "OFF"),
         "-Donnxruntime_RUN_ONNX_TESTS=" + (
             "ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_BUILD_WINML_TESTS=" + (
