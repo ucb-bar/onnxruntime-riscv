@@ -573,6 +573,10 @@ MlasNchwcPool(
 #include "systolic_mlas.h"
 #endif
 
+#ifdef USE_HWACHA
+#include "hwacha_mlas.h"
+#endif
+
 void
 MLASCALL
 MlasNchwcUpsample(
