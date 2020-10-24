@@ -12,9 +12,14 @@ namespace onnxruntime {
 namespace hwacha {
 
 // Forward declarations of op kernels
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kHwachaExecutionProvider, kOnnxDomain, 1, 10, Conv);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kHwachaExecutionProvider, kOnnxDomain, 11, Conv);
 
 static Status RegisterHwachaKernels(KernelRegistry& kernel_registry) {
-    static const BuildKernelCreateInfoFn function_table[] = {};
+    static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kHwachaExecutionProvider, kOnnxDomain, 1, 10, Conv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kHwachaExecutionProvider, kOnnxDomain, 11, Conv)>,
+    };
 
   for (auto& function_table_entry : function_table) {
     ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
