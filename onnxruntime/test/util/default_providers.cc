@@ -25,6 +25,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Systolic(int use_arena, char accelerator_mode = 0);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Hwacha(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 
 namespace test {
@@ -120,6 +121,15 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultSystolicExecutionProvider(bool enable_arena) {
 #ifdef USE_SYSTOLIC
   return CreateExecutionProviderFactory_Systolic(enable_arena)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(enable_arena);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultHwachaExecutionProvider(bool enable_arena) {
+#ifdef USE_HWACHA
+  return CreateExecutionProviderFactory_Hwacha(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;

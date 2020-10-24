@@ -102,6 +102,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_acl = false;
   bool enable_armnn = false;
   bool enable_systolic = false;
+  bool enable_hwacha = false;
   bool enable_migraphx = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
@@ -159,6 +160,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("systolic"))) {
             enable_systolic = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("hwacha"))) {
+            enable_hwacha = true;
           } else if (!CompareCString(optarg, ORT_TSTR("ngraph"))) {
             enable_ngraph = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
@@ -405,6 +408,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Systolic(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "Systolic is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_hwacha) {
+#ifdef USE_HWACHA
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Hwacha(sf, enable_cpu_mem_arena ? 1 : 0));
+#else
+      fprintf(stderr, "Hwacha is not supported in this build");
       return -1;
 #endif
     }

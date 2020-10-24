@@ -100,6 +100,8 @@ namespace perftest {
           test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("systolic"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kSystolicExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("hwacha"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kHwachaExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {

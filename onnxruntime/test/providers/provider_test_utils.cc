@@ -750,6 +750,7 @@ void OpTester::Run(
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
         kSystolicExecutionProvider,
+        kHwachaExecutionProvider,
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
@@ -819,6 +820,8 @@ void OpTester::Run(
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kSystolicExecutionProvider)
           execution_provider = DefaultSystolicExecutionProvider();
+        else if (provider_type == onnxruntime::kHwachaExecutionProvider)
+          execution_provider = DefaultHwachaExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
           execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kArmNNExecutionProvider)

@@ -302,6 +302,12 @@ if (onnxruntime_USE_SYSTOLIC)
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_systolic_src})
 endif()
+if (onnxruntime_USE_HWACHA)
+  file(GLOB_RECURSE onnxruntime_test_providers_hwacha_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/hwacha/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_hwacha_src})
+endif()
 
 if (onnxruntime_USE_RKNPU)
   file(GLOB_RECURSE onnxruntime_test_providers_rknpu_src CONFIGURE_DEPENDS
@@ -400,10 +406,6 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
 
-if(onnxruntime_USE_SYSTOLIC)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_systolic)
-endif()
-
 if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
 endif()
@@ -442,6 +444,9 @@ endif()
 if(onnxruntime_USE_SYSTOLIC)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_systolic)
 endif()
+if(onnxruntime_USE_HWACHA)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_hwacha)
+endif()
 
 if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
@@ -463,6 +468,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_SYSTOLIC}
+    ${PROVIDERS_HWACHA}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
@@ -506,6 +512,12 @@ if(onnxruntime_USE_SYSTOLIC)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_systolic)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_systolic)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_systolic)
+endif()
+if(onnxruntime_USE_HWACHA)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/hwacha/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_hwacha)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_hwacha)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_hwacha)
 endif()
 
 if(onnxruntime_USE_RKNPU)

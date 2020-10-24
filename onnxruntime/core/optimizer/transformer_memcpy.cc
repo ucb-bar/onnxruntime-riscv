@@ -69,6 +69,7 @@ common::Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
         provider != onnxruntime::kVitisAIExecutionProvider &&
         provider != onnxruntime::kOpenVINOExecutionProvider &&
         provider != onnxruntime::kSystolicExecutionProvider &&
+        provider != onnxruntime::kHwachaExecutionProvider &&
         provider != onnxruntime::kNnapiExecutionProvider &&
         provider != onnxruntime::kAclExecutionProvider &&
         provider != onnxruntime::kArmNNExecutionProvider) {

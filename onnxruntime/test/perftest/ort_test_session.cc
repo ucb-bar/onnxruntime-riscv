@@ -103,6 +103,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("Systolic is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kHwachaExecutionProvider) {
+#ifdef USE_HWACHA
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Hwacha(session_options,
+	performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+#else
+    ORT_THROW("Hwacha is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,

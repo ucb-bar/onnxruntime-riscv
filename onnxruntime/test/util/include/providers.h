@@ -34,6 +34,9 @@
 #ifdef USE_SYSTOLIC
 #include "core/providers/systolic/systolic_provider_factory.h"
 #endif
+#ifdef USE_HWACHA
+#include "core/providers/hwacha/hwacha_provider_factory.h"
+#endif
 #ifdef USE_ARMNN
 #include "core/providers/armnn/armnn_provider_factory.h"
 #endif
