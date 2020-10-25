@@ -35,8 +35,6 @@ std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearAddReluM
 }
 
 void qlinearadd_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, std::vector<std::unique_ptr<ComputeCapability>>& capabilites) {
-  ORT_UNUSED_PARAMETER(graph);
-  ORT_UNUSED_PARAMETER(capabilites);
   LOGS_DEFAULT(INFO) << "Called into Systolic fuser for QLinearAdd + Relu";
   for (const auto& capability : capabilites) {
     // Check that we haven't already fused this node
