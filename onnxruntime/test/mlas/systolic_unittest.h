@@ -143,3 +143,77 @@ public:
     MlasSystolicMatmulTest(char acceleration_type) : acceleration_type_(acceleration_type) {}
 
 };
+
+#ifdef SYSTOLIC_INT8
+
+template<typename elem_t, typename acc_t>
+class MlasSystolicAddTest : public MlasTestBase
+{
+private:
+    MatrixGuardBuffer<elem_t> BufferA;
+    MatrixGuardBuffer<elem_t> BufferB;
+    MatrixGuardBuffer<elem_t> BufferC;
+    MatrixGuardBuffer<elem_t> BufferCReference;
+    char acceleration_type_;
+
+    inline elem_t saturate(acc_t num, float scale, bool relu) {
+        num =  ACC_SCALE(num, scale);
+        // Clip result
+        num = num > ELEM_T_MAX ? ELEM_T_MAX : (num < ELEM_T_MIN ? ELEM_T_MIN : num);
+        if (relu) {
+            num = num < 0 ? 0 : num;
+        }
+        return num;
+    }
+
+    void NaiveCPUAdd(bool relu, const int8_t* in1, float in1_scale, const int8_t* in2, float in2_scale,
+                int8_t* out, float out_scale, int dim) {
+        for (int i = 0; i < dim; i++) {
+            int32_t tmp1 = (int) ACC_SCALE(*in1, in1_scale/out_scale);
+            int32_t tmp2 = (int) ACC_SCALE(*in2, in2_scale/out_scale);
+            *out = saturate(tmp1 + tmp2, /*scale= */1, relu);
+
+            out++;
+            in1++;
+            in2++;
+        }
+    }
+
+    void Test(size_t M, float scaleA, float scaleB, float scaleOut, int tolerance, bool relu = false) 
+    {
+        printf("Testing... %zu\n", M);
+        const elem_t* A = BufferA.GetBuffer(M);
+        const elem_t* B = BufferB.GetBuffer(M);
+
+        elem_t* C = BufferC.GetBuffer(M);
+        elem_t* CReference = BufferCReference.GetBuffer(M);
+
+        SystolicAdd(acceleration_type_, relu, A, scaleA, B, scaleB, C, scaleOut, M);
+        NaiveCPUAdd(relu, A, scaleA, B, scaleB, CReference, scaleOut, M);
+
+        for (size_t f = 0; f < M; f++) {
+            if (ABS(C[f] - CReference[f]) > tolerance) {
+                printf("mismatch M=%zd, scaleA=%f, scaleB=%f, scaleOut=%f relu=%d. Diff=" FMT "!\n", M, scaleA, scaleB, scaleOut, relu, ABS(C[f] - CReference[f]) );
+                return;
+            }
+        }
+    }
+    
+public:
+    void ExecuteShort(void) override
+    {
+        Test(3*16, 0.01, 0.05, 0.01, /*tolerance =*/  0);
+        Test(2*16, 0.5, 0.5, 0.25, /*tolerance =*/  0);
+        Test(1697, 0.17, 0.01, 0.5, /*tolerance =*/  0, /*relu= */ true);
+        Test(2029, 0.113, 0.01, 3, /*tolerance =*/  0, /*relu= */ true);
+    }
+
+    void ExecuteLong(void) override
+    {
+    }
+
+    MlasSystolicAddTest(char acceleration_type) : acceleration_type_(acceleration_type) {}
+
+};
+
+#endif
