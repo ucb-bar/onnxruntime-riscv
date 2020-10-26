@@ -120,31 +120,38 @@ template <typename T>
 Status QLinearAdd<T>::Compute(OpKernelContext* context) const {
   const ProcessBroadcastSpanFuncs functors = {
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
-        const T input0 = per_iter_bh.ScalarInput0<T>();
-        auto input1 = per_iter_bh.SpanInput1<T>();
-        auto output = per_iter_bh.OutputSpan<T>();
+        // We don't yet support scalar + matrix resadd on systolic
+        // We could do this via SW only by manually broadcasting
+        // to systolic size and then mvin with 0 stride
+        ORT_UNUSED_PARAMETER(per_iter_bh);
+        ORT_NOT_IMPLEMENTED("Scalar + Matrix resadd on systolic not implemented");
+        // QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
+        // const T input0 = per_iter_bh.ScalarInput0<T>();
+        // auto input1 = per_iter_bh.SpanInput1<T>();
+        // auto output = per_iter_bh.OutputSpan<T>();
 
-        SystolicAdd(
-            qlbh.accelerator_mode,
-            qlbh.relu,
-            input0, qlbh.A_scale,
-            input1.data(), qlbh.B_scale,
-            output.data(), qlbh.C_scale,
-            output.size());
+        // SystolicAdd(
+        //     qlbh.accelerator_mode,
+        //     qlbh.relu,
+        //     input0, qlbh.A_scale,
+        //     input1.data(), qlbh.B_scale,
+        //     output.data(), qlbh.C_scale,
+        //     output.size());
       },
       [](BroadcastHelper& per_iter_bh) {
-        QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
-        auto input0 = per_iter_bh.SpanInput0<T>();
-        const T input1 = per_iter_bh.ScalarInput1<T>();
-        auto output = per_iter_bh.OutputSpan<T>();
-        SystolicAdd(
-            qlbh.accelerator_mode,
-            qlbh.relu,
-            input0.data(), qlbh.A_scale,
-            input1, qlbh.B_scale,
-            output.data(), qlbh.C_scale,
-            output.size());
+        ORT_UNUSED_PARAMETER(per_iter_bh);
+        ORT_UNUSED_PARAMETER(per_iter_bh);
+        // QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);
+        // auto input0 = per_iter_bh.SpanInput0<T>();
+        // const T input1 = per_iter_bh.ScalarInput1<T>();
+        // auto output = per_iter_bh.OutputSpan<T>();
+        // SystolicAdd(
+        //     qlbh.accelerator_mode,
+        //     qlbh.relu,
+        //     input0.data(), qlbh.A_scale,
+        //     input1, qlbh.B_scale,
+        //     output.data(), qlbh.C_scale,
+        //     output.size());
       },
       [](BroadcastHelper& per_iter_bh) {
         QLinearBroadcastHelper& qlbh = static_cast<QLinearBroadcastHelper&>(per_iter_bh);

@@ -2,12 +2,17 @@
 #ifdef SYSTOLIC_INT8
 #define ACC_SCALE(x, scale) \
     ({float y = nearbyint((x) * (scale)); y > INT_MAX ? INT_MAX : (y < INT_MIN ? INT_MIN : (acc_t)y);})
+#define MVIN_SCALE(x, scale) \
+    (scale == 1.0 ? x : \
+    ({float y = nearbyint((x) * (scale)); y > INT8_MAX ? INT8_MAX : (y < INT8_MIN ? INT8_MIN : (elem_t)y);}))
 #define ELEM_T_MAX SCHAR_MAX
 #define ELEM_T_MIN SCHAR_MIN
 #define FMT "%d "
 #else
 #define ACC_SCALE(x, scale) \
     ({float y = (x) * (scale); (acc_t) y;})
+#define MVIN_SCALE(x, scale) \
+    ({float y = (x) * (scale); (elem_t) y;})
 #define ELEM_T_MAX 3.4028235E38
 #define ELEM_T_MIN -3.4028235E38
 #define FMT "%f "
@@ -169,8 +174,8 @@ private:
     void NaiveCPUAdd(bool relu, const int8_t* in1, float in1_scale, const int8_t* in2, float in2_scale,
                 int8_t* out, float out_scale, int dim) {
         for (int i = 0; i < dim; i++) {
-            int32_t tmp1 = (int) ACC_SCALE(*in1, in1_scale/out_scale);
-            int32_t tmp2 = (int) ACC_SCALE(*in2, in2_scale/out_scale);
+            int32_t tmp1 = (int) MVIN_SCALE(*in1, in1_scale/out_scale);
+            int32_t tmp2 = (int) MVIN_SCALE(*in2, in2_scale/out_scale);
             *out = saturate(tmp1 + tmp2, /*scale= */1, relu);
 
             out++;
@@ -204,6 +209,8 @@ public:
     {
         Test(3*16, 0.01, 0.05, 0.01, /*tolerance =*/  0);
         Test(2*16, 0.5, 0.5, 0.25, /*tolerance =*/  0);
+        Test(2*16 + 1, 0.5, 0.5, 0.25, /*tolerance =*/  0);
+        Test(2*16 + 15, 0.3, 0.5, 0.25, /*tolerance =*/  0);
         Test(1697, 0.17, 0.01, 0.5, /*tolerance =*/  0, /*relu= */ true);
         Test(2029, 0.113, 0.01, 3, /*tolerance =*/  0, /*relu= */ true);
     }

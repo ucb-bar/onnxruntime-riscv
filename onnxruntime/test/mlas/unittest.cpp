@@ -2858,10 +2858,10 @@ main(
     UNUSED(argc); // Suppress spurious argc warning
 #undef UNUSED
 #ifdef SYSTOLIC_INT8
-    printf("Systolic Int8 Matmul tests.\n");
-    onnxruntime::make_unique<MlasSystolicMatmulTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
     printf("Systolic Int8 Resadd tests.\n");
     onnxruntime::make_unique<MlasSystolicAddTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
+    printf("Systolic Int8 Matmul tests.\n");
+    onnxruntime::make_unique<MlasSystolicMatmulTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
 #endif
 #ifdef SYSTOLIC_FP32
     printf("Systolic Fp32 Matmul tests.\n");
