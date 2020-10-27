@@ -7,6 +7,7 @@ RUN="${EMULATOR} ort_test -m ../quantization/models/resnet50/model_opt.onnx  -i 
 TOTAL_LINES=1000
 SPLIT_SIZE=50
 OUT_DIR="benchmark/resnet"
+mkdir -p ${OUT_DIR}
 
 
 # ----------- NO NEED TO TOUCH -----
@@ -57,7 +58,7 @@ do
   increment_count
 done
 
-#download the remainder till the end of the file
+#Finish the remainder till the end of the file
 execute $PART_FILE $LOWER_RANGE $TOTAL_LINES
 
 wait
