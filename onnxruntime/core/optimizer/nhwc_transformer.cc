@@ -148,6 +148,10 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
     group_count = 1;
   }
 
+  ORT_UNUSED_PARAMETER(output_channels);
+  ORT_UNUSED_PARAMETER(kernel_dim);
+  ORT_UNUSED_PARAMETER(group_count);
+
   NodeArg* nhwc_conv_W_arg;
   auto filters_it = filters_transposed.find(input_defs[3]);
   if (filters_it != filters_transposed.end()) {
@@ -173,20 +177,20 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
     }
 
     // Then transpose within each group
-    std::vector<int8_t> group_transposed(conv_W.size());
-    for (int group_id = 0; group_id < group_count; group_id++) {
-      int idx_base = group_id * (output_channels / group_count) * kernel_dim;
-      for (int i = 0; i < kernel_dim; i++) {
-        for (int j = 0; j < output_channels / group_count; j++) {
-          group_transposed[idx_base + (i*(output_channels/group_count) + j)] = reordered_filter[idx_base + (j*kernel_dim + i)];
-        }
-      }
-    }
+    // std::vector<int8_t> group_transposed(conv_W.size());
+    // for (int group_id = 0; group_id < group_count; group_id++) {
+    //   int idx_base = group_id * (output_channels / group_count) * kernel_dim;
+    //   for (int i = 0; i < kernel_dim; i++) {
+    //     for (int j = 0; j < output_channels / group_count; j++) {
+    //       group_transposed[idx_base + (i*(output_channels/group_count) + j)] = reordered_filter[idx_base + (j*kernel_dim + i)];
+    //     }
+    //   }
+    // }
     
     ONNX_NAMESPACE::TensorProto nhwc_conv_W_tensor_proto;
     nhwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
     nhwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName(input_defs[3]->Name() + "_nhwc"));
-    nhwc_conv_W_tensor_proto.set_raw_data(group_transposed.data(), group_transposed.size() * sizeof(int8_t));
+    nhwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(int8_t));
 
     nhwc_conv_W_tensor_proto.add_dims(conv_W.dims()[0]);
     nhwc_conv_W_tensor_proto.add_dims(conv_W.dims()[2]);

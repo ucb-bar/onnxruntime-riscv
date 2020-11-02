@@ -75,7 +75,7 @@ inline void GemmlowpDebug(int m, int n, int k,
                             const T* lhs_data, int strideA,
                             const T* rhs_data, int strideB,
                             T* out, int strideOut,
-                            int divisor,
+                            float scale,
                             const int32_t* bias, int strideBias) {
 
   ORT_UNUSED_PARAMETER(bias);
@@ -107,7 +107,7 @@ inline void GemmlowpDebug(int m, int n, int k,
   }
 
   printf("m, n, k: %d %d %d\n", m, n, k);
-  printf("divisor: %d\n", divisor);
+  printf("scale: %f\n", scale);
   if (bias) {
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < n; j++) {

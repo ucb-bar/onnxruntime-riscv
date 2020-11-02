@@ -69,6 +69,86 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     FusedQLinearConvRelu<StorageOrder::NHWC>);
 
 /**
+ * Try to run a given NHWC conv on systolic if possible
+ * Gemmini only supports groups == 1. 
+ * Additionally, we must have strides and padding must be equal
+ * Kernel dimensions must also be square (W == H)
+ * 
+ * Note that all inputs/outputs/weights are here in NHWC format
+ * Bias is null if no bias
+ * @return true If successfully ran on systolic
+ */
+inline bool TryConvOnSystolic(char accelerator_mode,
+                       const std::vector<int64_t>& dilations,
+                       const std::vector<int64_t>& pads,
+                       const std::vector<int64_t>& strides,
+                       int64_t groups,
+                       const Tensor* X,
+                       const Tensor* W,
+                       const Tensor* B,
+                       Tensor* Y,
+                       bool relu,
+                       float output_scale) {
+  return false;
+  if (groups != 1) {
+    return false;
+  }
+
+  TensorShape input_shape = X->Shape().Slice(1, 3);
+  if (input_shape[0] != input_shape[1]) {
+    return false;
+  }
+
+  TensorShape output_shape = Y->Shape().Slice(1, 3);
+  if (output_shape[0] != output_shape[1]) {
+    return false;
+  }
+
+  TensorShape kernel_shape = W->Shape().Slice(1, 3);
+  if (kernel_shape[0] != kernel_shape[1]) {
+    return false;
+  }
+
+  // All dilations must be equal to 1.
+  if (std::any_of(dilations.begin(), dilations.end(), [&](int i) { return i != 1; })) {
+    return false;
+  }
+
+  // All pads must be the same
+  if (std::any_of(pads.begin(), pads.end(), [&](int i) { return i != pads[0]; })) {
+    return false;
+  }
+
+  // All strides must be the same
+  if (std::any_of(strides.begin(), strides.end(), [&](int i) { return i != strides[0]; })) {
+    return false;
+  }
+
+  const auto* Xdata = X->template Data<int8_t>();
+  const auto* Wdata = W->template Data<int8_t>();
+  const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
+  auto* Ydata = Y->template MutableData<int8_t>();
+
+  SystolicConv(accelerator_mode,
+               /*batch_size= */ X->Shape()[0],
+               /*in_dim= */ input_shape[0],
+               /*in_channels= */ X->Shape()[3],
+               /*output_channels= */ W->Shape()[0],
+               /*out_dim= */ output_shape[0],
+               /*stride= */ strides[0],
+               /*padding= */ pads[0],
+               /*kernel_dim= */ kernel_shape[0],
+               /*input= */ Xdata,
+               /*weights= */ Wdata,
+               /*bias= */ Bdata,
+               /*output= */ Ydata,
+               /*relu =  */ relu,
+               /* output_scale= */ output_scale);
+  printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
+  return true;
+}
+
+/**
  * Reference https://github.com/pytorch/pytorch/blob/master/caffe2/operators/conv_op_impl.h
  */
 template <>
@@ -116,6 +196,8 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   ORT_ENFORCE(W_scale_value != 0, "W_scale_value cannot be 0");
   ORT_ENFORCE(X_scale_value != 0, "X_scale_value cannot be 0");
 
+  const float real_multiplier = (X_scale_value * W_scale_value) / Y_scale_value;
+
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* B = nullptr;
   if (num_inputs == 9) {
@@ -126,6 +208,8 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   const int64_t C = X->Shape()[3];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShapeNHWC(X, W));
+  ORT_ENFORCE(B == nullptr || B->Shape().NumDimensions() == 1, "Bias is not 1D");
+  ORT_ENFORCE(B == nullptr || B->Shape().Size() == M, "1D Bias does not match M");
 
   std::vector<int64_t> kernel_shape;
   TensorShape nchw_w_shape = {W->Shape()[0], W->Shape()[3], W->Shape()[1], W->Shape()[2]};
@@ -156,6 +240,17 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
     return Status::OK();
   }
 
+  const size_t kernel_rank = kernel_shape.size();
+  ORT_ENFORCE(kernel_rank == 2, "NHWC cannot handle kernel rank other than 2 atm");
+
+  // If we can run on Systolic, do so!
+  if (TryConvOnSystolic(
+          static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
+          dilations,
+      pads, strides, conv_attrs_.group, X, W, B, Y, fused_relu_, real_multiplier)) {
+    return Status::OK();
+  }
+
   // fprintf(stderr, "INPUT SHAPE %s\n", input_shape.ToString().c_str());
   // fprintf(stderr, "KERNEL SHAPE %s\n", W->Shape().ToString().c_str());
   // fprintf(stderr, "OUTPUT SHAPE %s\n", Y->Shape().ToString().c_str());
@@ -168,17 +263,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   const int64_t B_offset = static_cast<int>(M / conv_attrs_.group);
   const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
   const int64_t col_buffer_size = C * output_image_size * kernel_size;
-  
-  const size_t kernel_rank = kernel_shape.size();
-  ORT_ENFORCE(kernel_rank == 2, "NHWC cannot handle kernel rank other than 2 atm");
 
   // The col buffer is stored in HWC order as well - the height and width, and
   // kernel_dim.
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-  
+
   BufferUniquePtr col_buffer;
-  
+
   if (kernel_size != 1 || !conv_attrs_.HasStridesOneAndNoPadding()) {
     auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(int8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
@@ -187,8 +279,6 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   }
 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
-
-  const float real_multiplier = (X_scale_value * W_scale_value) / Y_scale_value;
 
   const auto* Xdata = X->template Data<int8_t>();
   const auto* Wdata = W->template Data<int8_t>();
@@ -222,9 +312,9 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
 
       if (profiling_enabled) {
         profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                      Node().Name() + "_kernel_nhwc_im2col_time",
-                                      start_time,
-                                      {{"op_name", KernelDef().OpName()},
+                                       Node().Name() + "_kernel_nhwc_im2col_time",
+                                       start_time,
+                                       {{"op_name", KernelDef().OpName()},
                                         {"sub_action", "im2col"},
                                         {"provider", KernelDef().Provider()}});
         start_time = profiler.StartTime();
@@ -238,27 +328,27 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
        * The quantization script will have already transposed this for us
        */
       const int8_t* weight_base = Wdata + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim);
-      // int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
-      // for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
-      //   for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
-      //     transposed[i * static_cast<int>(M / conv_attrs_.group) + j] = weight_base[j * static_cast<int>(kernel_dim) + i];
-      //   }
-      // }
+      int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
+      for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
+        for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
+          transposed[i * static_cast<int>(M / conv_attrs_.group) + j] = weight_base[j * static_cast<int>(kernel_dim) + i];
+        }
+      }
 
       /**
        * Note that when quantizing we will have transposed the weight matrix so that it holds the correct values
        */
       SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
-                              /*relu= */ fused_relu_,
-                              static_cast<int>(output_image_size),
-                              static_cast<int>(M / conv_attrs_.group),
-                              static_cast<int>(kernel_dim),
-                              (col_buffer_data == nullptr ? Xdata : col_buffer_data) + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                              weight_base, static_cast<int>(M / conv_attrs_.group),
-                              Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
-                              real_multiplier,
-                              Bdata != nullptr ?  Bdata + group_id * B_offset : nullptr, static_cast<int>(M / conv_attrs_.group),
-                              /*repeating_bias= */ true);
+                       /*relu= */ fused_relu_,
+                       static_cast<int>(output_image_size),
+                       static_cast<int>(M / conv_attrs_.group),
+                       static_cast<int>(kernel_dim),
+                       (col_buffer_data == nullptr ? Xdata : col_buffer_data) + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
+                       transposed, static_cast<int>(M / conv_attrs_.group),
+                       Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
+                       real_multiplier,
+                       Bdata != nullptr ? Bdata + group_id * B_offset : nullptr, static_cast<int>(M / conv_attrs_.group),
+                       /*repeating_bias= */ true);
 
       if (profiling_enabled) {
         std::string dimension_string;
@@ -276,20 +366,26 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
         start_time = profiler.StartTime();
       }
 
-      // GemmlowpDebug(static_cast<int>(output_image_size),
-      //               static_cast<int>(M / conv_attrs_.group),
-      //               static_cast<int>(kernel_dim),
-      //               col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-      //               transposed, static_cast<int>(M / conv_attrs_.group),
-      //               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
-      //               rounded_divisor,
-      //               broadcast_bias.get(), static_cast<int>(M / conv_attrs_.group));
+      GemmlowpDebug(static_cast<int>(output_image_size),
+                    static_cast<int>(M / conv_attrs_.group),
+                    static_cast<int>(kernel_dim),
+                    col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
+                    transposed, static_cast<int>(M / conv_attrs_.group),
+                    Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
+                    real_multiplier,
+                    nullptr, static_cast<int>(M / conv_attrs_.group));
     }
 
     Xdata += X_offset;
     Ydata += Y_offset;
   }
 
+  Ydata = Y->template MutableData<int8_t>();
+  for (auto i = 0; i < Y->Shape().Size(); i++) {
+    printf("%d ", Ydata[i]);
+  }
+  printf("\n");
+  
   return Status::OK();
 }
 
@@ -347,6 +443,8 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+  ORT_ENFORCE(B == nullptr || B->Shape().NumDimensions() == 1, "Bias is not 1D");
+  ORT_ENFORCE(B == nullptr || B->Shape().Size() == M, "1D Bias does not match M");
 
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
@@ -471,7 +569,6 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
         }
       }
 
-
       std::unique_ptr<int32_t[]> broadcast_bias(nullptr);
 
       // Unlike the PyTorch implementation we cannot do bias at the end of the groups in a single multiplication
@@ -498,14 +595,14 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
       }
 
       SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
-                              /*relu= */ fused_relu_,
-                              static_cast<int>(M / conv_attrs_.group),
-                              static_cast<int>(output_image_size),
-                              static_cast<int>(kernel_dim),
-                              Wdata + group_id * W_offset,
-                              col_buffer_data == nullptr ? Xdata : col_buffer_data,
-                              Ydata,
-                              real_multiplier, broadcast_bias.get());
+                       /*relu= */ fused_relu_,
+                       static_cast<int>(M / conv_attrs_.group),
+                       static_cast<int>(output_image_size),
+                       static_cast<int>(kernel_dim),
+                       Wdata + group_id * W_offset,
+                       col_buffer_data == nullptr ? Xdata : col_buffer_data,
+                       Ydata,
+                       real_multiplier, broadcast_bias.get());
 
       if (profiling_enabled) {
         std::string dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +

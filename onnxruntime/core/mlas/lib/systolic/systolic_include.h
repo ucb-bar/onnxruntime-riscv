@@ -883,10 +883,10 @@ void sp_tiled_conv(
     int lpad, int rpad, int upad, int dpad,
     int plpad, int prpad, int pupad, int pdpad,
 
-    elem_t* input,
-    elem_t* weights,
+    const elem_t* input,
+    const elem_t* weights,
     elem_t* output,
-    acc_t* bias,
+    const acc_t* bias,
 
     bool no_bias, bool no_pool) {
   // const bool no_padding = lpad == 0 && rpad == 0 && upad == 0 && dpad == 0;
@@ -972,7 +972,7 @@ void sp_tiled_conv(
           const int K = (ichs - ich > DIM ? DIM : ichs - ich) * icols_moved_in_per_row;
           // printf("Mvin K: %d, ichs: %d, ich: %d, icols_moved_in_per_row: %d, icol: %d, icols_unpadded: %d\n", K, ichs, ich, icols_moved_in_per_row, icol, icols_unpadded);
 
-          elem_t* in = input + (b * in_dim * in_dim + irow * in_dim + icol) * in_channels + ich;
+          const elem_t* in = input + (b * in_dim * in_dim + irow * in_dim + icol) * in_channels + ich;
 
           const bool is_zeros = irow < 0 || irow >= irows_unpadded || icol < 0 || icol >= icols_unpadded;
           if (is_zeros) {
@@ -1145,20 +1145,23 @@ void conv_cpu_without_pool(
     int out_channels, int out_dim,
     int stride, int padding, int kernel_dim,
 
-    elem_t* input,
-    elem_t* weights,
-    acc_t* bias,
+    const elem_t* input,
+    const elem_t* weights,
+    const acc_t* bias,
     elem_t* output,
 
     int act, acc_scale_t scale, size_t relu6_shift) {
   bool no_bias = bias == NULL;
 
+  printf("In conv cpu w/o pool\n");
+
   for (int b = 0; b < batch_size; b++) {
     for (int orow = 0; orow < out_dim; orow++) {
       for (int ocol = 0; ocol < out_dim; ocol++) {
+        printf("New output value\n");
         for (int och = 0; och < out_channels; och++) {
           acc_t opixel = no_bias ? 0 : bias[och];
-
+          printf("New output channel\n");
           for (int krow = 0; krow < kernel_dim; krow++) {
             const int irow = orow * stride + krow - padding;
 
@@ -1171,6 +1174,7 @@ void conv_cpu_without_pool(
                 elem_t weight = *(weights + (krow * kernel_dim * in_channels + kcol * in_channels + kch) * out_channels + och);
 
                 acc_t past_opixel = opixel;
+                printf("Multiplying weight and ipixel %d %d\n", weight, ipixel);
                 opixel += weight * ipixel;
               }
             }
@@ -1189,9 +1193,9 @@ void conv_cpu(
     int out_channels, int out_dim,
     int stride, int padding, int kernel_dim,
 
-    elem_t* input,
-    elem_t* weights,
-    acc_t* bias,
+    const elem_t* input,
+    const elem_t* weights,
+    const acc_t* bias,
     elem_t* output,
 
     int act, acc_scale_t scale, size_t relu6_shift,
@@ -1274,9 +1278,9 @@ void tiled_conv(
     int porows, int pocols, int pochs,
     int krows, int kcols, int kchs,
 
-    elem_t* input,
-    elem_t* weights,
-    acc_t* bias,
+    const elem_t* input,
+    const elem_t* weights,
+    const acc_t* bias,
     elem_t* output,
 
     int act, acc_scale_t scale, size_t relu6_shift,
@@ -1374,7 +1378,7 @@ void tiled_conv(
                   out = NULL;
                 }
 
-                acc_t* bias_ = bias + poch;
+                const acc_t* bias_ = bias + poch;
                 if (krow > 0 ||
                     kcol > 0 ||
                     kch > 0) {
@@ -1449,9 +1453,9 @@ void tiled_conv_auto(
     int out_channels, int out_dim,
     int stride, int padding, int kernel_dim,
 
-    elem_t* input,
-    elem_t* weights,
-    acc_t* bias,
+    const elem_t* input,
+    const elem_t* weights,
+    const acc_t* bias,
     elem_t* output,
 
     int act, acc_scale_t scale, size_t relu6_shift,

@@ -115,3 +115,37 @@ void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const
                       /*C_scale= */ 1, A + resizedDim, B + resizedDim, C + resizedDim, relu, get_accelerator_mode(accelerator_mode));
   }
 }
+
+void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_channels,
+                  int out_channels, int out_dim,
+                  int stride, int padding, int kernel_dim,
+                  const elem_t* input,
+                  const elem_t* weights,
+                  const acc_t* bias,
+                  elem_t* output,
+                  bool relu,
+                  float output_scale) {
+  printf("Called into systolic conv\n");
+  printf("Debugging info\n");
+  printf("Batch size, in_w/h, in_channel %d %d %d\n", batch_size, in_dim, in_channels);
+  printf("Out_channels, out_w/h %d %d\n", out_channels, out_dim);
+  printf("Stride, padding %d %d\n", stride, padding);
+  printf("kernel_w/h %d\n", kernel_dim);
+  if (bias) {
+    printf("Bias values: %d\n", bias[0]);
+  }
+  printf("Relu? %d\n", relu);
+
+
+  tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
+                  stride, padding, kernel_dim, input, weights, bias, output,
+                  relu, output_scale, /*relu6_shift= */ 0,
+                  /*pool_size = */ 0, /*pool_stride = */ 0, /*pool_padding = */ 0,
+                  get_accelerator_mode(accelerator_mode));
+
+  printf("Output\n");
+  for (int i = 0; i < out_dim * out_dim * out_channels * batch_size; i++) {
+    printf("%d ", output[i]);
+  }
+  printf("\n");
+}
