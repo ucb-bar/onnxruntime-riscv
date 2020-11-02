@@ -9,6 +9,22 @@ namespace test {
 
 #ifdef SYSTOLIC_INT8
 
+inline void PerformIOHWtoHWIOconversion(std::vector<int8_t>& data, const std::vector<int64_t>& shape) {
+    std::vector<int8_t> data_copy = data;
+    int OC = shape[0];
+    int H = shape[1];
+    int W =  shape[2];
+    int IC =  shape[3];
+
+    for (int k = 0; k < H * W; k++) {
+      for (int ic = 0; ic < IC; ic++) {
+        for (int oc = 0; oc < OC; oc++) {
+          data[k * IC * OC + ic * OC + oc] = data_copy[oc * H * W * IC + ic * H * W + k];
+        }
+      }
+    }
+}
+
 // Has only a single layer of conv
 TEST(ConvTest, QLinearConvNHWCSignedTiny2DTest) {
   OpTester test("QLinearConv_nhwc", 10);
@@ -78,6 +94,7 @@ TEST(ConvTest, QLinearConvNHWCSignedTiny2DTestWithMultipleOutputChannel) {
 
   std::vector<int8_t> W = {1, 2, 3, 4, 1, 2, 3, 4};
   std::vector<int64_t> W_shape = {2, 2, 2, 1};
+  PerformIOHWtoHWIOconversion(W, W_shape);
 
   std::vector<int8_t> expected_vals = {127, 118, 98, 84, 70, 55, 106, 92, 92, 78, 71,
                                        57, 94, 80, 114, 99, 127, 127, 120, 106, 110, 95,

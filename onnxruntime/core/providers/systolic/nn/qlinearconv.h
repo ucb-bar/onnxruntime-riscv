@@ -20,6 +20,11 @@ class QLinearConv : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
   ConvAttributes conv_attrs_;
   bool fused_relu_ = false;
+  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+
+  bool has_reordered_w_ = false;
+  BufferUniquePtr reordered_W_buffer_;
+  TensorShape W_shape_;
 };
 
 template <StorageOrder T>

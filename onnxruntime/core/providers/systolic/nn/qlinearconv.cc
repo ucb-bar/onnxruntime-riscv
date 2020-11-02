@@ -148,6 +148,46 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   return true;
 }
 
+template <>
+Status QLinearConv<StorageOrder::NHWC>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+  is_packed = false;
+  // Support packing the weight matrix.
+  if (input_idx != 3) {
+    return Status::OK();
+  }
+
+  const auto& shape = tensor.Shape();
+  size_t rank = shape.NumDimensions();
+  if (rank != 4) {
+    return Status::OK();
+  }
+
+  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
+
+  W_shape_ = shape;
+  const auto* Wdata = static_cast<const int8_t*>(tensor.DataRaw());
+  auto* reordered_W = static_cast<int8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(int8_t)) * shape.Size()));
+  reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
+
+  int OC = shape[0];
+  int H = shape[1];
+  int W = shape[2];
+  int IC = shape[3];
+
+  for (int k = 0; k < H * W; k++) {
+    for (int ic = 0; ic < IC; ic++) {
+      for (int oc = 0; oc < OC; oc++) {
+        reordered_W[k * IC * OC + ic * OC + oc] = Wdata[oc * H * W * IC + ic * H * W + k];
+      }
+    }
+  }
+  // Note that even though data is not "packed", this signals to release original tensor
+  is_packed = true;
+  has_reordered_w_ = true;
+  return Status::OK();
+
+}
+
 /**
  * Reference https://github.com/pytorch/pytorch/blob/master/caffe2/operators/conv_op_impl.h
  */
@@ -157,7 +197,10 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   bool profiling_enabled = profiler.IsEnabled();
 
   const auto* X = context->Input<Tensor>(0);
-  const auto* W = context->Input<Tensor>(3);
+  const auto* W = has_reordered_w_ ? nullptr : context->Input<Tensor>(3);
+  const auto& W_shape = has_reordered_w_ ? W_shape_ : W->Shape();
+
+  printf("Made to 203\n");
 
   // validate offsets
   auto X_zero_point = context->Input<Tensor>(2);
@@ -204,15 +247,17 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
     B = context->Input<Tensor>(8);
   }
 
+  printf("Made to 250\n");
+
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[3];
-  const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShapeNHWC(X, W));
+  const int64_t M = W_shape[0];
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShapeNHWC(X->Shape(), W_shape));
   ORT_ENFORCE(B == nullptr || B->Shape().NumDimensions() == 1, "Bias is not 1D");
   ORT_ENFORCE(B == nullptr || B->Shape().Size() == M, "1D Bias does not match M");
 
   std::vector<int64_t> kernel_shape;
-  TensorShape nchw_w_shape = {W->Shape()[0], W->Shape()[3], W->Shape()[1], W->Shape()[2]};
+  TensorShape nchw_w_shape = {W_shape[0],W_shape[3], W_shape[1], W_shape[2]};
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(nchw_w_shape, kernel_shape));
 
   std::vector<int64_t> pads(conv_attrs_.pads);
@@ -227,6 +272,8 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
+
+  printf("Made to 276\n");
 
   std::vector<int64_t> Y_dims_nchw({N, M});
   TensorShape input_shape = X->Shape().Slice(1, 3);
@@ -281,7 +328,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
 
   const auto* Xdata = X->template Data<int8_t>();
-  const auto* Wdata = W->template Data<int8_t>();
+  const auto* Wdata = has_reordered_w_ ? static_cast<int8_t*>(reordered_W_buffer_.get()) : W->template Data<int8_t>();
   const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
   auto* Ydata = Y->template MutableData<int8_t>();
 
@@ -321,19 +368,20 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
       }
     }
 
+    printf("made to 369\n");
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       /* The weights we multiply by are given by the `M / groups` x `kernel_h * kernel_w * C / groups` matrix
        * starting at weights + group_id * (M / groups) * kernel_h * kernel_w * C / groups.
        * 
        * The quantization script will have already transposed this for us
        */
-      const int8_t* weight_base = Wdata + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim);
-      int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
-      for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
-        for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
-          transposed[i * static_cast<int>(M / conv_attrs_.group) + j] = weight_base[j * static_cast<int>(kernel_dim) + i];
-        }
-      }
+      const int8_t* weight_base = Wdata + group_id * static_cast<int>(M / conv_attrs_.group);
+      // int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
+      // for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
+      //   for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
+      //     transposed[i * static_cast<int>(M / conv_attrs_.group) + j] = weight_base[j * static_cast<int>(kernel_dim) + i];
+      //   }
+      // }
 
       /**
        * Note that when quantizing we will have transposed the weight matrix so that it holds the correct values
@@ -344,12 +392,13 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
                        static_cast<int>(M / conv_attrs_.group),
                        static_cast<int>(kernel_dim),
                        (col_buffer_data == nullptr ? Xdata : col_buffer_data) + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                       transposed, static_cast<int>(M / conv_attrs_.group),
+                       weight_base, static_cast<int>(M),
                        Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
                        real_multiplier,
                        Bdata != nullptr ? Bdata + group_id * B_offset : nullptr, static_cast<int>(M / conv_attrs_.group),
                        /*repeating_bias= */ true);
 
+      printf("made to 399\n");
       if (profiling_enabled) {
         std::string dimension_string;
         dimension_string = std::to_string(static_cast<int>(M / conv_attrs_.group)) +
@@ -366,27 +415,33 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
         start_time = profiler.StartTime();
       }
 
-      GemmlowpDebug(static_cast<int>(output_image_size),
-                    static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(kernel_dim),
-                    col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                    transposed, static_cast<int>(M / conv_attrs_.group),
-                    Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
-                    real_multiplier,
-                    nullptr, static_cast<int>(M / conv_attrs_.group));
+      // GemmlowpDebug(static_cast<int>(output_image_size),
+      //               static_cast<int>(M / conv_attrs_.group),
+      //               static_cast<int>(kernel_dim),
+      //               col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
+      //               weight_base, static_cast<int>(M / conv_attrs_.group),
+      //               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
+      //               real_multiplier,
+      //               nullptr, static_cast<int>(M / conv_attrs_.group));
     }
 
     Xdata += X_offset;
     Ydata += Y_offset;
   }
 
-  Ydata = Y->template MutableData<int8_t>();
-  for (auto i = 0; i < Y->Shape().Size(); i++) {
-    printf("%d ", Ydata[i]);
-  }
-  printf("\n");
+  // Ydata = Y->template MutableData<int8_t>();
+  // for (auto i = 0; i < Y->Shape().Size(); i++) {
+  //   printf("%d ", Ydata[i]);
+  // }
+  // printf("\n");
   
   return Status::OK();
+}
+
+
+template <>
+Status QLinearConv<StorageOrder::NCHW>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+  return Status::OK(); // Don't prepack NCHW
 }
 
 template <>
