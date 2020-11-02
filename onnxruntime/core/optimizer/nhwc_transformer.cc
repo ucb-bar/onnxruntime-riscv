@@ -50,6 +50,7 @@ class NhwcTransformerImpl {
 
   void TransformQLinearConv(Node& node,  const logging::Logger& logger);
   void TransformQLinearRelu(Node& node,  const logging::Logger& logger);
+  void TransformQLinearAdd(Node& node,  const logging::Logger& logger);
 
   Graph& graph_;
 
@@ -246,6 +247,50 @@ void NhwcTransformerImpl::TransformQLinearRelu(Node& node,  const logging::Logge
   }
 }
 
+void NhwcTransformerImpl::TransformQLinearAdd(Node& node,  const logging::Logger& logger) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  NodeArg* tensor1 = input_defs[0];
+  NodeArg* tensor2 = input_defs[3]; // N.b. [3] since we scale/zp is other two
+  auto it = nhwc_args_.find(tensor1);
+  auto it2 = nhwc_args_.find(tensor2);
+
+  // If both inputs are indeed in NHWC format
+  if (it != nhwc_args_.end() && it2 != nhwc_args_.end()) {
+
+    // Note that they must be in the same shape (no broadcasting)
+    if (tensor1->Shape() == nullptr ||
+        tensor2->Shape() == nullptr) {
+      LOGS(logger, VERBOSE) << "No shape inference data for QLinearAdd. Bailing on NHWC.";
+      return;
+    }
+
+    TensorShape shape1 = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*tensor1->Shape());
+    TensorShape shape2 = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*tensor1->Shape());
+
+    // If shapes don't match or unknown size, can't do NHWC conversion
+    if (shape1 != shape2 || shape1.Size() == -1) {
+      LOGS(logger, VERBOSE) << "Shapes do not match. Bailing on NHWC.";
+      LOGS(logger, VERBOSE) << "T1 shape:" << shape1.ToString() << " T2 shape: " << shape2.ToString();
+    }
+
+    auto& nhwc_input1 = it->second;
+    auto& nhwc_input2 = it2->second;
+
+    LOGS(logger, VERBOSE) << "Transforming QLinearAdd to NHWC";
+
+    input_defs[0] = nhwc_input1->nhwc_arg_;
+    input_defs[3] = nhwc_input2->nhwc_arg_;
+    nhwc_input1->remaining_original_uses_--;
+    nhwc_input2->remaining_original_uses_--;
+
+    // Check if this is a single use NCHWc convolution that hasn't already
+    // been fused with another activation.
+    CreateNhwcArgument(node, node, output_defs[0]->Name());
+  }
+}
+
 void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
   if (node.OpType() == "QLinearConv" || node.OpType() == "Fused_QLinearConv_Relu") {
     TransformQLinearConv(node, logger);
@@ -257,6 +302,8 @@ void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
     // nodes unrelated to this transformer.
     if (node.OpType() == "QLinearRelu") {
       TransformQLinearRelu(node, logger);
+    } else if (node.OpType() == "QLinearAdd" || node.OpType() == "Fused_QLinearAdd_Relu") {
+      TransformQLinearAdd(node, logger);
     }
   }
 
