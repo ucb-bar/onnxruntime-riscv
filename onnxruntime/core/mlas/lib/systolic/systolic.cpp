@@ -126,15 +126,15 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
                   bool relu,
                   float output_scale) {
   printf("Called into systolic conv\n");
-  printf("Debugging info\n");
-  printf("Batch size, in_w/h, in_channel %d %d %d\n", batch_size, in_dim, in_channels);
-  printf("Out_channels, out_w/h %d %d\n", out_channels, out_dim);
-  printf("Stride, padding %d %d\n", stride, padding);
-  printf("kernel_w/h %d\n", kernel_dim);
-  if (bias) {
-    printf("Bias values: %d\n", bias[0]);
-  }
-  printf("Relu? %d\n", relu);
+  // printf("Debugging info\n");
+  // printf("Batch size, in_w/h, in_channel %d %d %d\n", batch_size, in_dim, in_channels);
+  // printf("Out_channels, out_w/h %d %d\n", out_channels, out_dim);
+  // printf("Stride, padding %d %d\n", stride, padding);
+  // printf("kernel_w/h %d\n", kernel_dim);
+  // if (bias) {
+  //   printf("Bias values: %d\n", bias[0]);
+  // }
+  // printf("Relu? %d\n", relu);
 
 
   tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
@@ -143,9 +143,9 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
                   /*pool_size = */ 0, /*pool_stride = */ 0, /*pool_padding = */ 0,
                   get_accelerator_mode(accelerator_mode));
 
-  printf("Output\n");
-  for (int i = 0; i < out_dim * out_dim * out_channels * batch_size; i++) {
-    printf("%d ", output[i]);
-  }
-  printf("\n");
+  // printf("Output\n");
+  // for (int i = 0; i < out_dim * out_dim * out_channels * batch_size; i++) {
+  //   printf("%d ", output[i]);
+  // }
+  // printf("\n");
 }

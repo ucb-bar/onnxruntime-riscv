@@ -1153,15 +1153,13 @@ void conv_cpu_without_pool(
     int act, acc_scale_t scale, size_t relu6_shift) {
   bool no_bias = bias == NULL;
 
-  printf("In conv cpu w/o pool\n");
-
   for (int b = 0; b < batch_size; b++) {
     for (int orow = 0; orow < out_dim; orow++) {
       for (int ocol = 0; ocol < out_dim; ocol++) {
-        printf("New output value\n");
+        //printf("New output value\n");
         for (int och = 0; och < out_channels; och++) {
           acc_t opixel = no_bias ? 0 : bias[och];
-          printf("New output channel\n");
+          //printf("New output channel\n");
           for (int krow = 0; krow < kernel_dim; krow++) {
             const int irow = orow * stride + krow - padding;
 
@@ -1174,7 +1172,7 @@ void conv_cpu_without_pool(
                 elem_t weight = *(weights + (krow * kernel_dim * in_channels + kcol * in_channels + kch) * out_channels + och);
 
                 acc_t past_opixel = opixel;
-                printf("Multiplying weight and ipixel %d %d\n", weight, ipixel);
+                //printf("Multiplying weight and ipixel %d %d\n", weight, ipixel);
                 opixel += weight * ipixel;
               }
             }

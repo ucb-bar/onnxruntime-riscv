@@ -135,22 +135,19 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
     return;
   }
 
-  const int64_t output_channels = conv_W_tensor_proto->dims(0);
-  const int64_t input_channels = conv_W_tensor_proto->dims(1);
-  const int64_t kernel_size = conv_W_tensor_proto->dims(2) * conv_W_tensor_proto->dims(3);
-  const int64_t kernel_dim = input_channels * kernel_size;
+  // Unused, but keeping just for reference
+  // const int64_t output_channels = conv_W_tensor_proto->dims(0);
+  // const int64_t input_channels = conv_W_tensor_proto->dims(1);
+  // const int64_t kernel_size = conv_W_tensor_proto->dims(2) * conv_W_tensor_proto->dims(3);
+  // const int64_t kernel_dim = input_channels * kernel_size;
 
-  int64_t group_count;
-  const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
-  if (group_attr != nullptr && utils::HasInt(*group_attr)) {
-    group_count = group_attr->i();
-  } else {
-    group_count = 1;
-  }
-
-  ORT_UNUSED_PARAMETER(output_channels);
-  ORT_UNUSED_PARAMETER(kernel_dim);
-  ORT_UNUSED_PARAMETER(group_count);
+  // int64_t group_count;
+  // const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
+  // if (group_attr != nullptr && utils::HasInt(*group_attr)) {
+  //   group_count = group_attr->i();
+  // } else {
+  //   group_count = 1;
+  // }
 
   NodeArg* nhwc_conv_W_arg;
   auto filters_it = filters_transposed.find(input_defs[3]);
@@ -161,41 +158,29 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
     Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
     std::vector<int8_t> reordered_filter(conv_W.size());
 
-    // First transpose NCHW to NHWC
-    int N = conv_W.dims()[0];
-    int C = conv_W.dims()[1];
+    // We convert from OcIcHW format to HWIO format
+    int OC = conv_W.dims()[0];
+    int IC = conv_W.dims()[1];
     int H = conv_W.dims()[2];
     int W = conv_W.dims()[3];
-    for (int n = 0; n < N; n++) {
-      for (int h = 0; h < H; h++) {
-        for (int w = 0; w < W; w++) {
-          for (int c = 0; c < C; c++) {
-            reordered_filter[((n*H + h)*W + w)*C + c] = conv_W.data<int8_t>()[((n*C + c)*H + h)*W + w];
-          }
+
+    for (int k = 0; k < H * W; k++) {
+      for (int ic = 0; ic < IC; ic++) {
+        for (int oc = 0; oc < OC; oc++) {
+          reordered_filter[k * IC * OC + ic * OC + oc] = conv_W.data<int8_t>()[oc * H * W * IC + ic * H * W + k];
         }
       }
     }
 
-    // Then transpose within each group
-    // std::vector<int8_t> group_transposed(conv_W.size());
-    // for (int group_id = 0; group_id < group_count; group_id++) {
-    //   int idx_base = group_id * (output_channels / group_count) * kernel_dim;
-    //   for (int i = 0; i < kernel_dim; i++) {
-    //     for (int j = 0; j < output_channels / group_count; j++) {
-    //       group_transposed[idx_base + (i*(output_channels/group_count) + j)] = reordered_filter[idx_base + (j*kernel_dim + i)];
-    //     }
-    //   }
-    // }
-    
     ONNX_NAMESPACE::TensorProto nhwc_conv_W_tensor_proto;
     nhwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
     nhwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName(input_defs[3]->Name() + "_nhwc"));
     nhwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(int8_t));
 
-    nhwc_conv_W_tensor_proto.add_dims(conv_W.dims()[0]);
-    nhwc_conv_W_tensor_proto.add_dims(conv_W.dims()[2]);
-    nhwc_conv_W_tensor_proto.add_dims(conv_W.dims()[3]);
-    nhwc_conv_W_tensor_proto.add_dims(conv_W.dims()[1]);
+    nhwc_conv_W_tensor_proto.add_dims(H);
+    nhwc_conv_W_tensor_proto.add_dims(W);
+    nhwc_conv_W_tensor_proto.add_dims(IC);
+    nhwc_conv_W_tensor_proto.add_dims(OC);
 
     nhwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nhwc_conv_W_tensor_proto);
     filters_transposed.emplace(input_defs[3], nhwc_conv_W_arg);

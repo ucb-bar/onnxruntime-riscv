@@ -107,7 +107,8 @@ struct ConvAttributes {
 
   Status ValidateInputShapeNHWC(const Tensor* X, const Tensor* W) const {
     const int64_t C = X->Shape()[3];
-    const int64_t M = W->Shape()[0];
+    const int64_t M = W->Shape()[3];
+    const int64_t C_over_groups = W->Shape()[2];
 
     if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
@@ -115,10 +116,10 @@ struct ConvAttributes {
                              " W: ", W->Shape().ToString().c_str());
     }
 
-    if (C != W->Shape()[3] * group) {
+    if (C != C_over_groups * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
-                             " kernel channels: ", W->Shape()[3],
+                             " kernel channels: ", C_over_groups,
                              " group: ", group);
     }
 

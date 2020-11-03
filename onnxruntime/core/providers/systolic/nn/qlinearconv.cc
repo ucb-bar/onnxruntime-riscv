@@ -94,18 +94,20 @@ inline bool TryConvOnSystolic(char accelerator_mode,
     return false;
   }
 
-  TensorShape input_shape = X->Shape().Slice(1, 3);
-  if (input_shape[0] != input_shape[1]) {
+  int input_dim, output_dim, kernel_dim;
+
+  // If input H != W
+  if ((input_dim = X->Shape()[1]) != X->Shape()[2]) {
     return false;
   }
 
-  TensorShape output_shape = Y->Shape().Slice(1, 3);
-  if (output_shape[0] != output_shape[1]) {
+  // If output H != W
+  if ((output_dim = Y->Shape()[1]) != Y->Shape()[2]) {
     return false;
   }
 
-  TensorShape kernel_shape = W->Shape().Slice(1, 3);
-  if (kernel_shape[0] != kernel_shape[1]) {
+  // If Kernel kH != hW
+  if ((kernel_dim = W->Shape()[0]) != W->Shape()[1]) {
     return false;
   }
 
@@ -129,15 +131,19 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
   auto* Ydata = Y->template MutableData<int8_t>();
 
+  int batch_size = X->Shape()[0];
+  int input_channels = X->Shape()[3];
+  int output_channels = W->Shape()[3];
+
   SystolicConv(accelerator_mode,
-               /*batch_size= */ X->Shape()[0],
-               /*in_dim= */ input_shape[0],
-               /*in_channels= */ X->Shape()[3],
-               /*output_channels= */ W->Shape()[0],
-               /*out_dim= */ output_shape[0],
-               /*stride= */ strides[0],
-               /*padding= */ pads[0],
-               /*kernel_dim= */ kernel_shape[0],
+               batch_size,
+               input_dim,
+               input_channels,
+               output_channels,
+               output_dim,
+               strides[0],
+               pads[0],
+               kernel_dim,
                /*input= */ Xdata,
                /*weights= */ Wdata,
                /*bias= */ Bdata,
@@ -150,6 +156,19 @@ inline bool TryConvOnSystolic(char accelerator_mode,
 
 /**
  * Reference https://github.com/pytorch/pytorch/blob/master/caffe2/operators/conv_op_impl.h
+ * 
+ * Note that the above reference (caffe2) uses a OIHW layout for the weights, but we use HWIO
+ * With `OHWI` you have to transpose each output weight group
+ * (which ends up essentially doing at a high-level `o|HWI` -> `HWI|o` for the slice of `o` that you care about),
+ * whereas with `HWIO` you don't transpose.
+ * So in the end `OHWI` after the internal output-group transpose essentially ends up with `HWIO` format,
+ * which makes sense since that's the only way you can have the resulting matmul output be in `NHWC` format.
+ * But if transposes are "free" (as I think they are with most BLAS implementations)
+ * then there's no difference.
+ * 
+ * HWIO is also what is used in the onnxruntime uint8 QLinearConv implementation
+ * and that can be used for an additional reference
+ * 
  */
 template <>
 Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const {
@@ -206,14 +225,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
 
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[3];
-  const int64_t M = W->Shape()[0];
+  const int64_t M = W->Shape()[3];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShapeNHWC(X, W));
   ORT_ENFORCE(B == nullptr || B->Shape().NumDimensions() == 1, "Bias is not 1D");
   ORT_ENFORCE(B == nullptr || B->Shape().Size() == M, "1D Bias does not match M");
 
   std::vector<int64_t> kernel_shape;
-  TensorShape nchw_w_shape = {W->Shape()[0], W->Shape()[3], W->Shape()[1], W->Shape()[2]};
-  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(nchw_w_shape, kernel_shape));
+  TensorShape oihw_w_shape = {W->Shape()[3], W->Shape()[2], W->Shape()[0], W->Shape()[1]};
+  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(oihw_w_shape, kernel_shape));
 
   std::vector<int64_t> pads(conv_attrs_.pads);
   if (pads.empty()) {
@@ -322,29 +341,14 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
     }
 
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      /* The weights we multiply by are given by the `M / groups` x `kernel_h * kernel_w * C / groups` matrix
-       * starting at weights + group_id * (M / groups) * kernel_h * kernel_w * C / groups.
-       * 
-       * The quantization script will have already transposed this for us
-       */
-      const int8_t* weight_base = Wdata + group_id * static_cast<int>(M / conv_attrs_.group) * static_cast<int>(kernel_dim);
-      int8_t transposed[static_cast<int>(kernel_dim) * static_cast<int>(M / conv_attrs_.group)];
-      for (int i = 0; i < static_cast<int>(kernel_dim); i++) {
-        for (int j = 0; j < static_cast<int>(M / conv_attrs_.group); j++) {
-          transposed[i * static_cast<int>(M / conv_attrs_.group) + j] = weight_base[j * static_cast<int>(kernel_dim) + i];
-        }
-      }
-
-      /**
-       * Note that when quantizing we will have transposed the weight matrix so that it holds the correct values
-       */
+      const int8_t* weight_base = Wdata + group_id * static_cast<int>(M / conv_attrs_.group);
       SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
                        /*relu= */ fused_relu_,
                        static_cast<int>(output_image_size),
                        static_cast<int>(M / conv_attrs_.group),
                        static_cast<int>(kernel_dim),
                        (col_buffer_data == nullptr ? Xdata : col_buffer_data) + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                       transposed, static_cast<int>(M / conv_attrs_.group),
+                       weight_base, static_cast<int>(M),
                        Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
                        real_multiplier,
                        Bdata != nullptr ? Bdata + group_id * B_offset : nullptr, static_cast<int>(M / conv_attrs_.group),
@@ -366,25 +370,25 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
         start_time = profiler.StartTime();
       }
 
-      GemmlowpDebug(static_cast<int>(output_image_size),
-                    static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(kernel_dim),
-                    col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
-                    transposed, static_cast<int>(M / conv_attrs_.group),
-                    Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
-                    real_multiplier,
-                    nullptr, static_cast<int>(M / conv_attrs_.group));
+      // GemmlowpDebug(static_cast<int>(output_image_size),
+      //               static_cast<int>(M / conv_attrs_.group),
+      //               static_cast<int>(kernel_dim),
+      //               col_buffer_data + group_id * static_cast<int>(kernel_dim), conv_attrs_.group * static_cast<int>(kernel_dim),
+      //               weight_base, static_cast<int>(M / conv_attrs_.group),
+      //               Ydata + group_id * static_cast<int>(M / conv_attrs_.group), static_cast<int>(M),
+      //               real_multiplier,
+      //               nullptr, static_cast<int>(M / conv_attrs_.group));
     }
 
     Xdata += X_offset;
     Ydata += Y_offset;
   }
 
-  Ydata = Y->template MutableData<int8_t>();
-  for (auto i = 0; i < Y->Shape().Size(); i++) {
-    printf("%d ", Ydata[i]);
-  }
-  printf("\n");
+  // Ydata = Y->template MutableData<int8_t>();
+  // for (auto i = 0; i < Y->Shape().Size(); i++) {
+  //   printf("%d ", Ydata[i]);
+  // }
+  // printf("\n");
   
   return Status::OK();
 }
@@ -635,6 +639,12 @@ Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const 
       Ydata += Y_offset;
     }
   }
+
+  // Ydata = Y->template MutableData<int8_t>();
+  // for (auto i = 0; i < Y->Shape().Size(); i++) {
+  //   printf("%d ", Ydata[i]);
+  // }
+  // printf("\n");
 
   return Status::OK();
 }

@@ -111,18 +111,18 @@ void nhwcConvPoolShapeInference(
     if (second_input_shape.dim_size() != 4) {
       fail_shape_inference("Not 4 dimensions for weights of qlinearconv_nhwc");
     }
-    int seoncd_input_M = second_input_shape.dim(0).dim_value();
-    int second_input_kH = second_input_shape.dim(1).dim_value();
-    int second_input_kW = second_input_shape.dim(2).dim_value();
-    int second_input_C_by_group = second_input_shape.dim(3).dim_value();
+    int second_input_kH = second_input_shape.dim(0).dim_value();
+    int second_input_kW = second_input_shape.dim(1).dim_value();
+    int second_input_C_by_group = second_input_shape.dim(2).dim_value();
+    int second_input_M = second_input_shape.dim(3).dim_value();
 
-    int second_input_shape_nchw_form[4] = {seoncd_input_M, second_input_C_by_group, second_input_kH, second_input_kW};
+    int second_input_shape_oihw_form[4] = {second_input_M, second_input_C_by_group, second_input_kH, second_input_kW};
 
     for (int i = 2; i < second_input_shape.dim_size(); ++i) {
-      if (!second_input_shape.dim(i).has_dim_value()) {
+      if (!second_input_shape.dim(i - 2).has_dim_value()) {
         fail_shape_inference("Missing dim for qlinearconv_nhwc");
       }
-      kernel_shape.push_back(second_input_shape_nchw_form[i]);
+      kernel_shape.push_back(second_input_shape_oihw_form[i]);
     }
   }
 
@@ -181,7 +181,7 @@ void nhwcConvPoolShapeInference(
     if (second_input_shape.dim_size() < 1) {
       fail_shape_inference("Second input tensor has wrong dimension");
     }
-    *output_shape->add_dim() = second_input_shape.dim(0);
+    *output_shape->add_dim() = second_input_shape.dim(3);
   }
 
   int kernel_shape_size = static_cast<int>(kernel_shape.size());
@@ -285,7 +285,7 @@ void RegisterSystolicSchemas() {
       .Input(0, "x", "", "T1")
       .Input(1, "x_scale", "", "tensor(float)")
       .Input(2, "x_zero_point", "", "T1")
-      .Input(3, "w", "Must be in funky group-wise pre-transposed format", "T2")
+      .Input(3, "w", "Must be in HWIO format", "T2")
       .Input(4, "w_scale", "", "tensor(float)")
       .Input(5, "w_zero_point", "", "T2")
       .Input(6, "y_scale", "", "tensor(float)")
@@ -310,7 +310,7 @@ void RegisterSystolicSchemas() {
       .Input(0, "x", "", "T1")
       .Input(1, "x_scale", "", "tensor(float)")
       .Input(2, "x_zero_point", "", "T1")
-      .Input(3, "w", "Must be in funky group-wise pre-transposed format", "T2")
+      .Input(3, "w", "Must be in HWIO format", "T2")
       .Input(4, "w_scale", "", "tensor(float)")
       .Input(5, "w_zero_point", "", "T2")
       .Input(6, "y_scale", "", "tensor(float)")
