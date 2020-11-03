@@ -309,6 +309,11 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
     if (profiling_enabled) {
       start_time = profiler.StartTime();
     }
+    // We use a version of im2col that does all groups at once
+    // Whereas official onnxruntime optimization (CPU kernel) has a version
+    // that operates at a per-group level
+    // IF one were to parallelize across multiple cores, you could use that
+    // Refer to the CPU QLinearConv impl. to see how that works
     if (col_buffer_data != nullptr) {
       math::Im2col<int8_t, StorageOrder::NHWC>()(
           Xdata,
