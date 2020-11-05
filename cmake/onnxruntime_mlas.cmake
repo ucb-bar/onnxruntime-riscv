@@ -165,13 +165,15 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/power/SgemmKernelPower.cpp
     )
     if (onnxruntime_USE_HWACHA)
+      enable_language(ASM)
       set(mlas_platform_srcs ${mlas_platform_srcs}
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/hwacha/util.cpp	
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/hwacha/hwacha.cpp
         ${ONNXRUNTIME_ROOT}/core/mlas/lib/hwacha/util_asm.S
       )
       # Ensure that cmake treats this as assembly
-      set_property(SOURCE ${ONNXRUNTIME_ROOT}/core/mlas/lib/hwacha/util_asm.S PROPERTY LANGUAGE C)
+      set_property(SOURCE ${ONNXRUNTIME_ROOT}/core/mlas/lib/hwacha/util_asm.S PROPERTY LANGUAGE ASM)
+      set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -Wa,-march=rv64gxhwacha")
     endif()
   elseif(ARM)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
