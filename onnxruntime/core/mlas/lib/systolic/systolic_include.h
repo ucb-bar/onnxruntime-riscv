@@ -903,13 +903,7 @@ void sp_tiled_conv(
   const int icols_unpadded = icols - lpad - rpad;
   const int ichs = kchs;
 
-  int icols_per_systolic_row = ichs > DIM ? 1 : DIM / ichs;
-  if (kcols < icols_per_systolic_row) {
-    icols_per_systolic_row = kcols;
-  }
-  if (lpad != 0 || rpad != 0 || upad != 0 || dpad != 0) {
-    icols_per_systolic_row = 1;
-  }
+  int icols_per_systolic_row = 1;
   // printf("  icols_per_systolic_row %d\n\n", icols_per_systolic_row);
 
   // Calculate spad address offsets
@@ -983,6 +977,7 @@ void sp_tiled_conv(
 
           const uint32_t A_sp_addr = A_sp_addr_start + (ich / DIM) * batches * irows * icols + b * irows * icols + irow_padded * icols + icol_padded;
 
+          // printf("in offset, K, I %d %d %d\n",  (b * in_dim * in_dim + irow * in_dim + icol) * in_channels + ich, K, I);
           gemmini_extended_mvin(in,
                                 A_sp_addr,
                                 K, I);
@@ -1075,6 +1070,7 @@ void sp_tiled_conv(
       }
 
   // mvout output
+  // printf("mvout\n");
   if (output != NULL) {
     if (no_pool) {
       for (int b = 0; b < batches; b++)
