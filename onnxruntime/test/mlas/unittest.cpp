@@ -2851,6 +2851,8 @@ main(
     // if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
     //  perror("mlockall failed");
     //  exit(1);
+    // } else {
+    //     printf("Finished mlock\n");
     // }
     
 #ifdef USE_SYSTOLIC
@@ -2858,6 +2860,8 @@ main(
     UNUSED(argc); // Suppress spurious argc warning
 #undef UNUSED
 #ifdef SYSTOLIC_INT8
+    printf("Systolic Int8 Conv tests.\n");
+    onnxruntime::make_unique<MlasSystolicConvTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
     printf("Systolic Int8 Resadd tests.\n");
     onnxruntime::make_unique<MlasSystolicAddTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
     printf("Systolic Int8 Matmul tests.\n");

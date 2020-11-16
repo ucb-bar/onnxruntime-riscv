@@ -89,7 +89,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                        Tensor* Y,
                        bool relu,
                        float output_scale) {
-  return false;
+  // return false;
   if (groups != 1) {
     return false;
   }
@@ -150,7 +150,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                /*output= */ Ydata,
                /*relu =  */ relu,
                /* output_scale= */ output_scale);
-  printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
+  // printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
   return true;
 }
 
