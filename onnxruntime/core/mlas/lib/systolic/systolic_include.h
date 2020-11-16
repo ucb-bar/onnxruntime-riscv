@@ -618,7 +618,9 @@ static elem_t scale_and_sat(acc_t x, int act, acc_scale_t scale, size_t relu6_sh
 }
 
 #ifdef HAS_MVIN_SCALE
-#define GEMMINI_SCALE(x, scale) MVIN_SCALE((x), (scale))
+// For our purposes, we don't use the scale in matmul. So disable it for speedup.
+// #define GEMMINI_SCALE(x, scale) MVIN_SCALE((x), (scale))
+#define GEMMINI_SCALE(x, scale) (x)
 #else
 #define GEMMINI_SCALE(x, scale) (x)
 #endif
