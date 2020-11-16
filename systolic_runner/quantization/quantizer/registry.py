@@ -31,7 +31,7 @@ QLinearOpsRegistry = {
     "Clip": QLinearActivation,
     "LeakyRelu" : QLinearActivation,
     "Sigmoid" : QLinearActivation,
-    #"MaxPool": QMaxPool,
+    "MaxPool": QMaxPool,
     "Attention": AttentionQuant,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)

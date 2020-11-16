@@ -29,17 +29,23 @@ import math
 # Candidate nodes for quantization. Calibration will be done for these nodes only
 # When more nodes are extended to support quantization, add them to this list
 # Values are the relevant input indices that should be quantized
-QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1], 'Attention': [0, 1]}
+QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1], 'Attention': [0, 1], 'MaxPool': [0]}
 # Binary ops that need to be checked for floating-point before quantizing
 BINARY_OPS_TO_QUANTIZE = ['Add', 'Mul']
 
 
-def get_subsequent_nodes(model, index, edge):
-    matches = []
-    for node in model.graph.node[index + 1:]:
-        if (edge in node.input):
-            matches.append(node.op_type)
-    return matches
+def get_input_name_to_nodes(model):
+    '''
+        Helper function to create input_name_to_nodes dictionary
+    '''
+    input_name_to_nodes = {}
+    for node in model.graph.node:
+        for input_name in node.input:
+            if input_name not in input_name_to_nodes:
+                input_name_to_nodes[input_name] = [node]
+            else:
+                input_name_to_nodes[input_name].append(node)
+    return input_name_to_nodes
 
 def can_quantize_name(node, name, value_infos, idx = None):
     if node.op_type in QUANTIZATION_CANDIDATES and (not idx or idx in QUANTIZATION_CANDIDATES[node.op_type]):
@@ -189,30 +195,40 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
     return final_dict
 
 
-def calculate_scale_zeropoint(next_nodes, rmin, rmax, mode):
+def get_rmin_rmax_for_node(input_name_to_nodes, output_edge_name, quantization_thresholds, rmin, rmax):
+    if output_edge_name:
+        next_nodes = input_name_to_nodes[output_edge_name]
+        if len(next_nodes) == 1 and len(next_nodes[0].output) == 1:
+            next_next_nodes = input_name_to_nodes[next_nodes[0].output[0]]
+            if len(next_next_nodes) == 1:
+                if next_nodes[0].op_type == 'Relu' and next_next_nodes[0].op_type == 'MaxPool':
+                    print("Found Relu/Maxpool")
+                    thresh = quantization_thresholds[next_next_nodes[0].output[0]]
+                    return (thresh[0], thresh[1])
+
+            # We update the output range min and max when next node is clip or relu
+            # With this technique we can remove these 2 ops and
+            # reduce the output range which in turn helps to improve accuracy
+            if next_nodes[0].op_type == 'Relu':
+                return (max(rmin, 0), rmax)
+            if next_nodes[0].op_type == 'Clip':
+                clip_min = next_nodes[0].attribute[0].f
+                clip_max = next_nodes[0].attribute[1].f
+                return (max(rmin, clip_min), min(rmax, clip_max))
+        elif len(next_nodes) > 1 and 'Relu' in [x.op_type for x in next_nodes]:
+            raise ValueError(
+                "Not reducing output range as output also goes to non-Relu nodes: {}"
+                .format(next_nodes))
+
+    return (rmin, rmax)
+
+
+def calculate_scale_zeropoint(rmin, rmax, mode):
     zp_and_scale = []
     # adjust rmin and rmax such that 0 is included in the range. This is required
     # to make sure zero can be uniquely represented.
     rmin = min(rmin, 0)
     rmax = max(rmax, 0)
-
-    # We update the output range min and max when next node is clip or relu
-    # With this technique we can remove these 2 ops and
-    # reduce the output range which in turn helps to improve accuracy
-    if len(next_nodes) == 1 and next_nodes[0] == 'Clip':
-        clip_min = next_node.attribute[0].f
-        clip_max = next_node.attribute[1].f
-        if rmin < clip_min:
-            rmin = clip_min
-        if rmax > clip_max:
-            rmax = clip_max
-    if len(next_nodes) == 1 and 'Relu' in next_nodes:
-        if rmin < 0:
-            rmin = 0
-    elif 'Relu' in next_nodes and len(next_nodes) > 1:
-        raise ValueError(
-            "Not reducing output range as output also goes to non-Relu nodes: {}"
-            .format(next_nodes))
 
     if mode == 'int8':
         max_range = max(abs(rmin), abs(rmax))
@@ -256,13 +272,15 @@ def calculate_quantization_params(model, quantization_thresholds, static,
         )
 
     quantization_params = {}
+    input_name_to_nodes = get_input_name_to_nodes(model)
+
     for index, node in enumerate(model.graph.node):
         node_output_name = node.output[0]
         if node_output_name in quantization_thresholds:
             node_thresholds = quantization_thresholds[node_output_name]
             node_params = calculate_scale_zeropoint(
-                get_subsequent_nodes(model, index, node_output_name),
-                node_thresholds[0], node_thresholds[1], mode)
+                *get_rmin_rmax_for_node(input_name_to_nodes, node_output_name, quantization_thresholds, node_thresholds[0], node_thresholds[1]),
+                mode)
             quantization_params[node_output_name] = node_params
         if static:
             for idx, node_input_name in enumerate(node.input):
@@ -271,7 +289,7 @@ def calculate_quantization_params(model, quantization_thresholds, static,
                         node_thresholds = quantization_thresholds[
                             node_input_name]
                         node_params = calculate_scale_zeropoint(
-                            [], node_thresholds[0], node_thresholds[1],
+                            *get_rmin_rmax_for_node(input_name_to_nodes, None, quantization_thresholds, node_thresholds[0], node_thresholds[1]),
                             mode)
                         quantization_params[node_input_name] = node_params
 

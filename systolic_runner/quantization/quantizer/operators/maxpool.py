@@ -12,18 +12,19 @@ class QMaxPool(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "MaxPool")
 
-        # When mode is QLinearOps, the output quantization params are calculated based on outputs from
-        # activation nodes, therefore these nodes can be removed from the graph if they follow a quantized op.
         # If input to this node is not quantized then keep this node
         if node.input[0] not in self.quantizer.quantized_value_map:
             self.quantizer.new_nodes += [node]
             return
 
-        # Create an entry for output quantized value
+        # When mode is QLinearOps, the output quantization params are calculated based on outputs from
+        # activation nodes. For MaxPool we can thus pass-through
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
         quantized_output_value = QuantizedValue(node.output[0], node.output[0] + "_quantized",
                                                 quantized_input_value.scale_name, quantized_input_value.zp_name,
-                                                QuantizedValueType.Input)
+                                                QuantizedValueType.Input,
+                                                qType=quantized_input_value.qType)
+        # Create an entry for output quantized value
         self.quantizer.quantized_value_map[node.output[0]] = quantized_output_value
 
         node.input[0] = quantized_input_value.q_name
