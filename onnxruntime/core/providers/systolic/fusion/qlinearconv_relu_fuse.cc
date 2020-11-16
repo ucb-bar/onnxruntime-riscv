@@ -9,13 +9,31 @@ namespace systolic {
  * 
  * Also note that for fusion to occur no execution provider must be assignd to the node beforehand
  */
-std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearConvReluMeta(const Node* qlinearconv, const Node* relu, bool nhwc = false) {
+
+/**
+ * NOTE: The way the fused kernels are reigstered is a bit subtle. The fused kernels
+ * don't need an explicit schema declaration (because they're fused). Instead,
+ * we add an attribute "relu" that we check in the constructor of the kernel.
+ * ORT matches based on the op type (which for fused kernels is equal to meta_def->name),
+ * so adding extra attrs won't cause any issues with non-fused variants.
+ * (And schema validation/shape-inference isn't explicitly done for fused-ops apparently,
+ * which makes sense I guess since it's basically just composition of the underlying ops)
+ * This way, we can re-use a lot of code and avoid combinatorial explosion as we add more fusion types.
+ */
+
+std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearConvReluMeta(const Node* qlinearconv, const Node* relu) {
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->name = std::string("Fused_QLinearConv_Relu") + (nhwc ? "_nhwc" : "");
+  meta_def->name = qlinearconv->OpType();
   meta_def->domain = "";
-  meta_def->since_version = 1;
+  meta_def->since_version = 10;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   meta_def->attributes = qlinearconv->GetAttributes();
+
+  ONNX_NAMESPACE::AttributeProto relu_attr;
+  relu_attr.set_name("relu");
+  relu_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+  relu_attr.set_i(1);
+  meta_def->attributes["relu"] = relu_attr;
 
   qlinearconv->ForEachWithIndex(qlinearconv->InputDefs(), [&meta_def](const NodeArg& arg, size_t index) {
     ORT_UNUSED_PARAMETER(index);
@@ -42,7 +60,7 @@ void qlinearconv_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, st
       continue;
     }
     const Node* node = graph.GetNode(capability->sub_graph->nodes[0]);
-    if (node->OpType() != "QLinearConv" && node->OpType() != "QLinearConv_nhwc") {
+    if (node->OpType() != "QLinearConv") {
       continue;
     }
 
@@ -51,7 +69,7 @@ void qlinearconv_relu_fuse::operator()(const onnxruntime::GraphViewer& graph, st
       auto next_node = node->OutputNodesBegin();
       LOGS_DEFAULT(INFO) << "Fusing " << node->OpType() << " and " << next_node->OpType();
       capability->sub_graph->nodes.push_back(next_node->Index());
-      auto meta_def = getFusedQlinearConvReluMeta(node, next_node.operator->(), node->OpType() == "QLinearConv_nhwc");
+      auto meta_def = getFusedQlinearConvReluMeta(node, next_node.operator->());
       capability->sub_graph->SetMetaDef(std::move(meta_def));
     }
   }

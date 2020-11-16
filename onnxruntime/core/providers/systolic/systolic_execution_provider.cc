@@ -19,12 +19,9 @@ namespace systolic {
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearMatMul);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv_nhwc);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearConv_Relu);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearConv_Relu_nhwc);
 
 #ifndef DISABLE_CONTRIB_OPS
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, float, QAttention);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearAdd_Relu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, int8_t, QLinearAdd);
 #endif // contrib ops
 
@@ -42,12 +39,9 @@ static Status RegisterSystolicKernels(KernelRegistry& kernel_registry) {
 #ifdef SYSTOLIC_INT8
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearMatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv_nhwc)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearConv_Relu)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearConv_Relu_nhwc)>, 
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv_nhwc)>, 
 #ifndef DISABLE_CONTRIB_OPS
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, float, QAttention)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, int8_t, Fused_QLinearAdd_Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, int8_t, QLinearAdd)>,
 #endif // int8
 #endif //contrib ops

@@ -11,10 +11,15 @@
 namespace onnxruntime {
 namespace systolic {
 
-template <StorageOrder T>
 class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
+    int64_t relu;
+    auto status = info.GetAttr<int64_t>("relu", &relu);
+    if (!status.IsOK()) {
+      relu = 0;
+    }
+    fused_relu_ = (bool) relu;
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -22,12 +27,20 @@ class QLinearConv : public OpKernel {
   bool fused_relu_ = false;
 };
 
-template <StorageOrder T>
-class FusedQLinearConvRelu : public QLinearConv<T> {
+class QLinearConv_nhwc : public OpKernel {
  public:
-  explicit FusedQLinearConvRelu(const OpKernelInfo& info) : QLinearConv<T>(info) {
-    this->fused_relu_ = true;
+  explicit QLinearConv_nhwc(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
+    int64_t relu;
+    auto status = info.GetAttr<int64_t>("relu", &relu);
+    if (!status.IsOK()) {
+      relu = 0;
+    }
+    fused_relu_ = (bool) relu;
   }
+
+  Status Compute(OpKernelContext* context) const override;
+  ConvAttributes conv_attrs_;
+  bool fused_relu_ = false;
 };
 
 } // namespace systolic

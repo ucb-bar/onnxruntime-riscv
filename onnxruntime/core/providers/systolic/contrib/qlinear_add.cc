@@ -27,16 +27,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()),
     QLinearAdd<int8_t>);
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    Fused_QLinearAdd_Relu,
-    kOnnxDomain,
-    1,
-    int8_t,
-    kSystolicExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()),
-    FusedQLinearAddRelu<int8_t>);
-
 namespace {
 struct QLinearBroadcastHelper : public BroadcastHelper {
   QLinearBroadcastHelper(InputBroadcaster& input_broadcaster,

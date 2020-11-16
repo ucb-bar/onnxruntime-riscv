@@ -27,7 +27,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv<StorageOrder::NCHW>);
+    QLinearConv);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearConv_nhwc,
@@ -40,33 +40,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv<StorageOrder::NHWC>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    Fused_QLinearConv_Relu,
-    kOnnxDomain,
-    1,
-    int8_t,
-    kSystolicExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    FusedQLinearConvRelu<StorageOrder::NCHW>);
-
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    Fused_QLinearConv_Relu_nhwc,
-    kOnnxDomain,
-    1,
-    int8_t,
-    kSystolicExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    FusedQLinearConvRelu<StorageOrder::NHWC>);
+    QLinearConv_nhwc);
 
 /**
  * Try to run a given NHWC conv on systolic if possible
@@ -170,8 +144,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
  * and that can be used for an additional reference
  * 
  */
-template <>
-Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const {
+Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   profiling::Profiler& profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
   bool profiling_enabled = profiler.IsEnabled();
 
@@ -398,8 +371,7 @@ Status QLinearConv<StorageOrder::NHWC>::Compute(OpKernelContext* context) const 
   return Status::OK();
 }
 
-template <>
-Status QLinearConv<StorageOrder::NCHW>::Compute(OpKernelContext* context) const {
+Status QLinearConv::Compute(OpKernelContext* context) const {
   profiling::Profiler& profiler = static_cast<OpKernelContextInternal*>(context)->GetProfiler();
   bool profiling_enabled = profiler.IsEnabled();
 

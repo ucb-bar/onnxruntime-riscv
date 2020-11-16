@@ -13,19 +13,18 @@ template <typename T>
 class QLinearAdd : public OpKernel {
  public:
   explicit QLinearAdd(const OpKernelInfo& info) : OpKernel(info) {
+    int64_t relu;
+    auto status = info.GetAttr<int64_t>("relu", &relu);
+    if (!status.IsOK()) {
+      relu = 0;
+    }
+    fused_relu_ = (bool) relu;
   }
 
   Status Compute(OpKernelContext* context) const override;
   bool fused_relu_ = false;
 };
 
-template <typename T>
-class FusedQLinearAddRelu : public QLinearAdd<T> {
- public:
-  explicit FusedQLinearAddRelu(const OpKernelInfo& info) : QLinearAdd<T>(info) {
-    this->fused_relu_ = true;
-  }
-};
 
 } // namespace systolic
 }  // namespace onnxruntime

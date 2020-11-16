@@ -281,7 +281,7 @@ void NhwcTransformerImpl::TransformQLinearAdd(Node& node,  const logging::Logger
 }
 
 void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
-  if (node.OpType() == "QLinearConv" || node.OpType() == "Fused_QLinearConv_Relu") {
+  if (node.OpType() == "QLinearConv") {
     TransformQLinearConv(node, logger);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
@@ -291,7 +291,7 @@ void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
     // nodes unrelated to this transformer.
     if (node.OpType() == "QLinearRelu") {
       TransformQLinearRelu(node, logger);
-    } else if (node.OpType() == "QLinearAdd" || node.OpType() == "Fused_QLinearAdd_Relu") {
+    } else if (node.OpType() == "QLinearAdd") {
       TransformQLinearAdd(node, logger);
     }
   }

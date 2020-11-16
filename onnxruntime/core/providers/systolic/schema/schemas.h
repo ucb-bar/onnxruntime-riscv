@@ -302,31 +302,7 @@ void RegisterSystolicSchemas() {
       .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
-      .TypeAndShapeInferenceFunction(static_cast<void (*)(InferenceContext& ctx)>(nhwcConvPoolShapeInference));
-
-  ONNX_SYSTOLIC_OPERATOR_SCHEMA(Fused_QLinearConv_Relu_nhwc)
-      .SinceVersion(1)
-      .SetDoc("Internal fused node for NHWC layout optimization. Used with Systolic.")
-      .Input(0, "x", "", "T1")
-      .Input(1, "x_scale", "", "tensor(float)")
-      .Input(2, "x_zero_point", "", "T1")
-      .Input(3, "w", "Must be in HWIO format", "T2")
-      .Input(4, "w_scale", "", "tensor(float)")
-      .Input(5, "w_zero_point", "", "T2")
-      .Input(6, "y_scale", "", "tensor(float)")
-      .Input(7, "y_zero_point", "", "T3")
-      .Input(8, "B", "", "T4", OpSchema::Optional)
-      .Output(0, "y", "", "T3")
-      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor.")
-      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain filter type to 8-bit integer tensor.")
-      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
-      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
-      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
-      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
-      .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("relu", "", AttributeProto::INT, static_cast<int64_t>(0))
       .TypeAndShapeInferenceFunction(static_cast<void (*)(InferenceContext& ctx)>(nhwcConvPoolShapeInference));
 }
 

@@ -11,11 +11,17 @@ namespace systolic {
  */
 std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearAddReluMeta(const Node* qlinearadd, const Node* relu) {
   auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
-  meta_def->name = std::string("Fused_QLinearAdd_Relu");
-  meta_def->domain = "";
+  meta_def->name = qlinearadd->OpType();
+  meta_def->domain = kMSDomain;
   meta_def->since_version = 1;
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   meta_def->attributes = qlinearadd->GetAttributes(); // Add normally has no attributes, but may as well
+
+  ONNX_NAMESPACE::AttributeProto relu_attr;
+  relu_attr.set_name("relu");
+  relu_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+  relu_attr.set_i(1);
+  meta_def->attributes["relu"] = relu_attr;
 
   qlinearadd->ForEachWithIndex(qlinearadd->InputDefs(), [&meta_def](const NodeArg& arg, size_t index) {
     ORT_UNUSED_PARAMETER(index);
