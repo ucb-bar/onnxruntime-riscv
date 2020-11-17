@@ -14,8 +14,8 @@ class NhwcTransformerImpl {
  public:
   NhwcTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
 
-  void Transform(Node& node,  const logging::Logger& logger);
-  void Finalize(bool& modified,  const logging::Logger& logger);
+  void Transform(Node& node, const logging::Logger& logger);
+  void Finalize(bool& modified, const logging::Logger& logger);
 
  private:
   // Associate the following state with each created NHWC output keyed off the
@@ -46,11 +46,13 @@ class NhwcTransformerImpl {
 
   size_t RemoveOutputEdges(Node& node);
   void CreateNhwcArgument(Node& node, Node& nhwc_node, const std::string& basename);
+  void FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_arg);
   void InsertReorderInput(Node& node);
 
-  void TransformQLinearConv(Node& node,  const logging::Logger& logger);
-  void TransformQLinearRelu(Node& node,  const logging::Logger& logger);
-  void TransformQLinearAdd(Node& node,  const logging::Logger& logger);
+  void TransformQLinearConv(Node& node, const logging::Logger& logger);
+  void TransformQLinearRelu(Node& node, const logging::Logger& logger);
+  void TransformQLinearAdd(Node& node, const logging::Logger& logger);
+  void TransformMaxPool(Node& node, const logging::Logger& logger);
 
   Graph& graph_;
 
@@ -69,6 +71,38 @@ class NhwcTransformerImpl {
   // multiple nodes can share the NHWC filter.
   std::unordered_map<NodeArg*, NodeArg*> filters_transposed;
 };
+
+bool IsAttributeUnsetOrWithExpectedValue(const Node& node, const std::string& attr_name, const std::string& expected_value) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr != attr_proto) && attr_proto->has_s()) {
+    return attr_proto->s() == expected_value;
+  }
+  return true;
+}
+
+bool IsAttributeUnsetOrWithExpectedValue(const Node& node, const std::string& attr_name, int64_t expected_value) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr != attr_proto) && attr_proto->has_i()) {
+    return attr_proto->i() == expected_value;
+  }
+  return true;
+}
+
+bool IsAttributeUnsetOrWithExpectedValues(const Node& node, const std::string& attr_name, const std::vector<int64_t>& expected_values) {
+  const auto* attr_proto = graph_utils::GetNodeAttribute(node, attr_name);
+  if ((nullptr == attr_proto) || attr_proto->ints_size() == 0) {
+    return true;
+  }
+  if (attr_proto->ints_size() != (int)expected_values.size()) {
+    return false;
+  }
+  for (int i = 0; i < attr_proto->ints_size(); i++) {
+    if (attr_proto->ints(i) != expected_values[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 size_t NhwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
@@ -97,6 +131,17 @@ void NhwcTransformerImpl::CreateNhwcArgument(Node& node,
   output_defs[0] = output_nhwc_arg;
 }
 
+void NhwcTransformerImpl::FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_arg) {
+  size_t original_uses = RemoveOutputEdges(node);
+
+  // Associate the existing NHWC NodeArg with the output from this node.
+  auto* output_original_arg = node.MutableOutputDefs()[0];
+  auto& nhwc_node = nhwc_arg.output_node_;
+  auto* output_nhwc_arg = nhwc_node.MutableOutputDefs()[0];
+  nhwc_args_[output_original_arg] =
+      onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
+}
+
 void NhwcTransformerImpl::InsertReorderInput(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto* input_original_arg = input_defs[0];
@@ -122,6 +167,9 @@ void NhwcTransformerImpl::InsertReorderInput(Node& node) {
 }
 
 void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger& logger) {
+  if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
+    return;
+  }
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
@@ -218,7 +266,10 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
   removed_nodes_.push_front(node.Index());
 }
 
-void NhwcTransformerImpl::TransformQLinearRelu(Node& node,  const logging::Logger& logger) {
+void NhwcTransformerImpl::TransformQLinearRelu(Node& node, const logging::Logger& logger) {
+  if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
+    return;
+  }
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
@@ -236,18 +287,20 @@ void NhwcTransformerImpl::TransformQLinearRelu(Node& node,  const logging::Logge
   }
 }
 
-void NhwcTransformerImpl::TransformQLinearAdd(Node& node,  const logging::Logger& logger) {
+void NhwcTransformerImpl::TransformQLinearAdd(Node& node, const logging::Logger& logger) {
+  if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
+    return;
+  }
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
   NodeArg* tensor1 = input_defs[0];
-  NodeArg* tensor2 = input_defs[3]; // N.b. [3] since we scale/zp is other two
+  NodeArg* tensor2 = input_defs[3];  // N.b. [3] since we scale/zp is other two
   auto it = nhwc_args_.find(tensor1);
   auto it2 = nhwc_args_.find(tensor2);
 
   // If both inputs are indeed in NHWC format
   if (it != nhwc_args_.end() && it2 != nhwc_args_.end()) {
-
     // Note that they must be in the same shape (no broadcasting)
     if (tensor1->Shape() == nullptr ||
         tensor2->Shape() == nullptr) {
@@ -280,13 +333,75 @@ void NhwcTransformerImpl::TransformQLinearAdd(Node& node,  const logging::Logger
   }
 }
 
+void NhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& logger) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  // MaxPool has a variant that returns indices as well... we can't support that
+  if (output_defs.size() != 1) {
+    return;
+  }
+
+  auto it = nhwc_args_.find(input_defs[0]);
+  // If the input is indeed in NHWC format
+  if (it == nhwc_args_.end()) {
+    return;
+  }
+
+  auto& nhwc_input = it->second;
+  // Check whether the input to this node is a QLinearConv node and the output of QLinearConv only goes to this node
+  if (nhwc_input->output_node_.OpType() != "QLinearConv_nhwc" && nhwc_input->starting_original_uses_ != 1) {
+    return;
+  }
+
+  input_defs[0] = nhwc_input->nhwc_arg_;
+  nhwc_input->remaining_original_uses_--;
+
+  LOGS(logger, VERBOSE) << "Trying to fuse MaxPool (contingent on attrs)";
+
+  std::vector<int64_t> kernel_shape;
+  if (!(graph_utils::GetRepeatedNodeAttributeValues(node, "kernel_shape", kernel_shape) && kernel_shape.size() == 2)) {
+    return;
+  }
+  if (!IsAttributeUnsetOrWithExpectedValue(node, "auto_pad", "NOTSET")) {
+    return;
+  }
+  if (!IsAttributeUnsetOrWithExpectedValue(node, "ceil_mode", 0)) {
+    return;
+  }
+  if (!IsAttributeUnsetOrWithExpectedValue(node, "dilations", {1, 1})) {
+    return;
+  }
+  if (!IsAttributeUnsetOrWithExpectedValue(node, "storage_order", 0)) {
+    return;
+  }
+
+  LOGS(logger, VERBOSE) << "We can handle these params. Fusing MaxPool with preceding NHWC conv";
+
+  std::vector<int64_t> pads = {0, 0};
+  std::vector<int64_t> strides = {1, 1};
+  graph_utils::GetRepeatedNodeAttributeValues(node, "pads", pads);
+  graph_utils::GetRepeatedNodeAttributeValues(node, "strides", strides);
+
+  nhwc_input->output_node_.AddAttribute("maxpool", static_cast<int64_t>(1));
+  nhwc_input->output_node_.AddAttribute("pool_kernel_shape", kernel_shape);
+  nhwc_input->output_node_.AddAttribute("pool_pads", pads);
+  nhwc_input->output_node_.AddAttribute("pool_strides", strides);
+
+  // Reset the shape of this to avoid errors during subsequent shape inference
+  output_defs[0]->ClearShape();
+  FuseNhwcArgument(node, *nhwc_input);
+  removed_nodes_.push_front(node.Index());
+
+}
+
 void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
   if (node.OpType() == "QLinearConv") {
     TransformQLinearConv(node, logger);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
     // been decremented to zero by earlier transforms. This is a hint that the
-    // node may already have all inputs converted to NCHWc format and is not
+    // node may already have all inputs converted to NHWC format and is not
     // needed for correct operation. This avoids doing extra string checks for
     // nodes unrelated to this transformer.
     if (node.OpType() == "QLinearRelu") {
@@ -294,6 +409,9 @@ void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
     } else if (node.OpType() == "QLinearAdd") {
       TransformQLinearAdd(node, logger);
     }
+    // } else if (node.OpType() == "MaxPool") {
+    //   TransformMaxPool(node, logger);
+    // }
   }
 
   // The node may not match any of the checks above or may not have been
@@ -304,7 +422,7 @@ void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
   // format.
 }
 
-void NhwcTransformerImpl::Finalize(bool& modified,  const logging::Logger& logger) {
+void NhwcTransformerImpl::Finalize(bool& modified, const logging::Logger& logger) {
   // Create ReorderOutput nodes for any NHWC outputs that still have uses with
   // the original tensor format.
   for (auto& nhwc_output : nhwc_args_) {
@@ -340,9 +458,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-    if (node.GetExecutionProviderType() == kSystolicExecutionProvider) {
-      impl.Transform(node, logger);
-    }
+    impl.Transform(node, logger);
   }
   impl.Finalize(modified, logger);
   return Status::OK();

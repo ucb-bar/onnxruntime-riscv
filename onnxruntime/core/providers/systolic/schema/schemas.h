@@ -219,6 +219,14 @@ std::vector<int64_t> nhwcConvPoolShapeInference(
   return {output_shape_N, output_shape_H, output_shape_W, output_shape_C};
 }
 
+void dump_vector(const std::vector<int64_t> &v, const std::string &title) {
+  printf("Dumping %s", title.c_str());
+  for (auto i : v) {
+    printf("%zd ", i);
+  }
+  printf("\n");
+}
+
 void nhwcConvPoolShapeInference(InferenceContext&
                                     ctx) {
   auto x_type = ctx.getInputType(0);
@@ -281,6 +289,7 @@ void nhwcConvPoolShapeInference(InferenceContext&
 
     const auto* has_maxpool_attr = ctx.getAttribute("maxpool");
     if (has_maxpool_attr && has_maxpool_attr->i() == 1) {
+      printf("Has pool attribute");
       std::vector<int64_t> pool_dilations;
       std::vector<int64_t> pool_strides;
       std::vector<int64_t> pool_pads;
@@ -290,6 +299,11 @@ void nhwcConvPoolShapeInference(InferenceContext&
       getRepeatedAttribute(ctx, "pool_pads", pool_pads);
       getRepeatedAttribute(ctx, "pool_kernel_shape", pool_kernel_shape);
 
+      // dump_vector(pool_dilations, "pool_dilations");
+      // dump_vector(pool_strides, "pool_strides");
+      // dump_vector(pool_pads, "pool_pads");
+      // dump_vector(pool_kernel_shape, "pool_kernel_shape");
+
       const auto* pool_auto_pad_attr = ctx.getAttribute("pool_auto_pad");
       std::string pool_auto_pad = pool_auto_pad_attr ? pool_auto_pad_attr->s() : "NOTSET";
 
@@ -298,6 +312,11 @@ void nhwcConvPoolShapeInference(InferenceContext&
           &immutable_output_shape, /*in2_shape= */ nullptr,
           pool_dilations, pool_strides, pool_pads, pool_kernel_shape, pool_auto_pad,
           /*ceil_mode= */ 0, /*use_dilation= */ false, /*require_kernel_shape= */ true);
+
+
+      // dump_vector(conv_output_shape, "Shape after conv");
+      // dump_vector(pool_output_shape, "Shape after pool");
+
       output_shape->clear_dim();
       for (int64_t dim : pool_output_shape) {
         output_shape->add_dim()->set_dim_value(dim);
