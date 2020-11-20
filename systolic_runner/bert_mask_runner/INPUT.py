@@ -1,4 +1,4 @@
 #INPUT = "Never going to [MASK] you up."
 #INPUT = "Paris is the [MASK] of France."
 #INPUT = "The meaning of life is [MASK]."
-INPUT = "Yesterday I watched this amazing [MASK] about a protaganist that solves crimes, and it was awesome."
+INPUT = "European Union law is applied by the courts of member states and the Court of Justice of the European Union. Where the laws of member states provide for lesser rights European Union law can be enforced by the courts of member states. In case of European Union law which should have been transposed into the laws of member states, such as Directives, the European Commission can take proceedings against the member state under the Treaty on the Functioning of the European Union. The European Court of Justice is the highest court able to interpret European Union law. Supplementary sources of European Union law include case law by the Court of Justice, international [MASK] and general principles of European Union law."
