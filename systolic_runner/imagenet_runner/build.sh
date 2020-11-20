@@ -24,6 +24,11 @@ do
         extra_defs="${extra_defs} -DUSE_HWACHA"
         extra_libs="${extra_libs} ${build_path}/libonnxruntime_providers_hwacha.a"
 	fi
+    if [ $var = "--for_firesim" ]; then 
+        echo "Building with mlockall for running on Firesim"
+        extra_defs="${extra_defs} -DFOR_FIRESIM"
+    fi
+
 done
 
 # Check for halide interop generated custom operators

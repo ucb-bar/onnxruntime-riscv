@@ -1687,4 +1687,11 @@ void tiled_resadd_auto(const size_t I, const size_t J,
 
 #undef abs
 
+#ifdef FOR_FIRESIM
+__attribute__((constructor))
+void cleargemmini() {
+  gemmini_flush(0);
+}
+#endif
+
 #endif  // SRC_MAIN_C_GEMMINI_H

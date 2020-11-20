@@ -2848,12 +2848,14 @@ main(
 {
     setbuf(stdout, NULL);
 
-    // if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
-    //  perror("mlockall failed");
-    //  exit(1);
-    // } else {
-    //     printf("Finished mlock\n");
-    // }
+#ifdef FOR_FIRESIM
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+     perror("mlockall failed");
+     exit(1);
+    } else {
+        printf("Finished mlock\n");
+    }
+#endif
     
 #ifdef USE_SYSTOLIC
 #define UNUSED(x) (void)(x)

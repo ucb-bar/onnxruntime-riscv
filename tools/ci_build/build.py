@@ -293,6 +293,8 @@ def parse_arguments():
     parser.add_argument(
         "--use_hwacha", action='store_true', help="Build with Hwacha support")
     parser.add_argument(
+        "--for_firesim", action='store_true', help="Build for Firesim & disable debug print")
+    parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_home", help="Path to TensorRT installation dir")
@@ -596,6 +598,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DCMAKE_SYSTEM_NAME=Linux",
         "-DUNIX=True",
         "-Donnxruntime_USE_SYSTOLIC=" + "ON",
+        "-Donnxruntime_FOR_FIRESIM=" + (
+            "ON" if args.for_firesim else "OFF"),
         "-Donnxruntime_USE_HWACHA=" + (
             "ON" if args.use_hwacha else "OFF"),
         "-Donnxruntime_RUN_ONNX_TESTS=" + (

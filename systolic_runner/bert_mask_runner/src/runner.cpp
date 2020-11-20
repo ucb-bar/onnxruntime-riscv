@@ -13,6 +13,10 @@
 #include "custom_op_library.h"
 #endif
 
+#ifdef FOR_FIRESIM
+#include <sys/mman.h>
+#endif
+
 #include "tensor_helper.h"
 #include "cmd_args.h"
 
@@ -26,6 +30,15 @@ unsigned long long read_cycles()
 int main(int argc, char* argv[]) {
   setbuf(stdout, NULL);
   printf("Loaded runner program\n");
+  
+#ifdef FOR_FIRESIM
+  if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+      perror("mlockall failed");
+      exit(1);
+  } else {
+    printf("Finished mlockall\n");
+  }
+#endif
 
   cxxopts::ParseResult cmd = parse(argc, argv);
   //*************************************************************************

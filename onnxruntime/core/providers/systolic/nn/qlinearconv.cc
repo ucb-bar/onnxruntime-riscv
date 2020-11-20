@@ -282,7 +282,9 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
     auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(int8_t)) * col_buffer_size);
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
   } else {
+#ifndef FOR_FIRESIM
     printf("1x1 case!\n");
+#endif
   }
 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());
@@ -525,7 +527,9 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       col_buffer_shape.insert(col_buffer_shape.end(), output_dims.begin(), output_dims.end());
     }
   } else {
+#ifndef FOR_FIRESIM
     printf("1x1 case!\n");
+#endif
   }
 
   auto* col_buffer_data = static_cast<int8_t*>(col_buffer.get());

@@ -8,6 +8,9 @@
 #include <fstream>
 #include <systolic/systolic_provider_factory.h>
 #include <onnxruntime_cxx_api.h>
+#ifdef FOR_FIRESIM
+#include <sys/mman.h>
+#endif
 
 #ifdef USE_CUSTOM_OP_LIBRARY
 #include "custom_op_library.h"
@@ -151,10 +154,14 @@ int main(int argc, char* argv[]) {
   printf("Loaded runner program\n");
 
   // Use for firesim
-  /* if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+#ifdef FOR_FIRESIM
+  if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
       perror("mlockall failed");
       exit(1);
-  }*/
+  } else {
+    printf("Finished mlockall\n");
+  }
+#endif
 
   cxxopts::ParseResult cmd = parse(argc, argv);
   //*************************************************************************

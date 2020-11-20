@@ -64,8 +64,10 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
 
 void SystolicMultiply(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
                       const elem_t* in1, const elem_t* in2, elem_t* out, acc_scale_t real_multiplier, const acc_t* bias) {
+#ifndef FOR_FIRESIM
   printf("Called into systolic matmul!\n");
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
+#endif
   tiled_matmul_auto(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
                     real_multiplier, /*relu6_shift= */ 0, /* repeating_bias= */ 0, get_accelerator_mode(accelerator_mode));
 }
@@ -77,8 +79,10 @@ void SystolicMultiply(char accelerator_mode, bool relu,
                       elem_t* out, int strideOut,
                       acc_scale_t real_multiplier,
                       const acc_t* bias, int strideBias, bool repeating_bias) {
+#ifndef FOR_FIRESIM
   printf("Called into systolic matmul!\n");
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
+#endif
   tiled_matmul_auto(dimI, dimJ, dimK,
                     strideIn1, strideIn2, strideBias, strideOut,
                     in1, in2, bias, out, /*activation= */ relu,
@@ -88,7 +92,9 @@ void SystolicMultiply(char accelerator_mode, bool relu,
 void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const int8_t* A, float A_scale, const int8_t* B,
                  float B_scale,
                  int8_t* C, float C_scale, int dim) {
+#ifndef FOR_FIRESIM
   printf("Called into systolic add\n");
+#endif
   // To most efficiently use systolic, instead of using 1xdim, use 16xResizedDim.
   // Systolic can load multiple blocks in a given row
 
@@ -110,7 +116,9 @@ void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const
   tiled_resadd_auto(DIM, resizedDim / DIM, A_scale / C_scale, B_scale / C_scale,
                     /*C_scale= */ 1, A, B, C, relu, get_accelerator_mode(accelerator_mode));
   if (dim % DIM > 0) {
+#ifndef FOR_FIRESIM
     printf("Some extra leftover\n");
+#endif
     tiled_resadd_auto(1, dim % DIM, A_scale / C_scale, B_scale / C_scale,
                       /*C_scale= */ 1, A + resizedDim, B + resizedDim, C + resizedDim, relu, get_accelerator_mode(accelerator_mode));
   }
@@ -125,7 +133,9 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
                   elem_t* output,
                   bool relu,
                   float output_scale) {
+#ifndef FOR_FIRESIM
   printf("Called into systolic conv\n");
+#endif
   // printf("Debugging info\n");
   // printf("Batch size, in_w/h, in_channel %d %d %d\n", batch_size, in_dim, in_channels);
   // printf("Out_channels, out_w/h %d %d\n", out_channels, out_dim);
