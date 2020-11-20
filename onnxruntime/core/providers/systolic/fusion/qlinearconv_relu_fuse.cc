@@ -3,6 +3,8 @@
 namespace onnxruntime {
 namespace systolic {
 
+// Looking for the conv + maxpool fusion? It's in nhwc_transformer.cc
+
 /**
  * Memo: if you ever get a sudden termination after the fusion phase, ensure that your meta_def name is registered
  * For some reason onnxruntime will silently fail if it can't lookup kernel for a fused operator

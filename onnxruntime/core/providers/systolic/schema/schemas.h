@@ -220,7 +220,7 @@ std::vector<int64_t> nhwcConvPoolShapeInference(
 }
 
 void dump_vector(const std::vector<int64_t> &v, const std::string &title) {
-  printf("Dumping %s", title.c_str());
+  printf("Dumping %s: ", title.c_str());
   for (auto i : v) {
     printf("%zd ", i);
   }
@@ -314,8 +314,8 @@ void nhwcConvPoolShapeInference(InferenceContext&
           /*ceil_mode= */ 0, /*use_dilation= */ false, /*require_kernel_shape= */ true);
 
 
-      // dump_vector(conv_output_shape, "Shape after conv");
-      // dump_vector(pool_output_shape, "Shape after pool");
+      dump_vector(conv_output_shape, "Shape after conv");
+      dump_vector(pool_output_shape, "Shape after pool");
 
       output_shape->clear_dim();
       for (int64_t dim : pool_output_shape) {

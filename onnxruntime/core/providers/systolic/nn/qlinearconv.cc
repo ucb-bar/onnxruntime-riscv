@@ -10,6 +10,7 @@
 #include "core/providers/systolic/systolic_execution_provider.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/common/safeint.h"
+#include "pool.h"
 
 #ifdef SYSTOLIC_INT8
 
@@ -63,7 +64,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                        Tensor* Y,
                        bool relu,
                        float output_scale) {
-  // return false;
+  return false;
   if (groups != 1) {
     return false;
   }
@@ -224,13 +225,29 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   TensorShape input_shape = X->Shape().Slice(1, 3);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims_nchw));
   std::vector<int64_t> Y_dims = {Y_dims_nchw[0], Y_dims_nchw[2], Y_dims_nchw[3], Y_dims_nchw[1]};
-  Tensor* Y = context->Output(0, TensorShape(Y_dims));
+  auto Y_dims_shape = TensorShape(Y_dims);
+
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  
+  Tensor* Y = nullptr;
+
+  Tensor Y_pre_pool_tensor;
+  if (pool_attrs_.fused_pool) {
+    Y_pre_pool_tensor = std::move(Tensor(DataTypeImpl::GetType<int8_t>(), Y_dims_shape, alloc));
+    Y = &Y_pre_pool_tensor;
+  } else {
+    Y = context->Output(0, Y_dims_shape);
+  }
+   
   TensorShape output_shape = Y->Shape().Slice(1, 3);
 
   // Bail out early if one of the dimensions is zero.
-  if (Y->Shape().Size() == 0) {
-    return Status::OK();
-  }
+  // if (Y->Shape().Size() == 0) {
+
+  //   // TODO fix for pooling as well
+  //   return Status::OK();
+  // }
 
   const size_t kernel_rank = kernel_shape.size();
   ORT_ENFORCE(kernel_rank == 2, "NHWC cannot handle kernel rank other than 2 atm");
@@ -258,8 +275,6 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
 
   // The col buffer is stored in HWC order as well - the height and width, and
   // kernel_dim.
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   BufferUniquePtr col_buffer;
 
@@ -367,6 +382,31 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   //   printf("%d ", Ydata[i]);
   // }
   // printf("\n");
+
+  if (pool_attrs_.fused_pool) {
+
+    std::vector<int64_t> Y_dims_post_pool = pool_attrs_.SetOutputSize_nhwc(Y_dims_shape, Y_dims[3], pool_attrs_.pads);
+    printf("Dims post pool\n");
+    for (size_t i = 0; i < Y_dims_post_pool.size(); i++) {
+      printf("%d ", (int) Y_dims_post_pool[i]);
+    }
+    printf("\n");
+
+    Tensor *Y_post_pool = context->Output(0, TensorShape(Y_dims_post_pool));
+
+    RunMaxPool2D<int8_t, StorageOrder::NHWC>(
+        Y_dims_post_pool[0], Y_dims_post_pool[3],
+        Y_dims[1], Y_dims[2],
+        Y_dims_post_pool[1], Y_dims_post_pool[2],
+        pool_attrs_.kernel_shape[0],
+        pool_attrs_.kernel_shape[1],
+        pool_attrs_.strides[0],
+        pool_attrs_.strides[1],
+        pool_attrs_.pads[0],
+        pool_attrs_.pads[1],
+        Y->template Data<int8_t>(),
+        Y_post_pool->template MutableData<int8_t>());
+  }
   
   return Status::OK();
 }

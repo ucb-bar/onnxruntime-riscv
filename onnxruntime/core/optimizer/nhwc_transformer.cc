@@ -359,6 +359,8 @@ void NhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& lo
 
   LOGS(logger, VERBOSE) << "Trying to fuse MaxPool (contingent on attrs)";
 
+  // We only handle the most common cases (namely no dilations). Systolic has its own
+  // limitations which we check before dispatching to it (otherwise we handle it on cpu).
   std::vector<int64_t> kernel_shape;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(node, "kernel_shape", kernel_shape) && kernel_shape.size() == 2)) {
     return;
@@ -378,7 +380,7 @@ void NhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& lo
 
   LOGS(logger, VERBOSE) << "We can handle these params. Fusing MaxPool with preceding NHWC conv";
 
-  std::vector<int64_t> pads = {0, 0};
+  std::vector<int64_t> pads = {0, 0, 0, 0};
   std::vector<int64_t> strides = {1, 1};
   graph_utils::GetRepeatedNodeAttributeValues(node, "pads", pads);
   graph_utils::GetRepeatedNodeAttributeValues(node, "strides", strides);
@@ -408,10 +410,10 @@ void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
       TransformQLinearRelu(node, logger);
     } else if (node.OpType() == "QLinearAdd") {
       TransformQLinearAdd(node, logger);
+    
+    } else if (node.OpType() == "MaxPool") {
+      TransformMaxPool(node, logger);
     }
-    // } else if (node.OpType() == "MaxPool") {
-    //   TransformMaxPool(node, logger);
-    // }
   }
 
   // The node may not match any of the checks above or may not have been
