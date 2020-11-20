@@ -289,7 +289,7 @@ void nhwcConvPoolShapeInference(InferenceContext&
 
     const auto* has_maxpool_attr = ctx.getAttribute("maxpool");
     if (has_maxpool_attr && has_maxpool_attr->i() == 1) {
-      printf("Has pool attribute");
+      //printf("Has pool attribute");
       std::vector<int64_t> pool_dilations;
       std::vector<int64_t> pool_strides;
       std::vector<int64_t> pool_pads;
@@ -313,9 +313,8 @@ void nhwcConvPoolShapeInference(InferenceContext&
           pool_dilations, pool_strides, pool_pads, pool_kernel_shape, pool_auto_pad,
           /*ceil_mode= */ 0, /*use_dilation= */ false, /*require_kernel_shape= */ true);
 
-
-      dump_vector(conv_output_shape, "Shape after conv");
-      dump_vector(pool_output_shape, "Shape after pool");
+      // dump_vector(conv_output_shape, "Shape after conv");
+      // dump_vector(pool_output_shape, "Shape after pool");
 
       output_shape->clear_dim();
       for (int64_t dim : pool_output_shape) {
