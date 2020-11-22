@@ -83,6 +83,5 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul) {
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
   QLinearMatMul2DTest(true);
 }
-
 }  // namespace test
 }  // namespace onnxruntime

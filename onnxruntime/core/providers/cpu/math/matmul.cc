@@ -2,25 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/matmul.h"
+#include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
-
-#ifdef PRINT_QUANTIZATION_SCALES
-
-#define USE_MKLML_FOR_BLAS
-
-template <typename T>
-inline void PrintQuantizationScale(const T* arr, size_t length, int type, const char* node_name) {
-    auto mn_mx = std::minmax_element(arr, arr + length);
-    printf("QUANT_OUT %s %d %f %f\n", node_name, type, (float) *mn_mx.first, (float) *mn_mx.second);
-    return;
-}
-
-#endif
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     MatMul,
@@ -135,17 +123,6 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
         thread_pool);
   }
 
-#ifdef PRINT_QUANTIZATION_SCALES
-  auto inputNames = this->Info().node().InputDefs();
-  ORT_ENFORCE(inputNames.size() == 2, "Found more than 2 inputs to matmul when printing scale?");
-  auto outputNames = this->Info().node().OutputDefs();
-  ORT_ENFORCE(outputNames.size() == 1, "Found more than 1 output of matmul when printing scale?");
-
-  PrintQuantizationScale(a_data, static_cast<size_t>(helper.M()) * static_cast<size_t>(helper.K()), 0, inputNames[0]->Name().c_str());
-  PrintQuantizationScale(b_data, static_cast<size_t>(helper.K()) * static_cast<size_t>(helper.N()), 0, inputNames[1]->Name().c_str());
-  PrintQuantizationScale(y_data, static_cast<size_t>(helper.M()) * static_cast<size_t>(helper.N()), 0, outputNames[0]->Name().c_str());
-#endif
-
   return Status::OK();
 }
 
@@ -155,34 +132,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_pack
 
   // only pack Matrix B
   if (input_idx == 1) {
-    // Only handle the common case of a 2D weight matrix. Additional matrices
-    // could be handled by stacking the packed buffers.
-    b_shape_ = tensor.Shape();
-    if (b_shape_.NumDimensions() != 2) {
-      return Status::OK();
-    }
-
-    const bool trans_b = trans_b_attr_ && b_shape_.NumDimensions() != 1;
-    const size_t K = trans_b ? static_cast<size_t>(b_shape_[1])
-                             : static_cast<size_t>(b_shape_[0]);
-    const size_t N = trans_b ? static_cast<size_t>(b_shape_[0])
-                             : static_cast<size_t>(b_shape_[1]);
-
-    const size_t packed_b_size = MlasGemmPackBSize(N, K);
-    if (packed_b_size == 0) {
-      return Status::OK();
-    }
-
-    auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
-    auto* packed_b_data = alloc->Alloc(packed_b_size);
-    packed_b_ = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
-    MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
-                  N,
-                  K,
-                  tensor.Data<float>(),
-                  static_cast<int>(trans_b ? K : N),
-                  packed_b_data);
-    is_packed = true;
+    is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
   }
   return Status::OK();
 }

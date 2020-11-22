@@ -18,11 +18,11 @@
 #ifdef ML_FEATURIZERS
 #include "core/graph/featurizers_ops/featurizers_defs.h"
 #endif
-#ifdef USE_DML
-#include "core/graph/dml_ops/dml_defs.h"
-#endif
 #ifdef USE_SYSTOLIC
 #include "core/providers/systolic/schema/schemas.h"
+#endif
+#ifdef USE_DML
+#include "core/graph/dml_ops/dml_defs.h"
 #endif
 
 #include "core/platform/env.h"
@@ -69,6 +69,67 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
   return Status::OK();
 }
 
+Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg) {
+  // TODO should we allow sharing of non-CPU allocators?
+  if (mem_info.device.Type() != OrtDevice::CPU) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only CPU devices are supported for now.");
+  }
+
+  // determine if arena should be used
+  bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
+
+#ifdef USE_JEMALLOC
+#if defined(USE_MIMALLOC_ARENA_ALLOCATOR) || defined(USE_MIMALLOC_STL_ALLOCATOR)
+#error jemalloc and mimalloc should not both be enabled
+#endif
+  //JEMalloc already has memory pool, so just use device allocator.
+  create_arena = false;
+#elif !(defined(__amd64__) || defined(_M_AMD64))
+  //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  create_arena = false;
+#endif
+
+  AllocatorPtr allocator_ptr;
+  // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena
+  if (create_arena) {
+    // defaults in case arena_cfg is nullptr (not supplied by the user)
+    size_t max_mem = 0;
+    int arena_extend_strategy = -1;
+    int initial_chunk_size_bytes = -1;
+    int max_dead_bytes_per_chunk = -1;
+
+    // override with values from the user supplied arena_cfg object
+    if (arena_cfg) {
+      max_mem = arena_cfg->max_mem;
+
+      arena_extend_strategy = arena_cfg->arena_extend_strategy;
+      // validate the value here
+      if (!(arena_extend_strategy == -1 || arena_extend_strategy == 0 || arena_extend_strategy == 1)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Received invalid value for arena extend strategy."
+                               " Valid values can be either 0, 1 or -1.");
+      }
+
+      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
+      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
+    }
+
+    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk};
+    AllocatorCreationInfo alloc_creation_info{
+        [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+        0,
+        create_arena,
+        l_arena_cfg};
+    allocator_ptr = CreateAllocator(alloc_creation_info);
+  } else {
+    AllocatorCreationInfo alloc_creation_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+                                              0, create_arena};
+    allocator_ptr = CreateAllocator(alloc_creation_info);
+  }
+
+  return RegisterAllocator(allocator_ptr);
+}
+
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                                const OrtThreadingOptions* tp_options,
                                bool create_global_thread_pools) {
@@ -109,11 +170,11 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifdef ML_FEATURIZERS
       featurizers::RegisterMSFeaturizersSchemas();
 #endif
-#ifdef USE_DML
-      dml::RegisterDmlSchemas();
-#endif
 #ifdef USE_SYSTOLIC
       systolic::RegisterSystolicSchemas();
+#endif
+#ifdef USE_DML
+      dml::RegisterDmlSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
 

@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/common/exceptions.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
@@ -79,21 +78,22 @@ struct ConvAttributes {
     return Status::OK();
   }
 
-
-  Status ValidateInputShape(const Tensor* X, const Tensor* W) const {
-    const int64_t C = X->Shape()[1];
-    const int64_t M = W->Shape()[0];
-
-    if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
+  Status ValidateInputShape(const TensorShape& input_shape,
+                            const TensorShape& weight_shape,
+                            bool channels_last = false) const {
+    if (input_shape.NumDimensions() != weight_shape.NumDimensions()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
-                             " X: ", X->Shape().ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
+                             " X: ", input_shape.ToString().c_str(),
+                             " W: ", weight_shape.ToString().c_str());
     }
 
-    if (C != W->Shape()[1] * group) {
+    const int64_t M = weight_shape[0];
+    const int64_t C = channels_last ? input_shape.GetDims().back() : input_shape[1];
+
+    if (C != weight_shape[1] * group) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
                              " C: ", C,
-                             " kernel channels: ", W->Shape()[1],
+                             " kernel channels: ", weight_shape[1],
                              " group: ", group);
     }
 
@@ -105,30 +105,8 @@ struct ConvAttributes {
     return Status::OK();
   }
 
-  Status ValidateInputShapeNHWC(const Tensor* X, const Tensor* W) const {
-    const int64_t C = X->Shape()[3];
-    const int64_t M = W->Shape()[3];
-    const int64_t C_over_groups = W->Shape()[2];
-
-    if (X->Shape().NumDimensions() != W->Shape().NumDimensions()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "X num_dims does not match W num_dims.",
-                             " X: ", X->Shape().ToString().c_str(),
-                             " W: ", W->Shape().ToString().c_str());
-    }
-
-    if (C != C_over_groups * group) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input channels C is not equal to kernel channels * group.",
-                             " C: ", C,
-                             " kernel channels: ", C_over_groups,
-                             " group: ", group);
-    }
-
-    if (M % group != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output channels M is not divisible by group.",
-                             " M: ", M,
-                             " group: ", group);
-    }
-    return Status::OK();
+  Status ValidateInputShape(const Tensor* input, const Tensor* weight) const {
+    return ValidateInputShape(input->Shape(), weight->Shape());
   }
 
   Status InferOutputShape(const TensorShape& input_shape,

@@ -26,9 +26,11 @@
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/systolic_nhwc_transformer.h"
+#include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -135,11 +137,13 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
 #ifndef DISABLE_CONTRIB_OPS
       transformers.emplace_back(onnxruntime::make_unique<GemmActivationFusion>(cpu_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatMulIntegerToFloatFusion>(cpu_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<DynamicQuantizeMatMulFusion>(cpu_execution_providers));
 
       std::unordered_set<std::string> cpu_acl_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kAclExecutionProvider};
+      std::unordered_set<std::string> cpu_acl_armnn_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kAclExecutionProvider, onnxruntime::kArmNNExecutionProvider};
 
-      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_acl_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConvActivationFusion>(cpu_acl_armnn_execution_providers));
 
       std::unordered_set<std::string> cpu_cuda_execution_providers = {onnxruntime::kCpuExecutionProvider, onnxruntime::kCudaExecutionProvider};
       transformers.emplace_back(onnxruntime::make_unique<GeluFusion>(cpu_cuda_execution_providers));
@@ -167,6 +171,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
+
+#if defined(MLAS_TARGET_AMD64_IX86)
+      transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
+#endif
 #endif
     } break;
 

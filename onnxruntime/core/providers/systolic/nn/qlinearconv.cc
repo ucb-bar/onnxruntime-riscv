@@ -10,7 +10,7 @@
 #include "core/providers/systolic/systolic_execution_provider.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/common/safeint.h"
-#include "pool.h"
+#include "conv_pool_helper.h"
 
 #ifdef SYSTOLIC_INT8
 
@@ -200,7 +200,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[3];
   const int64_t M = W->Shape()[3];
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShapeNHWC(X, W));
+  ORT_RETURN_IF_ERROR(ValidateConvInputShapeNHWC(X, W, conv_attrs_.group));
   ORT_ENFORCE(B == nullptr || B->Shape().NumDimensions() == 1, "Bias is not 1D");
   ORT_ENFORCE(B == nullptr || B->Shape().Size() == M, "1D Bias does not match M");
 
@@ -305,7 +305,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
     // IF one were to parallelize across multiple cores, you could use that
     // Refer to the CPU QLinearConv impl. to see how that works
     if (col_buffer_data != nullptr) {
-      math::Im2col<int8_t, StorageOrder::NHWC>()(
+      Im2Col_NHWC(
           Xdata,
           C,
           input_shape[0],
@@ -568,12 +568,11 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
               col_buffer_data,
               X_zero_point_value);
         } else {
-          math::Im2colNd<int8_t, StorageOrder::NCHW>()(
+          math::Im2col<int8_t, StorageOrder::NCHW>()(
               Xdata,
-              X->Shape().GetDims().data() + 1,
-              col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),

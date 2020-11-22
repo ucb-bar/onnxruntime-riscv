@@ -126,12 +126,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
               strides[1],
               col_buffer_data);
         } else {
-          math::Im2colNd<T, StorageOrder::NCHW>()(
+          math::Im2col<T, StorageOrder::NCHW>()(
               Xdata + group_id * X_offset,
-              X->Shape().GetDims().data() + 1,
-              col_buffer_shape.data(),
-              C * input_image_size,
-              col_buffer_size,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
               kernel_shape.data(),
               strides.data(),
               dilations.data(),
