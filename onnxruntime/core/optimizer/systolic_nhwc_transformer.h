@@ -9,14 +9,14 @@
 namespace onnxruntime {
 
 /**
-@Class NhwcTransformer
+@Class SystolicNhwcTransformer
 
 Transformer that optimizes the graph by using NHWC nodes instead of NCHW nodes
 and inserts nodes to reorder tensors as needed. This is meant for Systolic.
 */
-class NhwcTransformer : public GraphTransformer {
+class SystolicNhwcTransformer : public GraphTransformer {
  public:
-  NhwcTransformer() noexcept : GraphTransformer("NhwcTransformer") {}
+  SystolicNhwcTransformer() noexcept : GraphTransformer("SystolicNhwcTransformer") {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

@@ -28,7 +28,7 @@
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
-#include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/systolic_nhwc_transformer.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -160,7 +160,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
     case TransformerLevel::Level3: {
 #if defined(USE_SYSTOLIC) && defined(SYSTOLIC_INT8)
-      transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
+      transformers.emplace_back(onnxruntime::make_unique<SystolicNhwcTransformer>());
 #endif
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.

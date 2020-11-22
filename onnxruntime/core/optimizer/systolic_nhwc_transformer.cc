@@ -4,15 +4,15 @@
 #include <deque>
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/systolic_nhwc_transformer.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-class NhwcTransformerImpl {
+class SystolicNhwcTransformerImpl {
  public:
-  NhwcTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
+  SystolicNhwcTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
 
   void Transform(Node& node, const logging::Logger& logger);
   void Finalize(bool& modified, const logging::Logger& logger);
@@ -104,7 +104,7 @@ bool IsAttributeUnsetOrWithExpectedValues(const Node& node, const std::string& a
   return true;
 }
 
-size_t NhwcTransformerImpl::RemoveOutputEdges(Node& node) {
+size_t SystolicNhwcTransformerImpl::RemoveOutputEdges(Node& node) {
   size_t output_edges_count = node.GetOutputEdgesCount();
   if (output_edges_count > 0) {
     graph_utils::RemoveNodeOutputEdges(graph_, node);
@@ -117,7 +117,7 @@ size_t NhwcTransformerImpl::RemoveOutputEdges(Node& node) {
   return output_edges_count;
 }
 
-void NhwcTransformerImpl::CreateNhwcArgument(Node& node,
+void SystolicNhwcTransformerImpl::CreateNhwcArgument(Node& node,
                                              Node& nhwc_node, const std::string& basename) {
   size_t original_uses = RemoveOutputEdges(node);
 
@@ -131,7 +131,7 @@ void NhwcTransformerImpl::CreateNhwcArgument(Node& node,
   output_defs[0] = output_nhwc_arg;
 }
 
-void NhwcTransformerImpl::FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_arg) {
+void SystolicNhwcTransformerImpl::FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_arg) {
   size_t original_uses = RemoveOutputEdges(node);
 
   // Associate the existing NHWC NodeArg with the output from this node.
@@ -142,7 +142,7 @@ void NhwcTransformerImpl::FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_
       onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
 }
 
-void NhwcTransformerImpl::InsertReorderInput(Node& node) {
+void SystolicNhwcTransformerImpl::InsertReorderInput(Node& node) {
   auto& input_defs = node.MutableInputDefs();
   auto* input_original_arg = input_defs[0];
 
@@ -166,7 +166,7 @@ void NhwcTransformerImpl::InsertReorderInput(Node& node) {
   }
 }
 
-void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger& logger) {
+void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger& logger) {
   if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
     return;
   }
@@ -266,7 +266,7 @@ void NhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger
   removed_nodes_.push_front(node.Index());
 }
 
-void NhwcTransformerImpl::TransformQLinearRelu(Node& node, const logging::Logger& logger) {
+void SystolicNhwcTransformerImpl::TransformQLinearRelu(Node& node, const logging::Logger& logger) {
   if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
     return;
   }
@@ -287,7 +287,7 @@ void NhwcTransformerImpl::TransformQLinearRelu(Node& node, const logging::Logger
   }
 }
 
-void NhwcTransformerImpl::TransformQLinearAdd(Node& node, const logging::Logger& logger) {
+void SystolicNhwcTransformerImpl::TransformQLinearAdd(Node& node, const logging::Logger& logger) {
   if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
     return;
   }
@@ -333,7 +333,7 @@ void NhwcTransformerImpl::TransformQLinearAdd(Node& node, const logging::Logger&
   }
 }
 
-void NhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& logger) {
+void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& logger) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
@@ -397,7 +397,7 @@ void NhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& lo
 
 }
 
-void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
+void SystolicNhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
   if (node.OpType() == "QLinearConv") {
     TransformQLinearConv(node, logger);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
@@ -425,7 +425,7 @@ void NhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
   // format.
 }
 
-void NhwcTransformerImpl::Finalize(bool& modified, const logging::Logger& logger) {
+void SystolicNhwcTransformerImpl::Finalize(bool& modified, const logging::Logger& logger) {
   // Create ReorderOutput nodes for any NHWC outputs that still have uses with
   // the original tensor format.
   for (auto& nhwc_output : nhwc_args_) {
@@ -454,8 +454,8 @@ void NhwcTransformerImpl::Finalize(bool& modified, const logging::Logger& logger
   }
 }
 
-Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  NhwcTransformerImpl impl(graph);
+Status SystolicNhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+  SystolicNhwcTransformerImpl impl(graph);
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
