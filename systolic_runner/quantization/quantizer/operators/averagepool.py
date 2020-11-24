@@ -74,17 +74,19 @@ class QAveragePool(QuantOperatorBase):
         w_scale = np.array([1], dtype=np.float32)
         w_zero_point = np.array([0], dtype=numpy_type)
 
-        self.quantizer.model.add_initializer(onnx.helper.make_tensor(node.input[0] + "_1s_weight_vals",
-                                                                     self.quantizer.input_qType, weight_matrix.shape, weight_matrix.flatten().tolist()))
-        self.quantizer.model.add_initializer(onnx.helper.make_tensor(node.input[0] + "_1s_weight_scale",
-                                                                     onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[w_scale.dtype], [], w_scale.tolist()))
-        self.quantizer.model.add_initializer(onnx.helper.make_tensor(node.input[0] + "_1s_weight_zp",
-                                                                     onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[w_zero_point.dtype], [], w_zero_point.tolist()))
+        packed_weight_initializer = onnx.numpy_helper.from_array(weight_matrix, node.input[0] + "_1s_weight_vals")
+        weight_scale_initializer = onnx.helper.make_tensor(node.input[0] + "_1s_weight_scale",
+                                                                     onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[w_scale.dtype], [], w_scale.tolist())
+        weight_zp_initializer = onnx.helper.make_tensor(node.input[0] + "_1s_weight_zp",
+                                                                     onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[w_zero_point.dtype], [], w_zero_point.tolist())
         
         
-        self.quantizer.model.add_initializer(onnx.helper.make_tensor(output_scale_name + "_avg_pool", onnx_proto.TensorProto.FLOAT, [], 
-                                             [self.quantizer.quantization_params[node.output[0]][1].item() * kernel_shape[0] * kernel_shape[1]]))
+        adjusted_output_scale_initializer = onnx.helper.make_tensor(output_scale_name + "_avg_pool", onnx_proto.TensorProto.FLOAT, [], 
+                                             [self.quantizer.quantization_params[node.output[0]][1].item() * kernel_shape[0] * kernel_shape[1]])
         
+
+        self.quantizer.model.initializer().extend([packed_weight_initializer, weight_scale_initializer, weight_zp_initializer, adjusted_output_scale_initializer])
+
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0])
 

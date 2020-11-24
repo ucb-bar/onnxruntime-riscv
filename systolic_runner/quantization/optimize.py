@@ -74,7 +74,7 @@ def replace_gemm_with_matmul(model):
                     transA = onnx.helper.get_attribute_value(attr)
                 elif attr.name == 'transB':
                     transB = onnx.helper.get_attribute_value(attr)
-            if alpha == 1.0 and beta == 1.0 and transA == 0:
+            if alpha == 1.0 and beta == 1.0 and transA == 0 and transB == 0:
                 inputB = node.input[1]
                 if transB == 1:
                     B = get_initializer(model, node.input[1])
