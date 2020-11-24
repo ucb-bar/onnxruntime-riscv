@@ -132,9 +132,13 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
                   const acc_t* bias,
                   elem_t* output,
                   bool relu,
-                  float output_scale) {
+                  float output_scale,
+                  int pool_size = 0, int pool_stride = 0, int pool_padding = 0) {
 #ifndef FOR_FIRESIM
   printf("Called into systolic conv\n");
+  if (pool_size != 0) {
+    printf("Using systolic pooling\n");
+  }
 #endif
   // printf("Debugging info\n");
   // printf("Batch size, in_w/h, in_channel %d %d %d\n", batch_size, in_dim, in_channels);
@@ -150,7 +154,7 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
                   stride, padding, kernel_dim, input, weights, bias, output,
                   relu, output_scale, /*relu6_shift= */ 0,
-                  /*pool_size = */ 0, /*pool_stride = */ 0, /*pool_padding = */ 0,
+                  pool_size, pool_stride, pool_padding,
                   get_accelerator_mode(accelerator_mode));
 
   // printf("Output\n");

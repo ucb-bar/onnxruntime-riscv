@@ -410,11 +410,9 @@ void SystolicNhwcTransformerImpl::Transform(Node& node, const logging::Logger& l
       TransformQLinearRelu(node, logger);
     } else if (node.OpType() == "QLinearAdd") {
       TransformQLinearAdd(node, logger);
-    
-    } 
-    // else if (node.OpType() == "MaxPool") {
-    //   TransformMaxPool(node, logger);
-    // }
+    } else if (node.OpType() == "MaxPool") {
+      TransformMaxPool(node, logger);
+    }
   }
 
   // The node may not match any of the checks above or may not have been

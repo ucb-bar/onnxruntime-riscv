@@ -27,7 +27,8 @@ MLASCALL(char accelerator_mode, int batch_size, int in_dim, int in_channels,
         const int32_t* bias,
         int8_t* output,
         bool relu,
-        float output_scale);
+        float output_scale,
+        int pool_size = 0, int pool_stride = 0, int pool_padding = 0);
 
 #endif
 
