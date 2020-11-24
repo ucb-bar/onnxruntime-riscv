@@ -29,7 +29,7 @@ import math
 # Candidate nodes for quantization. Calibration will be done for these nodes only
 # When more nodes are extended to support quantization, add them to this list
 # Values are the relevant input indices that should be quantized
-QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1], 'Attention': [0, 1], 'MaxPool': [0]}
+QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1], 'Attention': [0, 1], 'MaxPool': [0], 'AveragePool': [0]}
 # Binary ops that need to be checked for floating-point before quantizing
 BINARY_OPS_TO_QUANTIZE = ['Add', 'Mul']
 
@@ -196,9 +196,9 @@ def get_intermediate_outputs(model_path, session, inputs, calib_mode='naive'):
 
 
 def get_rmin_rmax_for_node(input_name_to_nodes, output_edge_name, quantization_thresholds, rmin, rmax):
-    if output_edge_name:
+    if output_edge_name and output_edge_name in input_name_to_nodes:
         next_nodes = input_name_to_nodes[output_edge_name]
-        if len(next_nodes) == 1 and len(next_nodes[0].output) == 1:
+        if len(next_nodes) == 1 and len(next_nodes[0].output) == 1 and next_nodes[0].output[0] in input_name_to_nodes:
             next_next_nodes = input_name_to_nodes[next_nodes[0].output[0]]
             if len(next_next_nodes) == 1:
                 if next_nodes[0].op_type == 'Relu' and next_next_nodes[0].op_type == 'MaxPool':

@@ -9,6 +9,8 @@ from .operators.conv import QLinearConv, ConvInteger
 from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
+from .operators.averagepool import QAveragePool
+from .operators.reshape import QReshape
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
@@ -32,6 +34,8 @@ QLinearOpsRegistry = {
     "LeakyRelu" : QLinearActivation,
     "Sigmoid" : QLinearActivation,
     "MaxPool": QMaxPool,
+    "AveragePool": QAveragePool,
+    "Reshape": QReshape,
     "Attention": AttentionQuant,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
