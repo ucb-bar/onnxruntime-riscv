@@ -9,3 +9,5 @@ imagenet_runner/tools/batch_out.txt
 quantization/scan_op.txt
 imagenet_runner/benchmark/
 mnist_training/mnist
+mnist_training/mnist_train
+mnist_training/mnist.zip
