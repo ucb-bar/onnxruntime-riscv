@@ -5,3 +5,7 @@
 **/bert_qkv.txt
 quantization/models/*
 halide_interop/model_converter/generated/*
+imagenet_runner/tools/batch_out.txt
+quantization/scan_op.txt
+imagenet_runner/benchmark/
+mnist_training/mnist
