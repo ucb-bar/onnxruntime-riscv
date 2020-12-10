@@ -28,6 +28,9 @@ do
         echo "Building with mlockall for running on Firesim"
         extra_defs="${extra_defs} -DFOR_FIRESIM"
     fi
+    if [ $var = "--enable_training" ]; then
+        extra_libs="${extra_libs} ${build_path}/tensorboard/libtensorboard.a"
+    fi
 
 done
 
@@ -39,7 +42,10 @@ if [ -f "${root_path}/systolic_runner/halide_interop/model_converter/generated/l
     extra_defs="${extra_defs} -DUSE_CUSTOM_OP_LIBRARY"
 fi
 
-riscv64-unknown-linux-gnu-g++ -O3 -I ${root_path}/include/onnxruntime/core/session -I  ${root_path}/include/onnxruntime/core/providers -march=rv64imafdc -mabi=lp64d -Wno-error=attributes \
+riscv64-unknown-linux-gnu-g++ -O3 -I ${root_path}/include/onnxruntime/core/session \
+-I  ${root_path}/include/onnxruntime/core/providers \
+-I ${root_path}/cmake/external/cxxopts/include \
+-march=rv64imafdc -mabi=lp64d -Wno-error=attributes \
  -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS ${extra_defs} -Wall -Wextra -ffunction-sections -fdata-sections -Wno-parentheses -g -Wno-nonnull-compare \
   -latomic -static src/runner.cpp  -o ort_test  ${build_path}/libonnx_test_runner_common.a ${build_path}/libonnxruntime_test_utils.a \
    ${build_path}/libonnxruntime_session.a ${build_path}/libonnxruntime_optimizer.a ${build_path}/libonnxruntime_providers.a \
