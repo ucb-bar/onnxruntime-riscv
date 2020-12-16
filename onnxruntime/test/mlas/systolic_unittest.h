@@ -238,7 +238,7 @@ class MlasSystolicConvTest : public MlasTestBase {
     int W = w_shape[1];
     int IC = w_shape[2];
     int OC = w_shape[3];
-    std::vector<elem_t> w_vals_copy = std::vector<elem_t>(H*W*IC*OC);
+    std::vector<elem_t> w_vals_copy = std::vector<elem_t>(H * W * IC * OC);
 
     for (int h = 0; h < H; h++) {
       for (int w = 0; w < W; w++) {
@@ -253,12 +253,12 @@ class MlasSystolicConvTest : public MlasTestBase {
     return w_vals_copy;
   }
 
-  inline std::vector<elem_t> NHWCtoNCHW(const elem_t *vals, const std::vector<size_t>& shape) {
+  inline std::vector<elem_t> NHWCtoNCHW(const elem_t* vals, const std::vector<size_t>& shape) {
     int N = shape[0];
     int H = shape[1];
     int W = shape[2];
     int C = shape[3];
-    std::vector<elem_t> vals_copy = std::vector<elem_t>(N*H*W*C);
+    std::vector<elem_t> vals_copy = std::vector<elem_t>(N * H * W * C);
 
     for (int n = 0; n < N; n++) {
       for (int h = 0; h < H; h++) {
@@ -406,7 +406,6 @@ class MlasSystolicConvTest : public MlasTestBase {
  public:
   void
   ExecuteShort(void) override {
-
     Test(/*BatchCount=*/1, /*InputChannels= */ 1, /*InputDim= */ 5,
          /*OutputChannels= */ 1, /*KernelDim= */ 2, /*Padding= */ 0,
          /*Stride= */ 1, /*relu= */ 0, /*output_scale= */ 0.1);
@@ -439,4 +438,217 @@ class MlasSystolicConvTest : public MlasTestBase {
   MlasSystolicConvTest(char acceleration_type) : acceleration_type_(acceleration_type) {}
 };
 
+#endif
+
+#ifdef SYSTOLIC_FP32
+template <typename T>
+class MlasSystolicGemmTest : public MlasTestBase {
+ private:
+  void
+  Test(
+      size_t M,
+      size_t N,
+      size_t K,
+      float alpha,
+      float beta) {
+    const T* A = BufferA.GetBuffer(K * M);
+    const T* B = BufferB.GetBuffer(N * K);
+    T* C = BufferC.GetBuffer(N * M);
+    T* CReference = BufferCReference.GetBuffer(N * M);
+
+    Test(false, false, M, N, K, alpha, A, B, beta, C, CReference);
+    Test(false, true, M, N, K, alpha, A, B, beta, C, CReference);
+    Test(true, false, M, N, K, alpha, A, B, beta, C, CReference);
+  }
+
+  void
+  Test(
+      bool TransA,
+      bool TransB,
+      size_t M,
+      size_t N,
+      size_t K,
+      float alpha,
+      const T* A,
+      const T* B,
+      float beta,
+      T* C,
+      T* CReference) {
+    printf("Testing Systolic Gemm %zd %zd %zd | TransA? %d, TransB? %d\n", M, N, K, TransA, TransB);
+    std::fill_n(C, M * N, -0.5f);
+    std::fill_n(CReference, M * N, -0.5f);
+
+
+    // printf("A matrix\n");
+    // for (size_t i = 0; i < M; i++) {
+    //   for (size_t j = 0; j < K; j++){
+    //     printf("%f ", A[i*K + j]);
+    //   }
+    //   printf("\n");
+    // }
+
+    // printf("\nB matrix\n");
+    // for (size_t i = 0; i < K; i++) {
+    //   for (size_t j = 0; j < N; j++){
+    //     printf("%f ", B[i*N + j]);
+    //   }
+    //   printf("\n");
+    // }
+
+
+    SystolicGemm(acceleration_type_, TransA, TransB, M, N, K, alpha, A, B, beta, C);
+    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, B, beta, CReference);
+
+    // printf("\nC matrix\n");
+    // for (size_t i = 0; i < M; i++) {
+    //   for (size_t j = 0; j < N; j++){
+    //     printf("%f ", C[i*N + j]);
+    //   }
+    //   printf("\n");
+    // }
+
+    // printf("\nCref matrix\n");
+    // for (size_t i = 0; i < M; i++) {
+    //   for (size_t j = 0; j < N; j++){
+    //     printf("%f ", CReference[i*N + j]);
+    //   }
+    //   printf("\n");
+    // }
+
+    for (size_t f = 0; f < M * N; f++) {
+      // Sensitive to comparing positive/negative zero.
+      if (C[f] != CReference[f]) {
+        printf("mismatch TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f  %f %f!\n", TransA, TransB, M, N, K, alpha, beta, float(C[f]), float(CReference[f]));
+        break;
+      }
+    }
+  }
+
+  void ReferenceGemm(
+      bool TransA,
+      bool TransB,
+      size_t M,
+      size_t N,
+      size_t K,
+      float alpha,
+      const T* A,
+      const T* B,
+      float beta,
+      T* C) {
+    int lda = TransA ? M : K;
+    int ldb = TransB ? K : N;
+    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N);
+  }
+
+  void
+  ReferenceGemm(
+      bool TransA,
+      bool TransB,
+      size_t M,
+      size_t N,
+      size_t K,
+      float alpha,
+      const T* A,
+      size_t lda,
+      const T* B,
+      size_t ldb,
+      float beta,
+      T* C,
+      size_t ldc) {
+    if (!TransA) {
+      if (!TransB) {
+        for (size_t m = 0; m < M; m++) {
+          for (size_t n = 0; n < N; n++) {
+            const T* a = A + (m * lda);
+            const T* b = B + n;
+            T* c = C + (m * ldc) + n;
+            T sum = 0.0f;
+
+            for (size_t k = 0; k < K; k++) {
+              sum += (*b * *a);
+              b += ldb;
+              a += 1;
+            }
+
+            *c = (*c * beta) + (sum * alpha);
+          }
+        }
+
+      } else {
+        for (size_t m = 0; m < M; m++) {
+          for (size_t n = 0; n < N; n++) {
+            const T* a = A + (m * lda);
+            const T* b = B + (n * ldb);
+            T* c = C + (m * ldc) + n;
+            T sum = 0.0f;
+
+            for (size_t k = 0; k < K; k++) {
+              sum += (*b * *a);
+              b += 1;
+              a += 1;
+            }
+
+            *c = (*c * beta) + (sum * alpha);
+          }
+        }
+      }
+
+    } else {
+      if (!TransB) {
+        for (size_t m = 0; m < M; m++) {
+          for (size_t n = 0; n < N; n++) {
+            const T* a = A + m;
+            const T* b = B + n;
+            T* c = C + (m * ldc) + n;
+            T sum = 0.0f;
+
+            for (size_t k = 0; k < K; k++) {
+              sum += (*b * *a);
+              b += ldb;
+              a += lda;
+            }
+
+            *c = (*c * beta) + (sum * alpha);
+          }
+        }
+
+      } else {
+        for (size_t m = 0; m < M; m++) {
+          for (size_t n = 0; n < N; n++) {
+            const T* a = A + m;
+            const T* b = B + (n * ldb);
+            T* c = C + (m * ldc) + n;
+            T sum = 0.0f;
+
+            for (size_t k = 0; k < K; k++) {
+              sum += (*b * *a);
+              b += 1;
+              a += lda;
+            }
+
+            *c = (*c * beta) + (sum * alpha);
+          }
+        }
+      }
+    }
+  }
+
+  MatrixGuardBuffer<T> BufferA;
+  MatrixGuardBuffer<T> BufferB;
+  MatrixGuardBuffer<T> BufferC;
+  MatrixGuardBuffer<T> BufferCReference;
+  char acceleration_type_;
+
+ public:
+  void
+  ExecuteShort(
+      void) override {
+    Test(2, 3, 2, 1.0f, 0.0f);
+    Test(5, 7, 9, 1.0f, 1.0f);
+    Test(13, 15, 17, 0.5f, 0.5f);
+    Test(11, 15, 17, 0.5f, 0.0f);
+  }
+
+  MlasSystolicGemmTest(char acceleration_type) : acceleration_type_(acceleration_type) {}
+};
 #endif

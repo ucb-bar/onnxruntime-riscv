@@ -68,7 +68,14 @@ inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
   
 }
 
-
+inline void PrintMatrix(int m, int k, const float* data) {
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < k; j++) {
+      printf("%f ", data[i * k + j]);
+    }
+    printf("\n");
+  }
+}
 
 template<typename T>
 inline void GemmlowpDebug(int m, int n, int k,

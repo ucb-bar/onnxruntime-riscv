@@ -37,15 +37,15 @@ inline tiled_matmul_type_t get_accelerator_mode(int mode) {
 /* Internal -- no need to touch */
 
 void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
-                       size_t strideA,
-                       size_t strideB,
-                       size_t strideD,
-                       size_t strideC,
-                       const elem_t* A, const elem_t* B,
-                       const acc_t* D, elem_t* C,
-                       int act, scale_t scaleAlpha, acc_scale_t scaleBeta,  bool repeating_bias,
-                       bool transA, bool transB,
-                       enum tiled_matmul_type_t tiled_matmul_type) {
+                     size_t strideA,
+                     size_t strideB,
+                     size_t strideD,
+                     size_t strideC,
+                     const elem_t* A, const elem_t* B,
+                     const acc_t* D, elem_t* C,
+                     int act, scale_t scaleAlpha, acc_scale_t scaleBeta, bool repeating_bias,
+                     bool transA, bool transB,
+                     enum tiled_matmul_type_t tiled_matmul_type) {
   tiled_matmul_auto(dim_I, dim_J, dim_K,
                     A, B, D, C,
                     strideA, strideB, strideD, strideC,
@@ -57,15 +57,17 @@ void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
 }
 
 void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
-                       const elem_t* A, const elem_t* B,
-                       const acc_t* D, elem_t* C,
-                       int act, scale_t scaleAlpha, acc_scale_t scaleBeta, bool repeating_bias,
-                       bool transA, bool transB,
-                       enum tiled_matmul_type_t tiled_matmul_type) {
-  tiled_gemm_auto(dim_I, dim_J, dim_K, dim_K, dim_J, dim_J, dim_J,
-                    A, B, D, C,
-                    act, scaleAlpha, scaleBeta, repeating_bias,
-                    transA, transB, tiled_matmul_type);
+                     const elem_t* A, const elem_t* B,
+                     const acc_t* D, elem_t* C,
+                     int act, scale_t scaleAlpha, acc_scale_t scaleBeta, bool repeating_bias,
+                     bool transA, bool transB,
+                     enum tiled_matmul_type_t tiled_matmul_type) {
+  int lda = transA ? dim_I : dim_K;
+  int ldb = transB ? dim_K : dim_J;
+  tiled_gemm_auto(dim_I, dim_J, dim_K, lda, ldb, dim_J, dim_J,
+                  A, B, D, C,
+                  act, scaleAlpha, scaleBeta, repeating_bias,
+                  transA, transB, tiled_matmul_type);
 }
 
 void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
@@ -92,14 +94,12 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                        const elem_t* A, const elem_t* B,
                        const acc_t* D, elem_t* C,
                        int act, acc_scale_t scale, size_t relu6_shift, bool repeating_bias,
-                       bool transA, bool transB,
                        enum tiled_matmul_type_t tiled_matmul_type) {
   tiled_matmul_auto(dim_I, dim_J, dim_K, dim_K, dim_J, dim_J, dim_J,
                     A, B, D, C,
                     act, scale, relu6_shift, repeating_bias,
-                    transA, transB, tiled_matmul_type);
+                    /*transA= */ false, /*transB= */ false, tiled_matmul_type);
 }
-
 
 /* End internal */
 
@@ -112,19 +112,27 @@ void SystolicMultiply(char accelerator_mode, bool relu, int dimI, int dimJ, int 
   tiled_matmul_auto(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
                     real_multiplier,
                     /*relu6_shift= */ 0, /* repeating_bias= */ 0,
-                    /*transA= */ false, /*transB= */ false, get_accelerator_mode(accelerator_mode));
+                    get_accelerator_mode(accelerator_mode));
 }
 
-void SystolicGemm(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
-                      const elem_t* in1, const elem_t* in2, elem_t* out,
-                      scale_t scaleA, acc_scale_t scaleB, bool transA, bool transB, const acc_t* bias) {
+void SystolicGemm(char accelerator_mode,
+                  bool TransA,
+                  bool TransB,
+                  size_t M,
+                  size_t N,
+                  size_t K,
+                  float alpha,
+                  const float* A,
+                  const float* B,
+                  float beta,
+                  float* C) {
 #ifndef FOR_FIRESIM
-  printf("Called into systolic matmul!\n");
-  printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
+  printf("Called into systolic gemm!\n");
+  printf("Using accelerated gemm with dimensions (%zd, %zd, %zd)\n", M, N, K);
 #endif
-  tiled_gemm_auto(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
-                    scaleA, scaleB, /* repeating_bias= */ 0,
-                    transA, transB, get_accelerator_mode(accelerator_mode));
+  tiled_gemm_auto(M, N, K, A, B, beta == 0 ? nullptr : C, C, /*activation= */ false,
+                  alpha, beta, /* repeating_bias= */ 0,
+                  TransA, TransB, get_accelerator_mode(accelerator_mode));
 }
 
 void SystolicMultiply(char accelerator_mode, bool relu,
@@ -206,7 +214,6 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   //   printf("Bias values: %d\n", bias[0]);
   // }
   // printf("Relu? %d\n", relu);
-
 
   tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
                   stride, padding, kernel_dim, input, weights, bias, output,

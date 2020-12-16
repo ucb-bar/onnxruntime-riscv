@@ -51,8 +51,18 @@ MLASCALL(char accelerator_mode, bool relu,
                             float real_multiplier,
                             const float* bias, int strideBias, bool repeating_bias);
 
-void SystolicGemm(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
-                      const float* in1, const float* in2, float* out,
-                      float scaleA, float scaleB, bool transA, bool transB, const float* bias = nullptr);
+// Matches Blass Gemm signature 
+void SystolicGemm(
+   char accelerator_mode, 
+    bool TransA,
+    bool TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const float* A,
+    const float* B,
+    float beta,
+    float* C);
                             
 #endif
