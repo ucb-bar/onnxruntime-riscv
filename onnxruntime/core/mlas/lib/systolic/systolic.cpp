@@ -9,6 +9,7 @@
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wsign-compare"
 #include "systolic_include.h"
 #pragma GCC diagnostic pop
 
@@ -35,6 +36,38 @@ inline tiled_matmul_type_t get_accelerator_mode(int mode) {
 
 /* Internal -- no need to touch */
 
+void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
+                       size_t strideA,
+                       size_t strideB,
+                       size_t strideD,
+                       size_t strideC,
+                       const elem_t* A, const elem_t* B,
+                       const acc_t* D, elem_t* C,
+                       int act, scale_t scaleAlpha, acc_scale_t scaleBeta,  bool repeating_bias,
+                       bool transA, bool transB,
+                       enum tiled_matmul_type_t tiled_matmul_type) {
+  tiled_matmul_auto(dim_I, dim_J, dim_K,
+                    A, B, D, C,
+                    strideA, strideB, strideD, strideC,
+                    scaleAlpha, MVIN_SCALE_IDENTITY, scaleBeta,
+                    act, ACC_SCALE_IDENTITY, /*relu6_shift= */ 0, repeating_bias,
+                    transA, transB,
+                    /*full_c= */ false, /*low_d= */ false,
+                    tiled_matmul_type);
+}
+
+void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
+                       const elem_t* A, const elem_t* B,
+                       const acc_t* D, elem_t* C,
+                       int act, scale_t scaleAlpha, acc_scale_t scaleBeta, bool repeating_bias,
+                       bool transA, bool transB,
+                       enum tiled_matmul_type_t tiled_matmul_type) {
+  tiled_gemm_auto(dim_I, dim_J, dim_K, dim_K, dim_J, dim_J, dim_J,
+                    A, B, D, C,
+                    act, scaleAlpha, scaleBeta, repeating_bias,
+                    transA, transB, tiled_matmul_type);
+}
+
 void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                        size_t strideA,
                        size_t strideB,
@@ -43,12 +76,15 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                        const elem_t* A, const elem_t* B,
                        const acc_t* D, elem_t* C,
                        int act, acc_scale_t scale, size_t relu6_shift, bool repeating_bias,
+                       bool transA, bool transB,
                        enum tiled_matmul_type_t tiled_matmul_type) {
   tiled_matmul_auto(dim_I, dim_J, dim_K,
                     A, B, D, C,
                     strideA, strideB, strideD, strideC,
-                    MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY,
+                    MVIN_SCALE_IDENTITY, MVIN_SCALE_IDENTITY, ACC_SCALE_IDENTITY,
                     act, scale, relu6_shift, repeating_bias,
+                    transA, transB,
+                    /*full_c= */ false, /*low_d= */ false,
                     tiled_matmul_type);
 }
 
@@ -56,9 +92,14 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                        const elem_t* A, const elem_t* B,
                        const acc_t* D, elem_t* C,
                        int act, acc_scale_t scale, size_t relu6_shift, bool repeating_bias,
+                       bool transA, bool transB,
                        enum tiled_matmul_type_t tiled_matmul_type) {
-  tiled_matmul_auto(dim_I, dim_J, dim_K, dim_K, dim_J, dim_J, dim_J, A, B, D, C, act, scale, relu6_shift, repeating_bias, tiled_matmul_type);
+  tiled_matmul_auto(dim_I, dim_J, dim_K, dim_K, dim_J, dim_J, dim_J,
+                    A, B, D, C,
+                    act, scale, relu6_shift, repeating_bias,
+                    transA, transB, tiled_matmul_type);
 }
+
 
 /* End internal */
 
@@ -69,7 +110,21 @@ void SystolicMultiply(char accelerator_mode, bool relu, int dimI, int dimJ, int 
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
 #endif
   tiled_matmul_auto(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
-                    real_multiplier, /*relu6_shift= */ 0, /* repeating_bias= */ 0, get_accelerator_mode(accelerator_mode));
+                    real_multiplier,
+                    /*relu6_shift= */ 0, /* repeating_bias= */ 0,
+                    /*transA= */ false, /*transB= */ false, get_accelerator_mode(accelerator_mode));
+}
+
+void SystolicGemm(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
+                      const elem_t* in1, const elem_t* in2, elem_t* out,
+                      scale_t scaleA, acc_scale_t scaleB, bool transA, bool transB, const acc_t* bias) {
+#ifndef FOR_FIRESIM
+  printf("Called into systolic matmul!\n");
+  printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
+#endif
+  tiled_gemm_auto(dimI, dimJ, dimK, in1, in2, bias, out, /*activation= */ relu,
+                    scaleA, scaleB, /* repeating_bias= */ 0,
+                    transA, transB, get_accelerator_mode(accelerator_mode));
 }
 
 void SystolicMultiply(char accelerator_mode, bool relu,
@@ -86,12 +141,14 @@ void SystolicMultiply(char accelerator_mode, bool relu,
   tiled_matmul_auto(dimI, dimJ, dimK,
                     strideIn1, strideIn2, strideBias, strideOut,
                     in1, in2, bias, out, /*activation= */ relu,
-                    real_multiplier, /*relu6_shift= */ 0, /* repeating_bias= */ repeating_bias, get_accelerator_mode(accelerator_mode));
+                    real_multiplier, /*relu6_shift= */ 0, /* repeating_bias= */ repeating_bias,
+                    /*transA= */ false, /*transB= */ false,
+                    get_accelerator_mode(accelerator_mode));
 }
 
-void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const int8_t* A, float A_scale, const int8_t* B,
+void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const elem_t* A, float A_scale, const elem_t* B,
                  float B_scale,
-                 int8_t* C, float C_scale, int dim) {
+                 elem_t* C, float C_scale, int dim) {
 #ifndef FOR_FIRESIM
   printf("Called into systolic add\n");
 #endif

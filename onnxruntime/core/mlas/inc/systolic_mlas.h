@@ -4,6 +4,10 @@ void SystolicMultiply
 MLASCALL(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2,
          int8_t* out, float real_multiplier, const int32_t* bias = nullptr);
 
+void SystolicGemm
+MLASCALL(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK, const int8_t* in1, const int8_t* in2,
+         int8_t* out, float alpha, float beta, bool transA, bool transB, const int32_t* bias = nullptr);
+
 void SystolicMultiply
 MLASCALL(char accelerator_mode, bool relu,
                             int dimI, int dimJ, int dimK,
@@ -46,5 +50,9 @@ MLASCALL(char accelerator_mode, bool relu,
                             float* out, int strideOut,
                             float real_multiplier,
                             const float* bias, int strideBias, bool repeating_bias);
+
+void SystolicGemm(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
+                      const float* in1, const float* in2, float* out,
+                      float scaleA, float scaleB, bool transA, bool transB, const float* bias = nullptr);
                             
 #endif
