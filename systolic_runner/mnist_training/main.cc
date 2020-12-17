@@ -14,16 +14,14 @@
 #include "orttraining/models/runner/training_util.h"
 #include "mnist_data_provider.h"
 
-#include <condition_variable>
-#include <mutex>
-#include <tuple>
+#include <systolic/systolic_provider_factory.h>
+
+#ifdef FOR_FIRESIM
+#include <sys/mman.h>
+#endif
 
 namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
-                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
-                                                                               size_t cuda_mem_limit = std::numeric_limits<size_t>::max(),
-                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
-                                                                               bool do_copy_in_default_stream = true);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Systolic(int use_arena, char accelerator_mode);
 }
 
 using namespace onnxruntime;
@@ -36,7 +34,7 @@ const static int NUM_CLASS = 10;
 const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
 const static vector<int64_t> LABEL_DIMS = {10};
 
-Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
+Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params, unique_ptr<Environment> &env) {
   cxxopts::Options options("POC Training", "Main Program to train on MNIST");
   // clang-format off
   options
@@ -48,13 +46,13 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         cxxopts::value<std::string>()->default_value(""))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("use_gist", "Use GIST encoding/decoding.")
-      ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
+      ("x,execution", "Systolic execution mode. Either 0, 1, or 2 (CPU, OS, WS).", cxxopts::value<int>(), "[0/1/2]")
+      ("d,debug", "Debug level", cxxopts::value<int>()->default_value("2"), "[0-4, with 0 being most verbose]")
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("2000"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
       ("learning_rate", "The initial learning rate for Adam.", cxxopts::value<float>()->default_value("0.01"))
       ("display_loss_steps", "How often to dump loss into tensorboard", cxxopts::value<size_t>()->default_value("10"))
-      ("use_nccl", "Whether to use NCCL for distributed training.", cxxopts::value<bool>()->default_value("false"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
@@ -69,7 +67,21 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 
   try {
     auto flags = options.parse(argc, argv);
-    //
+
+    printf("Setting up logger\n");
+    // setup logger
+    string default_logger_id{"Default"};
+    auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(unique_ptr<logging::ISink>{new logging::CLogSink{}},
+                                                    static_cast<logging::Severity>(flags["debug"].as<int>()),
+                                                    false,
+                                                    logging::LoggingManager::InstanceType::Default,
+                                                    &default_logger_id);
+
+    // setup onnxruntime env
+    printf("Setting up env\n");
+    ORT_ENFORCE(Environment::Create(std::move(logging_manager), env).IsOK());
+
+    // Set parameters
     params.model_name = flags["model_name"].as<std::string>();
     params.use_gist = flags.count("use_gist") > 0;
     params.lr_params.initial_lr = flags["learning_rate"].as<float>();
@@ -152,13 +164,10 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
         params.pipeline_partition_cut_list.emplace_back(cut);
       }
     }
-    params.use_nccl = flags["use_nccl"].as<bool>();
-#ifdef USE_CUDA
-    bool use_cuda = flags.count("use_cuda") > 0;
-    if (use_cuda) {
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(0));
+
+    if (flags.count("execution") > 0) {
+      params.providers.emplace(kSystolicExecutionProvider, CreateExecutionProviderFactory_Systolic(/*use_arena=*/ 1, /*accelerator_mode=*/ (char) flags["execution"].as<int>()));
     }
-#endif
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
@@ -244,25 +253,24 @@ void setup_training_params(TrainingRunner::Parameters& params) {
 }
 
 int main(int argc, char* args[]) {
-  setbuf(stdout, NULL);
-  printf("Setting up logger\n");
-  // setup logger
-  string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
-                                                  logging::Severity::kWARNING,
-                                                  false,
-                                                  logging::LoggingManager::InstanceType::Default,
-                                                  &default_logger_id};
+    setbuf(stdout, NULL);
+  printf("Loaded runner program\n");
 
-  // setup onnxruntime env
-  printf("Setting up env\n");
+#ifdef FOR_FIRESIM
+  if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+      perror("mlockall failed");
+      exit(1);
+  } else {
+    printf("Finished mlockall\n");
+  }
+#endif
+
   unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env).IsOK());
 
   // setup training params
   printf("Setting up training params\n");
   TrainingRunner::Parameters params;
-  RETURN_IF_FAIL(ParseArguments(argc, args, params));
+  RETURN_IF_FAIL(ParseArguments(argc, args, params, env));
   setup_training_params(params);
 
   // setup data

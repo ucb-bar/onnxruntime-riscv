@@ -79,7 +79,7 @@ void ReferenceGemm(
             a += 1;
           }
 
-          *c = (*c * beta) + (sum * alpha);
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
         }
       }
 
@@ -97,7 +97,7 @@ void ReferenceGemm(
             a += 1;
           }
 
-          *c = (*c * beta) + (sum * alpha);
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
         }
       }
     }
@@ -117,7 +117,7 @@ void ReferenceGemm(
             a += lda;
           }
 
-          *c = (*c * beta) + (sum * alpha);
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
         }
       }
 
@@ -135,7 +135,7 @@ void ReferenceGemm(
             a += lda;
           }
 
-          *c = (*c * beta) + (sum * alpha);
+          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
         }
       }
     }
@@ -206,7 +206,9 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
 
   char acc_mode = static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode();
   if (acc_mode == 0 && (trans_A_ || trans_B_)) {
+#ifndef FOR_FIRESIM
     printf("DOING SYSTOLIC GEMM ON CPU\n");
+#endif
     ReferenceGemm(trans_A_, trans_B_, M, N, K,
                 alpha_, A->Data<float>(), B->Data<float>(), c_data != nullptr ? beta_ : 0, y_data);
   } else {
@@ -217,6 +219,12 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
 
   // printf("Out matrix\n");
   // PrintMatrix(M, N, y_data);
+
+  // printf("First few output values\n:");
+  // for (int i = 0; i < 20; i++) {
+  //   printf("%f ", y_data[i]);
+  // }
+  // printf("\n");
 
   return Status::OK();
 }

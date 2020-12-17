@@ -570,7 +570,7 @@ class MlasSystolicGemmTest : public MlasTestBase {
               a += 1;
             }
 
-            *c = (*c * beta) + (sum * alpha);
+            *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
           }
         }
 
@@ -588,7 +588,7 @@ class MlasSystolicGemmTest : public MlasTestBase {
               a += 1;
             }
 
-            *c = (*c * beta) + (sum * alpha);
+            *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
           }
         }
       }
@@ -608,7 +608,7 @@ class MlasSystolicGemmTest : public MlasTestBase {
               a += lda;
             }
 
-            *c = (*c * beta) + (sum * alpha);
+            *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
           }
         }
 
@@ -626,7 +626,7 @@ class MlasSystolicGemmTest : public MlasTestBase {
               a += lda;
             }
 
-            *c = (*c * beta) + (sum * alpha);
+            *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
           }
         }
       }
