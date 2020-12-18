@@ -17,7 +17,7 @@ from onnx import shape_inference
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue, quantization_modes
-from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -620,26 +620,27 @@ class ONNXQuantizer:
             parameter last_output: output of previous node (input to bias add)
             return: the name of output
         '''
-        # Add an Add operation for bias
-        # Add reshape for correct broadcase
-        reshape_input = [quantized_bias_name]
-
         # Add tensors for the shape to be reshaped to
         weight = find_by_name(node.input[1], self.model.initializer())
         if weight is None:
             raise ValueError("Expected {} to be an initializer".format(node.input[1]))
 
+        # Add reshape for correct broadcase
+        reshape_input_data = quantized_bias_name
+        reshape_input_shape = quantized_bias_name + "_reshape_shape"
+        reshape_input = [reshape_input_data, reshape_input_shape]
+
         reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
         reshape_shape[1] = -1
-        init_shape = onnx.helper.make_tensor("reshape_shape", onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
+        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)], reshape_shape)
         self.model.add_initializer(init_shape)
 
-        reshape_input.append('reshape_shape')
         reshape_op_output = node.output[0] + "_reshape"
         reshape_node = onnx.helper.make_node("Reshape", reshape_input, [reshape_op_output],
                                              quantized_bias_name + "reshape")
         nodes.append(reshape_node)
 
+        # Add an Add operation for bias
         bias_add_input = [last_output]
         bias_add_input.append(reshape_op_output)
         add_node_output = node.output[0] + "_bias_add"
@@ -772,7 +773,7 @@ class ONNXQuantizer:
 
         return quantized_bias_name
 
-    def quantize_inputs(self, node, indices):
+    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True):
         '''
         Given a node, this function quantizes the inputs as follows:
             - If input is an initializer, quantize the initializer data, replace old initializer
@@ -805,7 +806,7 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                weight = self._get_quantized_weight(initializer, self.weight_qType)
+                weight = self._get_quantized_weight(initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
 
                 # Update graph
                 self._update_weight(weight)

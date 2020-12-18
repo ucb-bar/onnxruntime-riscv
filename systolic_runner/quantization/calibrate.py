@@ -88,6 +88,7 @@ def augment_graph(model, static):
     '''
     shape_inferred = onnx.shape_inference.infer_shapes(model)
     value_infos = {vi.name: vi for vi in shape_inferred.graph.value_info} 
+    value_infos.update({ot.name: ot for ot in shape_inferred.graph.output})
     value_infos.update({vi.name: vi for vi in shape_inferred.graph.input})
 
     added_nodes = []
