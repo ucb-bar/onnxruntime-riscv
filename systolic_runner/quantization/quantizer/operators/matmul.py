@@ -97,7 +97,7 @@ class QLinearMatMul(QuantOperatorBase):
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(node.output[0], qlinear_matmul_output, output_scale_name, output_zp_name,
-                                  QuantizedValueType.Input)
+                                  QuantizedValueType.Input, qtype=self.quantizer.input_qType)
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
         self.quantizer.new_nodes += nodes
