@@ -15,7 +15,7 @@ Please help us improve ONNX Runtime by participating in our customer survey: htt
 
 This is a fork of upstream onnxruntime modified to work on riscv platforms and particularly focused on supporting the Gemmini accelerator. Gemmini is not necessarily *required* though, so this should also be suitable for those wanting to perform cpu-only inference on a riscv platform -- although this is less thoroughly tested so may not be as performant (the main blocker I can think of is that the `sgemm` kernel is implemented via naive matmul; ideally this should be linked with a proper BLAS implementation, but since floating point inference was not the main goal with this fork – rather, running quantized networks was – that is still a todo).
 
-Read [BUILD.md](https://github.com/pranav-prakash/onnxruntime-riscv/blob/2020-09-16/systolic_runner/docs/BUILD.md) in `systolic_runner`(along with other documentation) for information on cross-compiling and usage instructions.
+Read [BUILD.md](systolic_runner/docs/BUILD.md) in `systolic_runner`(along with other documentation) for information on cross-compiling and usage instructions.
 
 ---
 
