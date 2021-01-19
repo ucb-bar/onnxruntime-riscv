@@ -723,7 +723,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetTrainableDropoutGradient) {
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   std::vector<ArgDef> outputs;
   for (int i = 0; i < 3; i++) {
-    if (IsGradientRequiredForSrcNodeInput(i)) {
+    // See https://github.com/microsoft/onnxruntime/issues/4762 for patch info
+    if (/*IsGradientRequiredForSrcNodeInput(i)*/ true) {
       outputs.push_back(GI(i));
     } else {
       outputs.push_back(ArgDef("", nullptr));
