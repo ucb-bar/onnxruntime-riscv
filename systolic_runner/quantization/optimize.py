@@ -11,6 +11,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, help="input model")
     parser.add_argument("--output", required=True, help="output model")
+    parser.add_argument("--replace_gemm", default=False, action='store_true', help="Whether to run gemm to matmul replacement")
     args = parser.parse_args()
     return args
 
@@ -74,7 +75,9 @@ def replace_gemm_with_matmul(model):
                     transA = onnx.helper.get_attribute_value(attr)
                 elif attr.name == 'transB':
                     transB = onnx.helper.get_attribute_value(attr)
-            if alpha == 1.0 and beta == 1.0 and transA == 0 and transB == 0:
+            if alpha == 1.0 and beta == 1.0 and transA == 0:
+                print("Replacing gemm with input {}, {}  with matmul.".format(node.input[0], node.input[1]))
+                print("Be careful with this since matmuls at the end are very sensitive to quantization")
                 inputB = node.input[1]
                 if transB == 1:
                     B = get_initializer(model, node.input[1])
@@ -214,7 +217,8 @@ def transforms():
 
     optimized = optimizer.optimize(model, ['extract_constant_to_initializer', 'fuse_bn_into_conv'])
     remove_initializer_from_input(optimized)
-    replace_gemm_with_matmul(optimized)
+    if args.replace_gemm:
+        replace_gemm_with_matmul(optimized)
     sum_to_add(optimized)
     onnx.save(optimized, args.output)
     print("Done")
