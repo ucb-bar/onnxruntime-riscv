@@ -36,9 +36,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
   explicit Attention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-#if !defined(USE_MKLML_FOR_BLAS)
   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-#endif
 
  private:
   BufferUniquePtr packed_weights_;
@@ -196,7 +194,6 @@ template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
 }
 
-#if !defined(USE_MKLML_FOR_BLAS)
 
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
@@ -242,8 +239,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   is_packed = true;
   return Status::OK();
 }
-
-#endif
 
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {

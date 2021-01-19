@@ -41,7 +41,7 @@ cd $DIR
 
 # NOTE: If you're NOT building for the first time adding "--parallel" when invoking this script will parallelize build
 # requires python3.6 or higher
-python3 $DIR/tools/ci_build/build.py --arm --update --build --build_dir=build "$@"
+python3 $DIR/tools/ci_build/build.py --riscv --skip_submodule_sync --update --build --build_dir=build "$@"
 
 
 # Note that if you ever want to use the onnx_test_runner then you'll probably have to uncomment the below,

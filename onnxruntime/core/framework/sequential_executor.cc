@@ -303,13 +303,14 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 #ifdef ENABLE_NVTX_PROFILE
       profile::NvtxRangeCreator node_compute_range(
-          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Blue);
+          MakeString(node.OpType(), ".", node.Index(), "(", node.Name(), ")"), profile::Color::Yellow);
       node_compute_range.Begin();
 #endif
       ORT_TRY {
 #ifdef ENABLE_TRAINING
-        if (p_op_kernel->KernelDef().AllocateInputsContiguously())
-          utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context);
+        if (p_op_kernel->KernelDef().AllocateInputsContiguously()) {
+          ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
+        }
 #endif
 
         compute_status = p_op_kernel->Compute(&op_kernel_context);

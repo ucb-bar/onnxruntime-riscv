@@ -172,9 +172,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
         transformers.emplace_back(onnxruntime::make_unique<NchwcTransformer>());
       }
 
-#ifdef MLAS_SUPPORTS_GEMM_U8X8
       transformers.emplace_back(onnxruntime::make_unique<NhwcTransformer>());
-#endif
 #endif
     } break;
 

@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 
 import argparse
+import contextlib
 import glob
 import os
 import re
@@ -10,17 +11,22 @@ import shutil
 import subprocess
 import sys
 import hashlib
-from logger import get_logger
+import platform
 from amd_hipify import amd_hipify
-
+from distutils.version import LooseVersion
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
-sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
+sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
-from util import run  # noqa: E402
+from util import (  # noqa: E402
+    run,
+    is_windows, is_macOS, is_linux,
+    get_logger)
+
+import util.android as android  # noqa: E402
 
 
 log = get_logger("build")
@@ -53,10 +59,17 @@ def _check_python_version():
         raise BuildError(
             "Bad python major version: expecting python 3, found version "
             "'{}'".format(sys.version))
-    if sys.version_info[1] < 5:
+    if sys.version_info[1] < 6:
         raise BuildError(
-            "Bad python minor version: expecting python 3.5+, found version "
+            "Bad python minor version: expecting python 3.6+, found version "
             "'{}'".format(sys.version))
+
+
+def _str_to_bool(s):
+    """Convert string to bool (in argparse context)."""
+    if s.lower() not in ['true', 'false']:
+        raise ValueError('Need bool; got %r' % s)
+    return {'true': True, 'false': False}[s.lower()]
 
 
 _check_python_version()
@@ -151,13 +164,13 @@ def parse_arguments():
         "--enable_training_pipeline_e2e_tests", action="store_true",
         help="Enable the pipeline c++ e2e tests.")
     parser.add_argument(
-        "--use_horovod", action='store_true', help="Enable Horovod.")
-    parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
         "--mpi_home", help="Path to MPI installation dir")
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
+    parser.add_argument(
+        "--use_mpi", nargs='?', default=True, const=True, type=_str_to_bool)
 
     # enable ONNX tests
     parser.add_argument(
@@ -252,6 +265,10 @@ def parse_arguments():
         help="Create ARM64 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
+        "--riscv", action='store_true',
+        help="Build for RISCV. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed")
+    parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--android", action='store_true', help='Build for Android')
     parser.add_argument(
@@ -263,9 +280,8 @@ def parse_arguments():
     parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
     parser.add_argument("--android_cpp_shared", action="store_true",
                         help="Build with shared libc++ instead of the default static libc++.")
-    parser.add_argument("--test_binary_size", action="store_true",
-                        help="If enabled, build will fail when the built binary size is larger than the threshold. "
-                        "This only applies to Android Minimal build for now.")
+    parser.add_argument("--android_run_emulator", action="store_true",
+                        help="Start up an Android emulator if needed.")
 
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
@@ -285,7 +301,9 @@ def parse_arguments():
         "--use_xcode", action='store_true',
         help="Use Xcode as cmake generator, this is only supported on MacOS.")
     parser.add_argument(
-        "--osx_arch", default="arm64", choices=["arm64", "x86_64"],
+        "--osx_arch",
+        default="arm64" if platform.machine() == "arm64" else "x86_64",
+        choices=["arm64", "x86_64"],
         help="Specify the Target specific architectures for macOS and iOS, This is only supported on MacOS")
     parser.add_argument(
         "--apple_deploy_target", type=str,
@@ -305,12 +323,8 @@ def parse_arguments():
         "--use_vstest", action='store_true',
         help="Use use_vstest for running unitests.")
     parser.add_argument(
-        "--use_jemalloc", action='store_true', help="Use jemalloc.")
-    parser.add_argument(
         "--use_mimalloc", default=['none'],
         choices=['none', 'stl', 'arena', 'all'], help="Use mimalloc.")
-    parser.add_argument(
-        "--use_openblas", action='store_true', help="Build with OpenBLAS.")
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
@@ -320,8 +334,6 @@ def parse_arguments():
         "--dnnl_opencl_root", action='store', default='',
         help="Path to OpenCL SDK. "
         "e.g. --dnnl_opencl_root \"C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk\"")
-    parser.add_argument(
-        "--use_mklml", action='store_true', help="Build with MKLML.")
     parser.add_argument(
         "--use_featurizers", action='store_true',
         help="Build with ML Featurizer support.")
@@ -459,6 +471,11 @@ def parse_arguments():
 
     parser.add_argument("--use_rocm", action='store_true', help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
+
+    # Code coverage
+    parser.add_argument("--code_coverage", action='store_true',
+                        help="Generate code coverage when targetting Android (only).")
+
     return parser.parse_args()
 
 
@@ -469,18 +486,6 @@ def resolve_executable_path(command_or_path):
         raise BuildError("Failed to resolve executable path for "
                          "'{}'.".format(command_or_path))
     return os.path.realpath(executable_path)
-
-
-def is_windows():
-    return sys.platform.startswith("win")
-
-
-def is_macOS():
-    return sys.platform.startswith("darwin")
-
-
-def is_linux():
-    return sys.platform.startswith("linux")
 
 
 def get_linux_distro():
@@ -538,43 +543,6 @@ def is_docker():
     )
 
 
-def is_sudo():
-    return 'SUDO_UID' in os.environ.keys()
-
-
-def install_apt_package(package):
-    have = package in str(run_subprocess(
-        ["apt", "list", "--installed", package], capture_stdout=True).stdout)
-    if not have:
-        if is_sudo():
-            run_subprocess(['apt-get', 'install', '-y', package])
-        else:
-            raise BuildError(package + " APT package missing. Please re-run "
-                             "this script using sudo to install.")
-
-
-def install_ubuntu_deps(args):
-    """Check if the necessary Ubuntu dependencies are installed.
-    Not required on docker. Provide help output if missing."""
-
-    # check we need the packages first
-    if not (args.enable_pybind or args.use_openblas):
-        return
-
-    # not needed on docker as packages are pre-installed
-    if not is_docker():
-        try:
-            if args.enable_pybind:
-                install_apt_package("python3")
-
-            if args.use_openblas:
-                install_apt_package("libopenblas-dev")
-
-        except Exception as e:
-            raise BuildError("Error setting up required APT packages. "
-                             "{}".format(str(e)))
-
-
 def install_python_deps(numpy_version=""):
     dep_packages = ['setuptools', 'wheel', 'pytest']
     dep_packages.append('numpy=={}'.format(numpy_version) if numpy_version
@@ -598,7 +566,7 @@ def check_md5(filename, expected_md5):
     if not os.path.exists(filename):
         return False
     hash_md5 = hashlib.md5()
-    BLOCKSIZE = 1024*64
+    BLOCKSIZE = 1024 * 64
     with open(filename, "rb") as f:
         buf = f.read(BLOCKSIZE)
         while len(buf) > 0:
@@ -656,9 +624,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
-    # TODO: fix jemalloc build so it does not conflict with onnxruntime
-    # shared lib builds. (e.g. onnxuntime_pybind)
-    # for now, disable jemalloc if pybind is also enabled.
     cmake_args = [
         cmake_path, cmake_dir,
         "-DBUILD_SHARED_LIBS=OFF",
@@ -682,7 +647,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_FEATURIZERS=" + (
             "ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
-        "-Donnxruntime_USE_JEMALLOC=" + ("ON" if args.use_jemalloc else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or
             args.use_mimalloc == "all" else "OFF"),
@@ -696,18 +660,14 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
         "-Donnxruntime_BUILD_SHARED_LIB=" + (
             "ON" if args.build_shared_lib else "OFF"),
-        "-Donnxruntime_USE_EIGEN_FOR_BLAS=" + (
-            "OFF" if args.use_openblas else "ON"),
-        "-Donnxruntime_USE_OPENBLAS=" + ("ON" if args.use_openblas else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
         "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
-        "-Donnxruntime_USE_MKLML=" + ("ON" if args.use_mklml else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
         "-Donnxruntime_USE_OPENMP=" + (
             "ON" if args.use_openmp and not (
-                args.use_nnapi or (args.use_mklml and (is_macOS() or is_windows())) or
+                args.use_nnapi or
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
@@ -727,7 +687,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # ARM/ARM64 (no native compilation supported through this
         # script).
         "-Donnxruntime_CROSS_COMPILING=" + (
-            "ON" if args.arm64 or args.arm else "OFF"),
+            "ON" if args.arm64 or args.arm or args.riscv else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
@@ -767,14 +727,18 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + (
             "ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_HOROVOD=" + (
-            "ON" if args.use_horovod else "OFF"),
+        # Enable advanced computations such as AVX for some traininig related ops.
+        "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
+            "ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + (
             "OFF" if args.disable_nccl else "ON"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + (
             "ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
+        "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
+        "-Donnxruntime_USE_MPI=" + (
+            "ON" if args.use_mpi else "OFF"),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -790,7 +754,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_ARMNN_LIBS=" + armnn_libs]
 
     if mpi_home and os.path.exists(mpi_home):
-        cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
+        if args.use_mpi:
+            cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
+        else:
+            log.warning("mpi_home is supplied but use_mpi is set to false."
+                        " Build will continue without linking MPI libraries.")
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
@@ -819,11 +787,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_BINARY=" + (
                            "ON" if args.use_openvino else "OFF")]
-    # temp turn on only for linux gpu build
-    if not is_windows():
-        if args.use_cuda:
-            cmake_args += [
-                "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     # TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
@@ -858,6 +821,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
+    if is_macOS() and not args.android:
+        cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
+        # since cmake 3.19, it uses the xcode latest buildsystem, which is not supported by this project.
+        cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
+        if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
+            cmake_args += ["-T", "buildsystem=1"]
+
     if args.ios:
         if is_macOS():
             needed_args = [
@@ -883,7 +853,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_SYSTEM_NAME=iOS",
                 "-Donnxruntime_BUILD_SHARED_LIB=ON",
                 "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
-                "-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch,
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
@@ -1173,55 +1142,65 @@ def setup_rocm_build(args, configs):
     return rocm_home or ''
 
 
-def adb_push(src, dest, **kwargs):
-    return run_subprocess(['adb', 'push', src, dest], **kwargs)
-
-
-def adb_shell(*args, **kwargs):
-    return run_subprocess(['adb', 'shell', *args], **kwargs)
-
-
 def run_android_tests(args, source_dir, config, cwd):
-    if args.android_abi == 'x86_64':
-        run_subprocess([os.path.join(
-            source_dir, 'tools', 'ci_build', 'github', 'android',
-            'start_android_emulator.sh')])
-        adb_push('testdata', '/data/local/tmp/', cwd=cwd)
-        adb_push(
-            os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
-            '/data/local/tmp/', cwd=cwd)
-        adb_push('onnxruntime_test_all', '/data/local/tmp/', cwd=cwd)
-        adb_push('onnx_test_runner', '/data/local/tmp/', cwd=cwd)
-        adb_shell('cd /data/local/tmp && /data/local/tmp/onnxruntime_test_all')
-        if args.use_nnapi:
-            adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner -e nnapi /data/local/tmp/test')
-        else:
-            adb_shell('cd /data/local/tmp && /data/local/tmp/onnx_test_runner /data/local/tmp/test')
-        # run shared_lib_test if necessary
-        if args.build_shared_lib:
-            adb_push('libonnxruntime.so', '/data/local/tmp/', cwd=cwd)
-            adb_push('onnxruntime_shared_lib_test', '/data/local/tmp/', cwd=cwd)
+    sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
+    device_dir = '/data/local/tmp'
+
+    def adb_push(src, dest, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, 'push', src, dest], **kwargs)
+
+    def adb_shell(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, 'shell', *args], **kwargs)
+
+    def run_adb_shell(cmd):
+        # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
+        # GCOV_PREFIX specifies the root directory
+        # for creating the runtime code coverage files.
+        if args.code_coverage:
             adb_shell(
-                'cd /data/local/tmp && ' +
-                'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/data/local/tmp && ' +
-                '/data/local/tmp/onnxruntime_shared_lib_test')
-    elif args.android_abi == 'arm64-v8a':
-        # For Android arm64 abi we are only verify the size of the binary generated by minimal build config
-        # Will fail the build if the shared_lib size is larger than the threshold
-        if args.minimal_build and config == 'MinSizeRel' and args.build_shared_lib and args.test_binary_size:
-            # set current size limit to 1165KB which is 110K large than 1.5.2 release.
-            bin_size_threshold = 1165000
-            bin_actual_size = os.path.getsize(os.path.join(cwd, 'libonnxruntime.so'))
-            log.info('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) + 'B]')
-            # Write the binary size to a file for uploading later
-            with open(os.path.join(cwd, 'binary_size_data.txt'), 'w') as file:
-                file.writelines([
-                    'os,arch,build_config,size\n',
-                    'android,arm64-v8a,minimal-baseline,' + str(bin_actual_size) + '\n'
-                ])
-            if bin_actual_size > bin_size_threshold:
-                raise BuildError('Android arm64 minsizerel libonnxruntime.so size [' + str(bin_actual_size) +
-                                 'B] is bigger than threshold [' + str(bin_size_threshold) + 'B]')
+                'cd {0} && GCOV_PREFIX={0} GCOV_PREFIX_STRIP={1} {2}'.format(
+                    device_dir, cwd.count(os.sep) + 1, cmd))
+        else:
+            adb_shell('cd {} && {}'.format(device_dir, cmd))
+
+    if args.android_abi == 'x86_64':
+        with contextlib.ExitStack() as context_stack:
+            if args.android_run_emulator:
+                avd_name = "ort_android"
+                system_image = "system-images;android-{};google_apis;{}".format(
+                    args.android_api, args.android_abi)
+
+                android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
+                emulator_proc = context_stack.enter_context(
+                    android.start_emulator(
+                        sdk_tool_paths=sdk_tool_paths,
+                        avd_name=avd_name,
+                        extra_args=[
+                            "-partition-size", "2047",
+                            "-wipe-data"]))
+                context_stack.callback(android.stop_emulator, emulator_proc)
+
+            adb_push('testdata', device_dir, cwd=cwd)
+            adb_push(
+                os.path.join(source_dir, 'cmake', 'external', 'onnx', 'onnx', 'backend', 'test'),
+                device_dir, cwd=cwd)
+            adb_push('onnxruntime_test_all', device_dir, cwd=cwd)
+            adb_shell('chmod +x {}/onnxruntime_test_all'.format(device_dir))
+            adb_push('onnx_test_runner', device_dir, cwd=cwd)
+            adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
+            run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+            if args.use_nnapi:
+                adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
+            else:
+                adb_shell('cd {0} && {0}/onnx_test_runner {0}/test'.format(device_dir))
+            # run shared_lib_test if necessary
+            if args.build_shared_lib:
+                adb_push('libonnxruntime.so', device_dir, cwd=cwd)
+                adb_push('onnxruntime_shared_lib_test', device_dir, cwd=cwd)
+                adb_shell('chmod +x {}/onnxruntime_shared_lib_test'.format(device_dir))
+                run_adb_shell(
+                    'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} && {0}/onnxruntime_shared_lib_test'.format(
+                        device_dir))
 
 
 def run_ios_tests(args, source_dir, config, cwd):
@@ -1282,6 +1261,11 @@ def run_training_python_frontend_tests(cwd):
     # run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_frontend.py'], cwd=cwd)
 
     run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_bert_toy_onnx.py'], cwd=cwd)
+
+    run_subprocess([sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_checkpoint_storage.py'], cwd=cwd)
+
+    run_subprocess([
+        sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_orttrainer_checkpoint_functions.py'], cwd=cwd)
 
 
 def run_training_python_frontend_e2e_tests(cwd):
@@ -1401,6 +1385,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
+        cwd = os.path.abspath(cwd)
 
         # TODO: temporarily disable this test to restore pipeline health. This test fails due to
         # an OOM regression. Invetigation undergoing.
@@ -1426,8 +1411,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 build_dir, config, "external", "tvm", config))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
-        if args.use_mklml:
-            dll_path_list.append(os.path.join(build_dir, config, "mklml", "src", "project_mklml", "lib"))
 
         dll_path = None
         if len(dll_path_list) > 0:
@@ -1466,7 +1449,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run
-            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build:
+            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build != 'off':
                 return
 
             if is_windows():
@@ -1622,7 +1605,7 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_mklml):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1645,8 +1628,6 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
     elif use_cuda:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
-    elif use_mklml:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.MKLML\""
     else:
         pass
 
@@ -1711,8 +1692,77 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
+def is_cross_compiling_on_apple(args):
+    if not is_macOS():
+        return False
+    if args.ios:
+        return True
+    if args.osx_arch != platform.machine():
+        return True
+    return False
+
+def prebuilt_protoc_from_host(cmake_path, source_dir, build_dir, args):
     return str(os.path.realpath("build/protoc/bin/protoc"))
+
+def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
+    if (args.arm or args.arm64 or args.enable_windows_store) and \
+            not (is_windows() or is_cross_compiling_on_apple(args)):
+        raise BuildError(
+            'Currently only support building protoc for Windows host while '
+            'cross-compiling for ARM/ARM64/Store and linux cross-compiling iOS')
+
+    log.info(
+        "Building protoc for host to be used in cross-compiled build process")
+    protoc_build_dir = os.path.join(os.getcwd(), build_dir, 'host_protoc')
+    os.makedirs(protoc_build_dir, exist_ok=True)
+    # Generate step
+    cmd_args = [
+        cmake_path,
+        os.path.join(source_dir, 'cmake', 'external', 'protobuf', 'cmake'),
+        '-Dprotobuf_BUILD_TESTS=OFF',
+        '-Dprotobuf_WITH_ZLIB_DEFAULT=OFF',
+        '-Dprotobuf_BUILD_SHARED_LIBS=OFF'
+    ]
+
+    is_ninja = args.cmake_generator == 'Ninja'
+    if args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
+        cmd_args += ['-G', args.cmake_generator]
+    if is_windows():
+        if not is_ninja:
+            cmd_args += ['-T', 'host=x64']
+    elif is_macOS():
+        if args.use_xcode:
+            cmd_args += ['-G', 'Xcode']
+            # CMake < 3.18 has a bug setting system arch to arm64 (if not specified) for Xcode 12,
+            # protoc for host should be built using host architecture
+            # Explicitly specify the CMAKE_OSX_ARCHITECTURES for x86_64 Mac.
+            cmd_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format(
+                'arm64' if platform.machine() == 'arm64' else 'x86_64')]
+
+    run_subprocess(cmd_args, cwd=protoc_build_dir)
+    # Build step
+    cmd_args = [cmake_path,
+                "--build", protoc_build_dir,
+                "--config", "Release",
+                "--target", "protoc"]
+    run_subprocess(cmd_args)
+
+    # Absolute protoc path is needed for cmake
+    config_dir = ''
+    suffix = ''
+
+    if (is_windows() and not is_ninja) or (is_macOS() and args.use_xcode):
+        config_dir = 'Release'
+
+    if is_windows():
+        suffix = '.exe'
+
+    expected_protoc_path = os.path.join(protoc_build_dir, config_dir, 'protoc' + suffix)
+
+    if not os.path.exists(expected_protoc_path):
+        raise BuildError("Couldn't find {}. Host build of protoc failed.".format(expected_protoc_path))
+
+    return expected_protoc_path
 
 
 def generate_documentation(source_dir, build_dir, configs):
@@ -1767,7 +1817,7 @@ def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
-    cross_compiling = args.arm or args.arm64 or args.android
+    cross_compiling = args.arm or args.arm64 or args.android or args.riscv
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
@@ -1815,6 +1865,9 @@ def main():
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
 
+    if args.code_coverage and not args.android:
+        raise BuildError("Using --code_coverage requires --android")
+
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
     if args.use_openvino == "VAD-F_FP32":
@@ -1856,7 +1909,98 @@ def main():
     log.info("Build started")
     if args.update:
         cmake_extra_args = []
-        path_to_protoc_exe = build_protoc_for_host(cmake_path, source_dir, build_dir, args)
+        path_to_protoc_exe = args.path_to_protoc_exe
+        if not args.skip_submodule_sync:
+            update_submodules(source_dir)
+        if is_windows():
+            if args.cmake_generator == 'Ninja':
+                if args.x86 or args.arm or args.arm64:
+                    raise BuildError(
+                        "To cross-compile with Ninja, load the toolset "
+                        "environment for the target processor (e.g. Cross "
+                        "Tools Command Prompt for VS)")
+                cmake_extra_args = ['-G', args.cmake_generator]
+            elif args.x86:
+                cmake_extra_args = [
+                    '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
+                ]
+            elif args.arm or args.arm64:
+                # Cross-compiling for ARM(64) architecture
+                # First build protoc for host to use during cross-compilation
+                if path_to_protoc_exe is None:
+                    path_to_protoc_exe = build_protoc_for_host(
+                        cmake_path, source_dir, build_dir, args)
+                if args.arm:
+                    cmake_extra_args = ['-A', 'ARM']
+                else:
+                    cmake_extra_args = ['-A', 'ARM64']
+                cmake_extra_args += ['-G', args.cmake_generator]
+                # Cannot test on host build machine for cross-compiled
+                # builds (Override any user-defined behaviour for test if any)
+                if args.test:
+                    log.warning(
+                        "Cannot test on host build machine for cross-compiled "
+                        "ARM(64) builds. Will skip test running after build.")
+                    args.test = False
+            else:
+                if (args.msvc_toolset == '14.16' and
+                        args.cmake_generator == 'Visual Studio 16 2019'):
+                    # CUDA 10.0 requires _MSC_VER >= 1700 and
+                    # _MSC_VER < 1920, aka Visual Studio version
+                    # in [2012, 2019). In VS2019, we have to use
+                    # Side-by-side minor version MSVC toolsets from
+                    # Visual Studio 2017 14.16 is MSVC version
+                    # 141 is MSVC Toolset Version
+                    # Cuda VS extension should be installed to
+                    # C:\Program Files (x86)\Microsoft Visual
+                    # Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations  # noqa
+                    toolset = 'v141,host=x64,version=' + args.msvc_toolset
+                elif args.msvc_toolset:
+                    toolset = 'host=x64,version=' + args.msvc_toolset
+                else:
+                    toolset = 'host=x64'
+                if args.cuda_version:
+                    toolset += ',cuda=' + args.cuda_version
+                cmake_extra_args = [
+                    '-A', 'x64', '-T', toolset, '-G', args.cmake_generator
+                ]
+            if args.enable_windows_store:
+                cmake_extra_args.append(
+                    '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(
+                        source_dir, 'cmake', 'store_toolchain.cmake'))
+            if args.enable_wcos:
+                cmake_extra_args.append('-DCMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
+        elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
+            cmake_extra_args += ['-G', args.cmake_generator]
+        elif is_macOS():
+            if args.use_xcode:
+                cmake_extra_args += ['-G', 'Xcode']
+            if not args.ios and not args.android and \
+                    args.osx_arch == 'arm64' and platform.machine() == 'x86_64':
+                if args.test:
+                    log.warning(
+                        "Cannot test ARM64 build on X86_64. Will skip test running after build.")
+                    args.test = False
+
+        if (args.android or args.ios or args.enable_windows_store
+                or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
+            # Cross-compiling for Android and iOS
+            path_to_protoc_exe = build_protoc_for_host(
+                cmake_path, source_dir, build_dir, args)
+
+        if args.riscv:
+            path_to_protoc_exe = prebuilt_protoc_from_host(cmake_path, source_dir, build_dir, args)
+        elif is_ubuntu_1604():
+            if (args.arm or args.arm64):
+                raise BuildError(
+                    "Only Windows ARM(64) cross-compiled builds supported "
+                    "currently through this script")
+            if not is_docker() and not args.use_acl and not args.use_armnn:
+                install_python_deps()
+        if args.enable_pybind and is_windows():
+            install_python_deps(args.numpy_version)
+        if args.enable_onnx_tests:
+            setup_test_data(build_dir, configs)
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -1889,10 +2033,6 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
-            wheel_name_suffix = args.wheel_name_suffix
-            if not args.use_openmp and wheel_name_suffix is None:
-                wheel_name_suffix = 'noopenmp'
-
             build_python_wheel(
                 source_dir,
                 build_dir,
@@ -1906,7 +2046,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
-                wheel_name_suffix,
+                args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
                 featurizers_build=args.use_featurizers,
@@ -1920,8 +2060,7 @@ def main():
                 args.use_cuda,
                 args.use_openvino,
                 args.use_tensorrt,
-                args.use_dnnl,
-                args.use_mklml
+                args.use_dnnl
             )
 
     if args.test and args.build_nuget:

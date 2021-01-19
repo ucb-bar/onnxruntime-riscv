@@ -131,23 +131,26 @@ class FusionAttention(Fusion):
         weight = helper.make_tensor(name=attention_node_name + '_qkv_weight',
                                     data_type=TensorProto.FLOAT,
                                     dims=[self.hidden_size, 3 * self.hidden_size],
-                                    vals=bytes(qkv_weight.flatten()),
-                                    raw=True)
+                                    vals=qkv_weight.flatten().tolist())
+        # Sometimes weights and bias are stored in fp16
+        if q_weight.data_type == 10:
+            weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
         self.model.add_initializer(weight)
 
         bias = helper.make_tensor(name=attention_node_name + '_qkv_bias',
                                   data_type=TensorProto.FLOAT,
                                   dims=[3 * self.hidden_size],
-                                  vals=bytes(qkv_bias.flatten()),
-                                  raw=True)
+                                  vals=qkv_bias.flatten().tolist())
+        if q_bias.data_type == 10:
+            bias.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias)
 
-        attnetion_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
+        attention_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
         if mask_index is not None:
-            attnetion_inputs.append(mask_index)
+            attention_inputs.append(mask_index)
 
         attention_node = helper.make_node('Attention',
-                                          inputs=attnetion_inputs,
+                                          inputs=attention_inputs,
                                           outputs=[output],
                                           name=attention_node_name)
         attention_node.domain = "com.microsoft"
@@ -174,8 +177,7 @@ class FusionAttention(Fusion):
             (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             # Match Albert
-            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'],
-                                                     [1, 0, 0, 0])
+            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'], [1, 0, 0, 0])
             if qkv_nodes is not None:
                 (_, einsum_node, transpose_qkv, matmul_qkv) = qkv_nodes
             else:
@@ -293,12 +295,13 @@ class FusionAttention(Fusion):
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
                 new_edge = "edge_modified_" + unique_index
-                shape_tensor = helper.make_tensor(
-                    name="shape_modified_tensor" + unique_index,
-                    data_type=TensorProto.INT64,
-                    dims=[4],
-                    vals=np.int64([0, 0, self.num_heads, int(self.hidden_size / self.num_heads)]).tobytes(),
-                    raw=True)
+                shape_tensor = helper.make_tensor(name="shape_modified_tensor" + unique_index,
+                                                  data_type=TensorProto.INT64,
+                                                  dims=[4],
+                                                  vals=np.int64(
+                                                      [0, 0, self.num_heads,
+                                                       int(self.hidden_size / self.num_heads)]).tobytes(),
+                                                  raw=True)
                 self.model.add_initializer(shape_tensor)
                 self.model.add_node(
                     helper.make_node("Reshape", [attention_last_node.output[0], shape_tensor.name], [new_edge],
