@@ -12,7 +12,15 @@
 #include <limits.h>
 #include <stdbool.h>
 
-#include "systolic_params.h"
+#if defined(SYSTOLIC_FP32) &&  defined(SYSTOLIC_INT8)
+#error Currently do not support both fp and int8 at same time
+#elif defined(SYSTOLIC_FP32)
+#include "systolic_params_fp32.h"
+#elif defined(SYSTOLIC_INT8)
+#include "systolic_params_int8.h"
+#else
+#error At least one of fp or int8 must be enabled
+#endif
 
 #define GEMMINI_ASSERTIONS
 
@@ -1017,14 +1025,14 @@ void sp_tiled_conv(
   const int icols_unpadded = icols - lpad - rpad;
   const int ichs = kchs;
 
-  int icols_per_systolic_row = ichs > DIM ? 1 : DIM / ichs;
-  if (kcols < icols_per_systolic_row) {
-    icols_per_systolic_row = kcols;
-  }
-  if (lpad != 0 || rpad != 0 || upad != 0 || dpad != 0) {
-    icols_per_systolic_row = 1;
-  }
-  icols_per_systolic_row = 1;  // TODO
+  // int icols_per_systolic_row = ichs > DIM ? 1 : DIM / ichs;
+  // if (kcols < icols_per_systolic_row) {
+  //   icols_per_systolic_row = kcols;
+  // }
+  // if (lpad != 0 || rpad != 0 || upad != 0 || dpad != 0) {
+  //   icols_per_systolic_row = 1;
+  // }
+  int icols_per_systolic_row = 1;  // TODO
   // printf("  icols_per_systolic_row %d\n\n", icols_per_systolic_row);
 
   // Calculate spad address offsets
