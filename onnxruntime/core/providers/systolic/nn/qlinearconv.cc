@@ -624,6 +624,8 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
       // Unlike the PyTorch implementation we cannot do bias at the end of the groups in a single multiplication
       // (Since the output from systolic is already quantized to int8 by that point)
+      // Also note that the quantizer produces bias as ("Original FP bias" / (Input_Scale * Weight_Scale))
+      // So that when we multiply by the real_multiplier things are as expected
       if (Bdata) {
         int dimI = static_cast<int>(M / conv_attrs_.group);
         int dimJ = static_cast<int>(output_image_size);

@@ -36,6 +36,13 @@ inline tiled_matmul_type_t get_accelerator_mode(int mode) {
 
 /* Internal -- no need to touch */
 
+/**
+ * Wrapper function around tiled_matmul_auto that provides a BLAS like interface
+ * C := alpha*op( A )op( B ) + beta*D
+ * Note that like blas, dim_I dim_J and dim_K are after the transpose is applied
+ * 
+ * No output scale is applied, so this is best used with floating point types
+ */
 void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                      size_t strideA,
                      size_t strideB,
@@ -56,6 +63,9 @@ void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                     tiled_matmul_type);
 }
 
+/**
+ * Wrapper function around above tiled_gemm_auto that assumes full stride (equal to matrix width)
+ */
 void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                      const elem_t* A, const elem_t* B,
                      const acc_t* D, elem_t* C,
@@ -70,6 +80,10 @@ void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                   transA, transB, tiled_matmul_type);
 }
 
+/**
+ * Wrapper function around tiled_matmul_auto that provides a simple interface to
+ * call for matrix/matrix multiplication C = scale*(A*B + D)
+ */
 void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                        size_t strideA,
                        size_t strideB,
@@ -90,6 +104,9 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                     tiled_matmul_type);
 }
 
+/**
+ * Wrapper function around above that assumes stride is full matrix width
+ */
 void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                        const elem_t* A, const elem_t* B,
                        const acc_t* D, elem_t* C,
@@ -103,6 +120,10 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
 
 /* End internal */
 
+/**
+ * An interface similar to Gemmlowp's matrix multiply
+ * Does real_multiplier*(in1 * in2 + bias)
+ */
 void SystolicMultiply(char accelerator_mode, bool relu, int dimI, int dimJ, int dimK,
                       const elem_t* in1, const elem_t* in2, elem_t* out, acc_scale_t real_multiplier, const acc_t* bias) {
 #ifndef FOR_FIRESIM
@@ -115,17 +136,22 @@ void SystolicMultiply(char accelerator_mode, bool relu, int dimI, int dimJ, int 
                     get_accelerator_mode(accelerator_mode));
 }
 
+#ifdef SYSTOLIC_FP32
+/**
+ * Provides an interface similar to BLAS matrix multiply
+ * C = alpha*A*B + beta*C
+ */
 void SystolicGemm(char accelerator_mode,
                   bool TransA,
                   bool TransB,
                   size_t M,
                   size_t N,
                   size_t K,
-                  float alpha,
-                  const float* A,
-                  const float* B,
-                  float beta,
-                  float* C) {
+                  scale_t alpha,
+                  const elem_t* A,
+                  const elem_t* B,
+                  acc_scale_t beta,
+                  elem_t* C) {
 #ifndef FOR_FIRESIM
   printf("Called into systolic gemm!\n");
   printf("Using accelerated gemm with dimensions (%zd, %zd, %zd)\n", M, N, K);
@@ -134,7 +160,11 @@ void SystolicGemm(char accelerator_mode,
                   alpha, beta, /* repeating_bias= */ 0,
                   TransA, TransB, get_accelerator_mode(accelerator_mode));
 }
+#endif
 
+/**
+ * Provides a matrix multiply that allows specifying strides
+ */
 void SystolicMultiply(char accelerator_mode, bool relu,
                       int dimI, int dimJ, int dimK,
                       const elem_t* in1, int strideIn1,
@@ -154,13 +184,16 @@ void SystolicMultiply(char accelerator_mode, bool relu,
                     get_accelerator_mode(accelerator_mode));
 }
 
+/**
+ * Adds two matrices elementwise
+ */
 void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const elem_t* A, float A_scale, const elem_t* B,
                  float B_scale,
                  elem_t* C, float C_scale, int dim) {
 #ifndef FOR_FIRESIM
   printf("Called into systolic add\n");
 #endif
-  // To most efficiently use systolic, instead of using 1xdim, use 16xResizedDim.
+  // To most efficiently use systolic, instead of using 1xdim, we use 16xResizedDim.
   // Systolic can load multiple blocks in a given row
 
   // Note that it's more accurate to use A_scale/C_scale and B_scale/C_scale as the A, B scales (with C_scale = 1)
@@ -189,6 +222,9 @@ void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const
   }
 }
 
+/**
+ * Convolution of two matrices. Input must be in NHWC format, weight must be in HWIO format
+ */
 void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_channels,
                   int out_channels, int out_dim,
                   int stride, int padding, int kernel_dim,
