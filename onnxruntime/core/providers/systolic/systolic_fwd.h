@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "core/framework/op_kernel.h"
+
 namespace onnxruntime {
 namespace systolic {
 template <typename T>

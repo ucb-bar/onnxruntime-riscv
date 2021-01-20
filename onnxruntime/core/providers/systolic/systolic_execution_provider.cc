@@ -7,6 +7,10 @@
 #include "systolic_fwd.h"
 #include "core/framework/compute_capability.h"
 
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/systolic/systolic_training_kernels.h"
+#endif
+
 #include "fusion/fusion_ops.h"
 
 namespace onnxruntime {
@@ -59,6 +63,11 @@ static Status RegisterSystolicKernels(KernelRegistry& kernel_registry) {
     ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
 
+  #ifdef ENABLE_TRAINING
+    ORT_RETURN_IF_ERROR(::onnxruntime::systolic::RegisterSystolicTrainingKernels(kernel_registry));
+  #endif
+
+
   return Status::OK();
 }
 
@@ -85,7 +94,7 @@ std::shared_ptr<KernelRegistry> SystolicExecutionProvider::GetKernelRegistry() c
   //throw if the registry failed to initialize
   ORT_THROW_IF_ERROR(k.st);
   return k.kernel_registry;
-}
+} 
 
 std::unique_ptr<IDataTransfer> SystolicExecutionProvider::GetDataTransfer() const {
   return onnxruntime::make_unique<CPUDataTransfer>();

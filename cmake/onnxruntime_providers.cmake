@@ -859,13 +859,26 @@ if (onnxruntime_USE_SYSTOLIC)
     "${ONNXRUNTIME_ROOT}/core/providers/systolic/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/systolic/*.cc"
   )
-
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_systolic_cc_srcs})
-  add_library(onnxruntime_providers_systolic ${onnxruntime_providers_systolic_cc_srcs})
+  set(onnxruntime_providers_systolic_all_src ${onnxruntime_providers_systolic_cc_srcs})
+
+  if (onnxruntime_ENABLE_TRAINING)
+    file(GLOB_RECURSE onnxruntime_providers_systolic_training_cc_srcs
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/systolic/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/training_ops/systolic/*.cc"
+    )
+    source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_providers_systolic_training_cc_srcs})
+    list(APPEND onnxruntime_providers_systolic_all_src ${onnxruntime_providers_systolic_training_cc_srcs})
+  endif()
+
+  add_library(onnxruntime_providers_systolic ${onnxruntime_providers_systolic_all_src})
   onnxruntime_add_include_to_target(onnxruntime_providers_systolic onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf safeint_interface flatbuffers)
   add_dependencies(onnxruntime_providers_systolic ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_systolic PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_systolic PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+  if (onnxruntime_ENABLE_TRAINING)
+    target_include_directories(onnxruntime_providers_systolic PRIVATE ${ORTTRAINING_ROOT})
+  endif()
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/systolic  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_systolic PROPERTIES LINKER_LANGUAGE CXX)
 endif()
