@@ -27,5 +27,5 @@ Status RegisterSystolicTrainingKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-}  // namespace cuda
+}  // namespace systolic
 }  // namespace onnxruntime

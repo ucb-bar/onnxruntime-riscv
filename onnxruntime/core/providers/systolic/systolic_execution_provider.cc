@@ -11,6 +11,10 @@
 #include "orttraining/training_ops/systolic/systolic_training_kernels.h"
 #endif
 
+#ifndef DISABLE_CONTRIB_OPS
+#include "contrib_ops/systolic/systolic_contrib_kernels.h"
+#endif
+
 #include "fusion/fusion_ops.h"
 
 namespace onnxruntime {
@@ -23,13 +27,7 @@ namespace systolic {
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearMatMul);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv_nhwc);
-
-#ifndef DISABLE_CONTRIB_OPS
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, float, QAttention);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, int8_t, QLinearAdd);
-#endif // contrib ops
-
-#endif // int8
+#endif
 
 #ifdef SYSTOLIC_FP32
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, 8, float, MatMul);
@@ -45,11 +43,7 @@ static Status RegisterSystolicKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearMatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 10, int8_t, QLinearConv_nhwc)>, 
-#ifndef DISABLE_CONTRIB_OPS
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, float, QAttention)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kMSDomain, 1, int8_t, QLinearAdd)>,
-#endif // int8
-#endif //contrib ops
+#endif
 #ifdef SYSTOLIC_FP32
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 1, 8, float, MatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, float, MatMul)>,
@@ -63,6 +57,9 @@ static Status RegisterSystolicKernels(KernelRegistry& kernel_registry) {
     ORT_RETURN_IF_ERROR(kernel_registry.Register(function_table_entry()));
   }
 
+  #ifndef DISABLE_CONTRIB_OPS
+    ORT_RETURN_IF_ERROR(::onnxruntime::systolic::RegisterSystolicContribKernels(kernel_registry));
+  #endif
   #ifdef ENABLE_TRAINING
     ORT_RETURN_IF_ERROR(::onnxruntime::systolic::RegisterSystolicTrainingKernels(kernel_registry));
   #endif

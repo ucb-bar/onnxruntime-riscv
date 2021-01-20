@@ -855,7 +855,7 @@ endif()
 
 # Reference https://github.com/microsoft/onnxruntime/commit/358b517d49af60890bb1901f2d621d0943ad70f5#diff-59b1f660e7a801f54f1415df9dec89ab
 if (onnxruntime_USE_SYSTOLIC)
-  file(GLOB_RECURSE onnxruntime_providers_systolic_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_systolic_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/systolic/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/systolic/*.cc"
   )
@@ -863,12 +863,21 @@ if (onnxruntime_USE_SYSTOLIC)
   set(onnxruntime_providers_systolic_all_src ${onnxruntime_providers_systolic_cc_srcs})
 
   if (onnxruntime_ENABLE_TRAINING)
-    file(GLOB_RECURSE onnxruntime_providers_systolic_training_cc_srcs
+    file(GLOB_RECURSE onnxruntime_providers_systolic_training_cc_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/systolic/*.h"
       "${ORTTRAINING_SOURCE_DIR}/training_ops/systolic/*.cc"
     )
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${onnxruntime_providers_systolic_training_cc_srcs})
     list(APPEND onnxruntime_providers_systolic_all_src ${onnxruntime_providers_systolic_training_cc_srcs})
+  endif()
+
+  if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    file(GLOB_RECURSE onnxruntime_providers_systolic_contrib_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/contrib_ops/systolic/*.h"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/systolic/*.cc"
+    )
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_systolic_contrib_cc_srcs})
+    list(APPEND onnxruntime_providers_systolic_all_src ${onnxruntime_providers_systolic_contrib_cc_srcs})
   endif()
 
   add_library(onnxruntime_providers_systolic ${onnxruntime_providers_systolic_all_src})
