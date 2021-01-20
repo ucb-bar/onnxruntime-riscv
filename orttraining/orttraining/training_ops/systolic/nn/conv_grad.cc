@@ -25,13 +25,15 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/common/safeint.h"
 
+#ifdef SYSTOLIC_FP32
+
 namespace onnxruntime {
 namespace systolic {
 
 template <typename T>
 Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   printf("IN SYSTOLIC CONVGRAD\n");
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  char acc_mode = static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode();
 
   const Tensor* dY = context->Input<Tensor>(0);
   const Tensor* X = context->Input<Tensor>(1);
@@ -138,18 +140,16 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
             col_buffer_data);
       }
       // Gradient with respect to W, filter.
-      math::Gemm<T>(
-          CblasNoTrans,
-          CblasTrans,
-          M / conv_attrs_.group,
-          kernel_dim,
-          output_image_size,
-          1,
-          dYdata + group_id * Y_offset,
-          col_buffer_data,
-          1,
-          dWdata + group_id * W_offset,
-          tp);
+
+      SystolicGemm(acc_mode, /*transA=*/false, /*transB= */ true,
+                   M / conv_attrs_.group,
+                   kernel_dim,
+                   output_image_size,
+                   1,
+                   dYdata + group_id * Y_offset,
+                   col_buffer_data,
+                   1,
+                   dWdata + group_id * W_offset);
     }
     if (dB) {
       // Gradient with respect to bias can be computed independent from group.
@@ -175,18 +175,15 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
     for (int image_id = 0; image_id < N; ++image_id) {
       for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
         // Compute gradient into col_buffer.
-        math::Gemm<T>(
-            CblasTrans,
-            CblasNoTrans,
-            kernel_dim,
-            output_image_size,
-            M / conv_attrs_.group,
-            1,
-            Wdata + group_id * W_offset,
-            dYdata,
-            0,
-            col_buffer_data,
-            tp);
+        SystolicGemm(acc_mode, /*transA= */ true, /*transB= */ false,
+                     kernel_dim,
+                     output_image_size,
+                     M / conv_attrs_.group,
+                     1,
+                     Wdata + group_id * W_offset,
+                     dYdata,
+                     0,
+                     col_buffer_data);
 
         if (Is2DKernel) {
           math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(
@@ -239,3 +236,5 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace systolic
 }  // namespace onnxruntime
+
+#endif

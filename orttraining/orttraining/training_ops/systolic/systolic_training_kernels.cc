@@ -9,11 +9,15 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace systolic {
 
+#ifdef SYSTOLIC_FP32
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, ConvGrad);
+#endif
 
 Status RegisterSystolicTrainingKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
+#ifdef SYSTOLIC_FP32
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, ConvGrad)>,
+#endif
   };
 
   for (auto& function_table_entry : function_table) {

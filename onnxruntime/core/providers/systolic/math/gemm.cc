@@ -49,117 +49,6 @@ static void GemmBroadcastBias(int64_t M, int64_t N, float beta,
   }
 }
 
-template <typename T>
-void ReferenceGemm(
-    bool TransA,
-    bool TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const T* A,
-    size_t lda,
-    const T* B,
-    size_t ldb,
-    float beta,
-    T* C,
-    size_t ldc) {
-  if (!TransA) {
-    if (!TransB) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + (m * lda);
-          const T* b = B + n;
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += ldb;
-            a += 1;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + (m * lda);
-          const T* b = B + (n * ldb);
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += 1;
-            a += 1;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-    }
-
-  } else {
-    if (!TransB) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + m;
-          const T* b = B + n;
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += ldb;
-            a += lda;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + m;
-          const T* b = B + (n * ldb);
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += 1;
-            a += lda;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-    }
-  }
-}
-
-
-template <typename T>
-void ReferenceGemm(
-    bool TransA,
-    bool TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const T* A,
-    const T* B,
-    float beta,
-    T* C) {
-  int lda = TransA ? M : K;
-  int ldb = TransB ? K : N;
-  ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N);
-}
-
 template <>
 Status Gemm<float>::Compute(OpKernelContext* context) const {
   const auto* A = context->Input<Tensor>(0);
@@ -205,17 +94,9 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   // PrintMatrix(M, N, y_data);
 
   char acc_mode = static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode();
-  if (acc_mode == 0 && (trans_A_ || trans_B_)) {
-#ifndef FOR_FIRESIM
-    printf("DOING SYSTOLIC GEMM ON CPU\n");
-#endif
-    ReferenceGemm(trans_A_, trans_B_, M, N, K,
+  SystolicGemm(acc_mode,
+                trans_A_, trans_B_, M, N, K,
                 alpha_, A->Data<float>(), B->Data<float>(), c_data != nullptr ? beta_ : 0, y_data);
-  } else {
-    SystolicGemm(acc_mode,
-                 trans_A_, trans_B_, M, N, K,
-                 alpha_, A->Data<float>(), B->Data<float>(), c_data != nullptr ? beta_ : 0, y_data);
-  }
 
   // printf("Out matrix\n");
   // PrintMatrix(M, N, y_data);
