@@ -1,4 +1,4 @@
-# ort_test
+# Imagenet Runner
 
 Runs imagenet models. Example invocation that runs a given model (`-m`) on an input image (`-i`) with caffe style image processing (`-p`) on CPU only (`-x`).
 ```
@@ -9,7 +9,31 @@ qemu ort_test -m bvlc_alexnet/model_int8_quant.onnx -i images/dog.jpg -p caffe2 
 spike --extension=gemmini pk ort_test -m googlenet.onnx  -i images/cat.jpg  -p caffe2 -x 1 -O 0
 ```
 
-# Tracing
+## E2E Resnet Example
+
+Download the "ResNet50-caffe2" (Opset 9) and associated test data from the ONNX Model zoo.
+
+First optimize the model via: 
+
+```
+python3 optimize.py --input=models/resnet50/model.onnx  --output=models/resnet50/model_opt.onnx
+```
+
+then run
+
+```
+python3 calibrate.py --model_path $MODEL/model_opt.onnx   --dataset_path $MODEL --output_model_path $MODEL/model_opt_quantized.onnx  --static=True --data_preprocess=mxnet --mode=int8
+```
+
+Finally, inference can be performed via
+
+```
+qemu ort_test -m ../quantization/models/resnet50/model_opt_quantized.onnx   -i images/dog.jpg   -p mxnet -x 0 -O 99
+```
+
+where `-x 0` runs the CPU simulation of Gemmini (needed since we run on Qemu) and `-O 99` enables the NHWC optimization.
+
+## Tracing
 
 Trace files can be emitted by passing the `-t` option along with a filename. Emitted files are in the Google Trace Event format, and can be viewed as a flame graph via `chrome://tracing`. (Tip: w/a/s/d keys allow you to navigate around/zoom, and `f` key changes the zoom level to focus on the selected event). You can also try loading it in Perfetto, Tracy or Speedscope.
 
@@ -20,3 +44,22 @@ More detailed analysis can be performed by parsing the resulting json directly. 
 ```
 map(select(.args.op_name != null))  | group_by(.args.op_name) | map({(.[0].args.op_name) : map(.dur) | add}) | sort_by(.[]) | add
 ```
+
+## Benchmark
+
+We provide some tools to make benchmarking on the ILSVRC2012 easy. Use `preprocess_batch` to sample a number of images, preprocess by cropping, and write a list of file paths that can be consumed by the runner. Use `batch_infer` to parallelize execution, spawning several runners for each split. Since the results of CPU emulation of Gemmini should be equivalent to results from the real thing, we recommend using `qemu` to get a guage of accuracy quickly. `postprocess_batch.py` will analyze the output files from the batch run to get the aggregated statistics.
+
+## Regression Test Info
+
+For reference, when running resnet50 converted using the procedure above on the dog image, the results should be:
+
+```
+Element count 1000. Top 5 classes:
+0.002819 Great Dane
+0.002825 German short-haired pointer
+0.009029 curly-coated retriever
+0.013360 flat-coated retriever
+0.961574 Labrador retriever
+```
+
+Minor (< 1%) deviations between version bumps might be due to changes in ORT internal implementation; large unexpected deviations should be analyzed more carefully.
