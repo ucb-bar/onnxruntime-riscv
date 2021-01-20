@@ -18,13 +18,11 @@ The systolic backend supports ONNX's QLinearConv and QLinearMatmul operators. In
 
 ## NHWC Graph Transformation
 
-For QLinearConv we support NHWC data layouts via our own custom typed QLinearConv_nhwc node (see next section). When using optimization level 1, a graph transforms rewrites all existing QLinearConv nodes into QLinearConv_nhwc nodes. We also keep track of the data layouts of each value, inserting `Transpose` nodes where appropriate if we try to pass a value in NHWC format to an operator that cannot handle it (or vice-versa). Currently `QLinearRelu` is the only node (other than `QLinearConv_nhwc`) that can accept an NHWC input.
+For QLinearConv we support NHWC data layouts via our own custom typed QLinearConv_nhwc node (see next section). When using the highest optimization level (`-O 99`), a graph transforms rewrites all existing QLinearConv nodes into QLinearConv_nhwc nodes. We also keep track of the data layouts of each value, inserting `Transpose` nodes where appropriate if we try to pass a value in NHWC format to an operator that cannot handle it (or vice-versa).
 
 ## Custom Operators
 
-We register and handle `QLinearConv_nhwc`, a variant of QLinearConv that expects its input tensors to be in NHWC format and produces an output with that layout. 
-
-Note that the weights for this operator must be in a funky format: in NHWC format, with contents already pre-transposed and ready to be dotted with the output of im2col. Particularly, the weights we multiply by are given by the `M / groups` x `kernel_h * kernel_w * C / groups` matrix starting at `&weights[0] + group_id * (M / groups) kernel_h * kernel_w * C / groups`. For more information, refer to the `_get_weights_in_transposed_nhwc_format` method in [quantizer.py](/systolic_runner/quantization/quantize.py)
+We register and handle `QLinearConv_nhwc`, a variant of QLinearConv that expects its input tensors to be in NHWC format and produces an output with that layout. This node is automatically emitted via the above graph transform.
 
 ## Fusion
 
