@@ -152,17 +152,18 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                    dWdata + group_id * W_offset);
     }
     if (dB) {
+      printf("dB Provided\n");
       // Gradient with respect to bias can be computed independent from group.
-      math::Gemv<T, CPUMathUtil>(
-          CblasNoTrans,
-          static_cast<int>(M),
-          static_cast<int>(output_image_size),
-          1,
-          dYdata,
-          bias_multiplier_data,
-          1,
-          dBdata,
-          &CPUMathUtil::Instance());
+      SystolicGemm(acc_mode,
+                  /*transA=*/ false, /*transB= */ false,
+                  static_cast<int>(M),
+                  1,
+                  static_cast<int>(output_image_size),
+                  1,
+                  dYdata,
+                  bias_multiplier_data,
+                  1,
+                  dBdata);
     }
     Xdata += X_offset * conv_attrs_.group;
     dYdata += Y_offset * conv_attrs_.group;

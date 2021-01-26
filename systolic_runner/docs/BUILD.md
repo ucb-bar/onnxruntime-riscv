@@ -4,6 +4,18 @@ To build, first ensure that you have the Risc-V toolchain setup, built with`esp-
 (from Chipyard, use `/scripts/build-toolchains.sh esp-tools`).
  
 Once you have riscv g++ in your `PATH`, clone this repo and `git submodule update --init --recursive`.
+
+Ensure that the `systolic_params.h` matches the gemmini config you wish to run against (that is, its contents should match the auto-generated `gemmini_params.h` file from the Gemmini build). While you should likely not need to touch `systolic_include.h`, if the Gemmini ISA has changed recently and this repo has not yet been updated to match, `systolic_include.h` will need to be updated as well -- symptoms of a Gemmini-version mismatch include freezing or incorrect outputs when running the unit tests or entire networks.
+
+The Gemmini data-type to build against (int8 or fp32) can be selected in `CMakeLists.txt`
+
+```
+option(onnxruntime_SYSTOLIC_FP32 "If Systolic is enabled, whether to use for fp32 ops" ON)
+option(onnxruntime_SYSTOLIC_INT8 "If Systolic is enabled, whether to use for int8 ops" OFF) 
+```
+
+For training, `fp32` is needed.
+
 Then run `./build.sh --parallel`. Note that while Microsoft claims cmake might not get the dependency order right for `--parallel`,
 in my experience it has worked fine.
 This will build with debug symbols – for release mode (`-O3` you can use `./build.sh --config=Release --parallel`).
