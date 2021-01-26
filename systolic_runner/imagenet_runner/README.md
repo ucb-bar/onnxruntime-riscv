@@ -49,6 +49,14 @@ map(select(.args.op_name != null))  | group_by(.args.op_name) | map({(.[0].args.
 
 We provide some tools to make benchmarking on the ILSVRC2012 easy. Use `preprocess_batch` to sample a number of images, preprocess by cropping, and write a list of file paths that can be consumed by the runner. Use `batch_infer` to parallelize execution, spawning several runners for each split. Since the results of CPU emulation of Gemmini should be equivalent to results from the real thing, we recommend using `qemu` to get a guage of accuracy quickly. `postprocess_batch.py` will analyze the output files from the batch run to get the aggregated statistics.
 
+If you do not want to download the entire imagenet data set and only need to run on a sample, you can use an imagenet downloader such as seen [here](https://github.com/mf1024/ImageNet-Datasets-Downloader). Patch `downloader.py` to the [following](https://gist.github.com/pranav-prakash/7b8a292776ffd35a6517f414de05e3c8) to automatically preprocess the images (you will need to ensure that `classes_to_labels.txt` is copied from `tools` to the run directory. The following will select 10 imagenet classes from the IVLSRC2012 set, and download 2 images inside each class:
+
+```
+python3 downloader.py -data_root ../imagenet -use_class_list True -number_of_classes 10 -images_per_class 2
+```
+
+
+
 ## Regression Test Info
 
 For reference, when running resnet50 converted using the procedure above on the dog image, the results should be:
