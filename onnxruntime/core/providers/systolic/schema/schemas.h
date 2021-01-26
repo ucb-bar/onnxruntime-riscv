@@ -219,7 +219,7 @@ std::vector<int64_t> nhwcConvPoolShapeInference(
   return {output_shape_N, output_shape_H, output_shape_W, output_shape_C};
 }
 
-void dump_vector(const std::vector<int64_t> &v, const std::string &title) {
+void dump_vector(const std::vector<int64_t>& v, const std::string& title) {
   printf("Dumping %s: ", title.c_str());
   for (auto i : v) {
     printf("%zd ", i);
@@ -227,36 +227,9 @@ void dump_vector(const std::vector<int64_t> &v, const std::string &title) {
   printf("\n");
 }
 
-void nhwcConvPoolShapeInference(InferenceContext&
-                                    ctx) {
-  auto x_type = ctx.getInputType(0);
-  auto w_type = ctx.getInputType(3);
-  if (nullptr == x_type || nullptr == w_type ||
-      x_type->value_case() != TypeProto::kTensorType ||
-      w_type->value_case() != TypeProto::kTensorType) {
-    fail_type_inference("inputs are expected to have tensor type.");
-  }
-
-  auto x_zero_point_type = ctx.getInputType(2);
-  if (nullptr == x_zero_point_type ||
-      x_zero_point_type->tensor_type().elem_type() !=
-          x_type->tensor_type().elem_type()) {
-    fail_type_inference(
-        "input and zero_point pair is expected to have be same type.");
-  }
-
-  auto w_zero_point_type = ctx.getInputType(5);
-  if (nullptr == w_zero_point_type ||
-      w_zero_point_type->tensor_type().elem_type() !=
-          w_type->tensor_type().elem_type()) {
-    fail_type_inference(
-        "weight and zero_point pair is expected to have same type.");
-  }
-
-  propagateElemTypeFromInputToOutput(ctx, 7, 0);
-
-  int input1Idx = 0;
-  int input2Idx = 3;
+void nhwcConvPoolShapeInference(InferenceContext& ctx, int x_idx, int w_idx) {
+  int input1Idx = x_idx;
+  int input2Idx = w_idx;
 
   auto in_shape = ctx.getInputType(input1Idx)->tensor_type().shape();
   auto in2_shape = ctx.getInputType(input2Idx)->tensor_type().shape();
@@ -371,7 +344,81 @@ void RegisterSystolicSchemas() {
       .Attr("pool_storage_order", "", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("pool_strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
 
-      .TypeAndShapeInferenceFunction(static_cast<void (*)(InferenceContext & ctx)>(nhwcConvPoolShapeInference));
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        int x_idx = 0;
+        int w_idx = 3;
+
+        propagateElemTypeFromInputToOutput(ctx, 7, 0);
+
+        auto x_type = ctx.getInputType(x_idx);
+        auto w_type = ctx.getInputType(w_idx);
+        if (nullptr == x_type || nullptr == w_type ||
+            x_type->value_case() != TypeProto::kTensorType ||
+            w_type->value_case() != TypeProto::kTensorType) {
+          fail_type_inference("inputs are expected to have tensor type.");
+        }
+
+        auto x_zero_point_type = ctx.getInputType(2);
+        if (nullptr == x_zero_point_type ||
+            x_zero_point_type->tensor_type().elem_type() !=
+                x_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "input and zero_point pair is expected to have be same type.");
+        }
+
+        auto w_zero_point_type = ctx.getInputType(5);
+        if (nullptr == w_zero_point_type ||
+            w_zero_point_type->tensor_type().elem_type() !=
+                w_type->tensor_type().elem_type()) {
+          fail_type_inference(
+              "weight and zero_point pair is expected to have same type.");
+        }
+
+        nhwcConvPoolShapeInference(ctx, x_idx, w_idx);
+      });
+
+ ONNX_SYSTOLIC_OPERATOR_SCHEMA(Conv_nhwc)
+      .SinceVersion(10)
+      .SetDoc("Internal node for NHWC layout optimization. Also supports relu/maxpool Used with Systolic.")
+      .Input(0, "X", "", "T", OpSchema::Single, /*is_homogeneous= */ true, /*min_arity= */ 1, OpSchema::Differentiable)
+      .Input(1, "W", "", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(2, "B", "", "T", OpSchema::Optional, true, 1, OpSchema::Differentiable)
+      .Output(0, "Y", "", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
+
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+
+      .Attr("relu", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("maxpool", "", AttributeProto::INT, static_cast<int64_t>(0))
+
+      .Attr("pool_auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("pool_ceil_mode", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("pool_dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pool_kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pool_pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pool_storage_order", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("pool_strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        int x_idx = 0;
+        int w_idx = 1;
+        
+        auto x_type = ctx.getInputType(x_idx);
+        auto w_type = ctx.getInputType(w_idx);
+        if (nullptr == x_type || nullptr == w_type ||
+            x_type->value_case() != TypeProto::kTensorType ||
+            w_type->value_case() != TypeProto::kTensorType) {
+          fail_type_inference("inputs are expected to have tensor type.");
+        }
+      
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        nhwcConvPoolShapeInference(ctx, x_idx, w_idx);
+      });
 }
 
 }  // namespace systolic

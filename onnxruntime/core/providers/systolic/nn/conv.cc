@@ -32,6 +32,22 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Conv<float>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    Conv_nhwc,
+    kOnnxDomain,
+    11,
+    kSystolicExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Conv<float>);
+
+
+template <typename T>
+Status Conv_nhwc<T>::Compute(OpKernelContext* context) const {
+  ORT_UNUSED_PARAMETER(context);
+  ORT_THROW("Unimplemented at the moment");
+  return Status::OK();
+}
+
 template <typename T>
 Status Conv<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
