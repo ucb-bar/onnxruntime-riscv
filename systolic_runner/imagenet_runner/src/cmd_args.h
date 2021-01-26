@@ -22,7 +22,7 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
         ("k,kernel", "Use custom kernels",  cxxopts::value<bool>()->default_value("false"), "[output path]")
 #endif
         ("t,trace", "Profiling trace output file", cxxopts::value<std::string>(), "[output path]")
-        ("O,optimization", "Optimization level. NHWC transformation is applied at level 1.",
+        ("O,optimization", "Optimization level. NHWC transformation is applied at -O 99.",
                             cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")
         ("d,debug", "Debug level", cxxopts::value<int>()->default_value("2"), "[0-4, with 0 being most verbose]")
         ("s,save_model", "Save transformed model to path", cxxopts::value<std::string>(), "[path]");
