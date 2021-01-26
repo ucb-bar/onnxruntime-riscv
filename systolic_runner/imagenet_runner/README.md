@@ -55,6 +55,11 @@ If you do not want to download the entire imagenet data set and only need to run
 python3 downloader.py -data_root ../imagenet -use_class_list True -number_of_classes 10 -images_per_class 2
 ```
 
+The output folder is structured so the batch input file can be immediately constructed from the file path. E.g.
+
+```
+imagenet/imagenet_images/233/420837932_f9977dd3b7.jpg
+```
 
 
 ## Regression Test Info
