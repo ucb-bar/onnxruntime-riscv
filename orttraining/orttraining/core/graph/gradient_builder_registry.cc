@@ -70,6 +70,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("MaxPool", GetMaxPoolGradient);
   REGISTER_GRADIENT_BUILDER("Gather", GetGatherGradient);
   REGISTER_GRADIENT_BUILDER("Conv", GetConvGradient);
+  REGISTER_GRADIENT_BUILDER("Conv_nhwc", GetConvGradient_nhwc);
   REGISTER_GRADIENT_BUILDER("Squeeze", GetSqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Unsqueeze", GetUnsqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Sigmoid", GetSigmoidGradient);

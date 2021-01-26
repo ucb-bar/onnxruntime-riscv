@@ -26,5 +26,20 @@ class ConvGrad final : public OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvGrad);
 };
 
+template <typename T>
+class ConvGrad_nhwc final : public OpKernel {
+ public:
+  explicit ConvGrad_nhwc(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ protected:
+  ConvAttributes conv_attrs_;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ConvGrad_nhwc);
+};
+
 }  // namespace systolic
 }  // namespace onnxruntime

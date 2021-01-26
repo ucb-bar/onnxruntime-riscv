@@ -738,6 +738,25 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetConvGradient_nhwc) {
+  std::vector<ArgDef> outputs;
+  for (int i = 0; i < 3; i++) {
+    // See https://github.com/microsoft/onnxruntime/issues/4762 for patch info
+    if (/*IsGradientRequiredForSrcNodeInput(i)*/ true) {
+      outputs.push_back(GI(i));
+    } else {
+      outputs.push_back(ArgDef("", nullptr));
+    }
+  }
+
+  return std::vector<NodeDef>{
+      NodeDef("ConvGrad_nhwc",
+              {GO(0), I(0), I(1)},
+              outputs,
+              SrcNodeAttributes())};
+}
+
+
 IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
   auto const_one = OneConstantNode(OElemType(0));
   return std::vector<NodeDef>{

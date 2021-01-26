@@ -32,13 +32,13 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Conv<float>);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Conv_nhwc,
     kOnnxDomain,
-    11,
+    1, 11,
     kSystolicExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    Conv<float>);
+    Conv_nhwc<float>);
 
 
 template <typename T>

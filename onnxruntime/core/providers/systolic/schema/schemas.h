@@ -297,7 +297,28 @@ void nhwcConvPoolShapeInference(InferenceContext& ctx, int x_idx, int w_idx) {
   }
 }
 
+void RegisterSystolicTrainingSchemas() {
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(ConvGrad_nhwc)
+      .SinceVersion(9)
+      .Input(0, "dY", "Gradient of output Y", "T")
+      .Input(1, "X", "Input tensor", "T")
+      .Input(2, "W", "Weight tensor", "T")
+      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of W", "T")
+      .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.");
+}
+
+
 void RegisterSystolicSchemas() {
+#ifdef ENABLE_TRAINING
+  RegisterSystolicTrainingSchemas();
+#endif
+
   ONNX_SYSTOLIC_OPERATOR_SCHEMA(QLinearRelu)
       .SinceVersion(1)
       .SetDoc("A Relu that works on int8")
@@ -378,7 +399,7 @@ void RegisterSystolicSchemas() {
       });
 
  ONNX_SYSTOLIC_OPERATOR_SCHEMA(Conv_nhwc)
-      .SinceVersion(10)
+      .SinceVersion(1)
       .SetDoc("Internal node for NHWC layout optimization. Also supports relu/maxpool Used with Systolic.")
       .Input(0, "X", "", "T", OpSchema::Single, /*is_homogeneous= */ true, /*min_arity= */ 1, OpSchema::Differentiable)
       .Input(1, "W", "", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)

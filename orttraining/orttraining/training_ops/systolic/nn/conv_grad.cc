@@ -31,6 +31,12 @@ namespace onnxruntime {
 namespace systolic {
 
 template <typename T>
+Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
+  ORT_UNUSED_PARAMETER(context);
+  ORT_THROW("Unimplemented ConvGrad_nhwc\n");
+}
+
+template <typename T>
 Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   printf("IN SYSTOLIC CONVGRAD\n");
   char acc_mode = static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode();
@@ -234,6 +240,15 @@ ONNX_OPERATOR_KERNEL_EX(
     kSystolicExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ConvGrad<float>);
+
+
+ONNX_OPERATOR_KERNEL_EX(
+    ConvGrad_nhwc,
+    kOnnxDomain,
+    9,
+    kSystolicExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    ConvGrad_nhwc<float>);
 
 }  // namespace systolic
 }  // namespace onnxruntime
