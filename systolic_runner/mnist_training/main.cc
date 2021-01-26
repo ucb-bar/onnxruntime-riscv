@@ -35,9 +35,15 @@ const static vector<int64_t> IMAGE_DIMS_GEMM = {784};        // for mnist_gemm m
 const static vector<int64_t> IMAGE_DIMS_CONV = {1, 28, 28};  // for mnist_conv models
 const static vector<int64_t> LABEL_DIMS = {10};
 
+// You may wonder why we have this wrapper thing. It's because
+// it's not very simple to just copy the ParseResult
+// https://github.com/jarro2783/cxxopts/issues/146
+// Besides, since we are assigning to TrainingRunner::Parameters
+// directly we may as well follow the same pattern
 struct MnistParameters : public TrainingRunner::Parameters {
   std::string model_type;
   int debug;
+  TransformerLevel optimization_level;
 };
 
 Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
@@ -54,6 +60,8 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
       ("use_gist", "Use GIST encoding/decoding.")
       ("x,execution", "Systolic execution mode. Either 0, 1, or 2 (CPU, OS, WS).", cxxopts::value<int>(), "[0/1/2]")
+      ("O,optimization_level", "Optimization level. NHWC transformation is applied at -O 99.",
+                            cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")
       ("d,debug", "Debug level", cxxopts::value<int>()->default_value("2"), "[0-4, with 0 being most verbose]")
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("2000"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
@@ -160,6 +168,9 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
     }
 
     params.debug = flags["debug"].as<int>();
+    int optimization_level = flags["optimization_level"].as<int>();
+    params.optimization_level = optimization_level > (int)TransformerLevel::MaxLevel ? TransformerLevel::MaxLevel : (TransformerLevel)optimization_level;
+
     if (flags.count("execution") > 0) {
       params.providers.emplace(kSystolicExecutionProvider, CreateExecutionProviderFactory_Systolic(/*use_arena=*/1, /*accelerator_mode=*/(char)flags["execution"].as<int>()));
     }
@@ -273,10 +284,10 @@ int main(int argc, char* args[]) {
   // setup logger
   string default_logger_id{"Default"};
   auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(unique_ptr<logging::ISink>{new logging::CLogSink{}},
-                                                                            static_cast<logging::Severity>(params.debug),
-                                                                            false,
-                                                                            logging::LoggingManager::InstanceType::Default,
-                                                                            &default_logger_id);
+                                                                           static_cast<logging::Severity>(params.debug),
+                                                                           false,
+                                                                           logging::LoggingManager::InstanceType::Default,
+                                                                           &default_logger_id);
 
   // setup onnxruntime env
   printf("Setting up env\n");
@@ -305,7 +316,7 @@ int main(int argc, char* args[]) {
 
   SessionOptions session_options;
   session_options.intra_op_param = {1};
-  session_options.graph_optimization_level = TransformerLevel::Level1;
+  session_options.graph_optimization_level = (TransformerLevel)params.optimization_level;
   session_options.execution_order = ExecutionOrder::PRIORITY_BASED;
 
   printf("Creating training runner\n");

@@ -719,7 +719,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
   // Create execution frame for executing constant nodes.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config);
+  AddPreTrainingTransformers(*cpu_execution_provider, graph_transformation_mgr, weights_to_train, config, GetSessionOptions().graph_optimization_level);
 
   // apply transformers
   Graph& graph = model_->MainGraph();

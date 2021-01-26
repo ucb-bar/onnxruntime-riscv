@@ -163,7 +163,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
     } break;
 
     case TransformerLevel::Level3: {
-#if defined(USE_SYSTOLIC) && defined(SYSTOLIC_INT8)
+#if defined(USE_SYSTOLIC)
       transformers.emplace_back(onnxruntime::make_unique<SystolicNhwcTransformer>());
 #endif
 #ifndef DISABLE_CONTRIB_OPS

@@ -12,7 +12,7 @@ namespace onnxruntime {
 
 class SystolicNhwcTransformerImpl {
  public:
-  SystolicNhwcTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
+  SystolicNhwcTransformerImpl(Graph& graph, bool force_nhwc) noexcept : graph_(graph), force_nhwc_(force_nhwc) {}
 
   void Transform(Node& node, const logging::Logger& logger);
   void Finalize(bool& modified, const logging::Logger& logger);
@@ -49,12 +49,19 @@ class SystolicNhwcTransformerImpl {
   void FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_arg);
   void InsertReorderInput(Node& node);
 
-  void TransformQLinearConv(Node& node, const logging::Logger& logger);
-  void TransformQLinearRelu(Node& node, const logging::Logger& logger);
+  template <typename T, ONNX_NAMESPACE::TensorProto_DataType ONNX_T>
+  void TransformConv(Node& node, const logging::Logger& logger, uint32_t weightIdx, uint32_t biasIdx);
   void TransformQLinearAdd(Node& node, const logging::Logger& logger);
   void TransformMaxPool(Node& node, const logging::Logger& logger);
+  void TransformPassThrough(Node& node, const logging::Logger& logger);
+
+  bool ShouldTransform(Node& node, const logging::Logger& logger);
 
   Graph& graph_;
+
+  // Whether we should convert a node to NHWC even if it is not claimed by Systolic
+  // This is used for the pre-training NHWC transform pass
+  bool force_nhwc_;
 
   // Stores a queue of nodes to be removed after walking through the graph.
   std::deque<NodeIndex> removed_nodes_;
@@ -102,6 +109,29 @@ bool IsAttributeUnsetOrWithExpectedValues(const Node& node, const std::string& a
     }
   }
   return true;
+}
+
+template<typename T>
+void OcIcHW_to_HWIO(int OC, int IC, int H, int W, const T* oihw_input, std::vector<T> &hwio_output) {
+  for (int k = 0; k < H * W; k++) {
+    for (int ic = 0; ic < IC; ic++) {
+      for (int oc = 0; oc < OC; oc++) {
+        hwio_output[k * IC * OC + ic * OC + oc] = oihw_input[oc * H * W * IC + ic * H * W + k];
+      }
+    }
+  }
+}
+
+bool SystolicNhwcTransformerImpl::ShouldTransform(Node& node, const logging::Logger& logger) {
+  if (this->force_nhwc_) {
+    LOGS(logger, VERBOSE) << "Converting " << node.OpType() << " to NHWC since force_nhwc is set";
+    return true;
+  } else if (node.GetExecutionProviderType() == kSystolicExecutionProvider) {
+    LOGS(logger, VERBOSE) << "Converting " << node.OpType() << " to NHWC since it is claimed by Systolic";
+    return true;
+  }
+  LOGS(logger, VERBOSE) << "Not converting " << node.OpType() << " to NHWC; not claimed by Systolic and force_nhwc=false";
+  return false;
 }
 
 size_t SystolicNhwcTransformerImpl::RemoveOutputEdges(Node& node) {
@@ -166,8 +196,14 @@ void SystolicNhwcTransformerImpl::InsertReorderInput(Node& node) {
   }
 }
 
-void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging::Logger& logger) {
-  if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
+/**
+ * Transform conv to NHWC layout, taking care to update the weights to HWIO
+ * T parameter is C++ data type of the weight
+ * TT parameter is the ONNX Tensor Proto DataType
+ */
+template <typename T, ONNX_NAMESPACE::TensorProto_DataType ONNX_T>
+void SystolicNhwcTransformerImpl::TransformConv(Node& node, const logging::Logger& logger, uint32_t weightIdx, uint32_t biasIdx) {
+  if (!ShouldTransform(node, logger)) {
     return;
   }
   auto& input_defs = node.MutableInputDefs();
@@ -175,11 +211,11 @@ void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging
 
   // Require that the weights tensor be static, and has exactly 4 dims
   const ONNX_NAMESPACE::TensorProto* conv_W_tensor_proto = nullptr;
-  if (!graph_utils::NodeArgIsConstant(graph_, *input_defs[3]) ||
-      !graph_.GetInitializedTensor(input_defs[3]->Name(), conv_W_tensor_proto) ||
-      (conv_W_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
+  if (!graph_utils::NodeArgIsConstant(graph_, *input_defs[weightIdx]) ||
+      !graph_.GetInitializedTensor(input_defs[weightIdx]->Name(), conv_W_tensor_proto) ||
+      (conv_W_tensor_proto->data_type() != ONNX_T) ||
       (conv_W_tensor_proto->dims_size() != 4)) {
-    LOGS(logger, VERBOSE) << "Weights tensor for QLinearConv not static. Bailing.";
+    LOGS(logger, VERBOSE) << "Weights tensor for " << node.OpType() << " not static. Bailing.";
     return;
   }
 
@@ -198,13 +234,13 @@ void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging
   // }
 
   NodeArg* nhwc_conv_W_arg;
-  auto filters_it = filters_transposed.find(input_defs[3]);
+  auto filters_it = filters_transposed.find(input_defs[weightIdx]);
   if (filters_it != filters_transposed.end()) {
     // Reuse the existing NodeArg.
     nhwc_conv_W_arg = filters_it->second;
   } else {
     Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
-    std::vector<int8_t> reordered_filter(conv_W.size());
+    std::vector<T> reordered_filter(conv_W.size());
 
     // We convert from OcIcHW format to HWIO format
     int OC = conv_W.dims()[0];
@@ -212,18 +248,12 @@ void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging
     int H = conv_W.dims()[2];
     int W = conv_W.dims()[3];
 
-    for (int k = 0; k < H * W; k++) {
-      for (int ic = 0; ic < IC; ic++) {
-        for (int oc = 0; oc < OC; oc++) {
-          reordered_filter[k * IC * OC + ic * OC + oc] = conv_W.data<int8_t>()[oc * H * W * IC + ic * H * W + k];
-        }
-      }
-    }
+    OcIcHW_to_HWIO(OC, IC, H, W, conv_W.data<T>(), reordered_filter);
 
     ONNX_NAMESPACE::TensorProto nhwc_conv_W_tensor_proto;
-    nhwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-    nhwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName(input_defs[3]->Name() + "_nhwc"));
-    nhwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(int8_t));
+    nhwc_conv_W_tensor_proto.set_data_type(ONNX_T);
+    nhwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName(input_defs[weightIdx]->Name() + "_nhwc"));
+    nhwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(T));
 
     nhwc_conv_W_tensor_proto.add_dims(H);
     nhwc_conv_W_tensor_proto.add_dims(W);
@@ -231,7 +261,7 @@ void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging
     nhwc_conv_W_tensor_proto.add_dims(OC);
 
     nhwc_conv_W_arg = &graph_utils::AddInitializer(graph_, nhwc_conv_W_tensor_proto);
-    filters_transposed.emplace(input_defs[3], nhwc_conv_W_arg);
+    filters_transposed.emplace(input_defs[weightIdx], nhwc_conv_W_arg);
   }
 
   // Create the replacement node.
@@ -243,12 +273,12 @@ void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging
                                    output_defs,
                                    &node.GetAttributes(),
                                    kOnnxDomain);
-  nhwc_node.SetExecutionProviderType(kSystolicExecutionProvider);
+  nhwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  nhwc_node.MutableInputDefs()[3] = nhwc_conv_W_arg;
+  nhwc_node.MutableInputDefs()[weightIdx] = nhwc_conv_W_arg;
 
-  if (input_defs.size() == 9) {
-    nhwc_node.MutableInputDefs()[8] = input_defs[8];
+  if (input_defs.size() == biasIdx + 1) {
+    nhwc_node.MutableInputDefs()[biasIdx] = input_defs[biasIdx];
   }
 
   // Reorder the input if needed
@@ -266,8 +296,11 @@ void SystolicNhwcTransformerImpl::TransformQLinearConv(Node& node, const logging
   removed_nodes_.push_front(node.Index());
 }
 
-void SystolicNhwcTransformerImpl::TransformQLinearRelu(Node& node, const logging::Logger& logger) {
-  if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
+/**
+ * Transform for nodes that don't care about input format. E.g. relu
+ */
+void SystolicNhwcTransformerImpl::TransformPassThrough(Node& node, const logging::Logger& logger) {
+  if (!ShouldTransform(node, logger)) {
     return;
   }
   auto& input_defs = node.MutableInputDefs();
@@ -276,19 +309,17 @@ void SystolicNhwcTransformerImpl::TransformQLinearRelu(Node& node, const logging
   auto it = nhwc_args_.find(input_defs[0]);
   // If the input is indeed in NHWC format
   if (it != nhwc_args_.end()) {
-    LOGS(logger, VERBOSE) << "Transforming QLinearRelu to NHWC";
+    LOGS(logger, VERBOSE) << "Transforming pass through node " << node.OpType() << " to NHWC";
     auto& nhwc_input = it->second;
     input_defs[0] = nhwc_input->nhwc_arg_;
     nhwc_input->remaining_original_uses_--;
 
-    // Check if this is a single use NCHWc convolution that hasn't already
-    // been fused with another activation.
     CreateNhwcArgument(node, node, output_defs[0]->Name());
   }
 }
 
 void SystolicNhwcTransformerImpl::TransformQLinearAdd(Node& node, const logging::Logger& logger) {
-  if (node.GetExecutionProviderType() != kSystolicExecutionProvider) {
+  if (!ShouldTransform(node, logger)) {
     return;
   }
   auto& input_defs = node.MutableInputDefs();
@@ -327,8 +358,6 @@ void SystolicNhwcTransformerImpl::TransformQLinearAdd(Node& node, const logging:
     nhwc_input1->remaining_original_uses_--;
     nhwc_input2->remaining_original_uses_--;
 
-    // Check if this is a single use NCHWc convolution that hasn't already
-    // been fused with another activation.
     CreateNhwcArgument(node, node, output_defs[0]->Name());
   }
 }
@@ -399,15 +428,17 @@ void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Lo
 
 void SystolicNhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
   if (node.OpType() == "QLinearConv") {
-    TransformQLinearConv(node, logger);
+    TransformConv<int8_t, ONNX_NAMESPACE::TensorProto_DataType_INT8>(node, logger, /*weightIdx= */ 3, /*biasIdx= */ 8);
+  } else if (node.OpType() == "Conv") {
+    TransformConv<float, ONNX_NAMESPACE::TensorProto_DataType_FLOAT>(node, logger, /*weightIdx= */ 1, /*biasIdx= */ 2);
   } else if (node.GetInputEdgesCount() == 0 && node.InputDefs().size() != 0) {
     // The following transforms only run when the input edge count has already
     // been decremented to zero by earlier transforms. This is a hint that the
     // node may already have all inputs converted to NHWC format and is not
     // needed for correct operation. This avoids doing extra string checks for
     // nodes unrelated to this transformer.
-    if (node.OpType() == "QLinearRelu") {
-      TransformQLinearRelu(node, logger);
+    if (node.OpType() == "QLinearRelu" || node.OpType() == "Relu") {
+      TransformPassThrough(node, logger);
     } else if (node.OpType() == "QLinearAdd") {
       TransformQLinearAdd(node, logger);
     } else if (node.OpType() == "MaxPool") {
@@ -453,7 +484,10 @@ void SystolicNhwcTransformerImpl::Finalize(bool& modified, const logging::Logger
 }
 
 Status SystolicNhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  SystolicNhwcTransformerImpl impl(graph);
+  if (this->force_nhwc_) {
+    LOGS(logger, VERBOSE) << "All potential nodes will be converted to NHWC. This should only be done pre-training";
+  }
+  SystolicNhwcTransformerImpl impl(graph, this->force_nhwc_);
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {

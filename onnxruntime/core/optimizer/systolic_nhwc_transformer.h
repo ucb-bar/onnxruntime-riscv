@@ -16,10 +16,13 @@ and inserts nodes to reorder tensors as needed. This is meant for Systolic.
 */
 class SystolicNhwcTransformer : public GraphTransformer {
  public:
-  SystolicNhwcTransformer() noexcept : GraphTransformer("SystolicNhwcTransformer") {}
+  SystolicNhwcTransformer(bool force_nhwc = false) noexcept : GraphTransformer("SystolicNhwcTransformer") {
+    this->force_nhwc_ = force_nhwc;
+  }
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  bool force_nhwc_;
 };
 
 }  // namespace onnxruntime
