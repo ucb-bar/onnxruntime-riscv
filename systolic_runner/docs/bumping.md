@@ -12,3 +12,5 @@ will suffice (or you can `pull --rebase` if you're so inclined), but there are s
 
 * Be careful with submodules. Maybe it's just be but git submodule management is horrible and for some reason git pull never actually bumps the submodule commits. Simplest way I found is to just manually compare the submodules (in `cmake/external`) with upstream and bump manually as needed.
  
+
+Another important note is that sometimes you'll have to edit the build scripts for the imagenetrunner/etc. because they link to a new module. You can get the list of modules to link against by running the main ORT build with `export VERBOSE=1` so that cmake prints out the actual gcc commands. VERY IMPORTANT is that you preserve both the existence and order the wonkier libraries that we link against: the whole `-ldl -static -Wl,--whole-archive -lpthread -latomic -lrt -Wl,--no-whole-archive` stuff. This is needed because we are statically linking the binary and glibc HATES it. So we make it happy with this one weird trick. For more info see the comment in the main ORT `build.sh` file. Without it, the binary will just segfault (in qemu it silently exits).
