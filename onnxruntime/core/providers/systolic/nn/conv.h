@@ -7,6 +7,7 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/util/math.h"
+#include "pool_attributes.h"
 
 namespace onnxruntime {
 namespace systolic {
@@ -21,6 +22,7 @@ class Conv : public OpKernel {
 
  private:
   ConvAttributes conv_attrs_;
+  bool fused_relu_ = false;
 };
 
 template <typename T>
@@ -33,6 +35,7 @@ class Conv_nhwc : public OpKernel {
 
  private:
   ConvAttributes conv_attrs_;
+  bool fused_relu_ = false;
 };
 
 } // namespace systolic

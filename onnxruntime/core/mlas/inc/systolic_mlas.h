@@ -64,5 +64,17 @@ void SystolicGemm(
     const float* B,
     float beta,
     float* C);
+
+void SystolicConv
+MLASCALL(char accelerator_mode, int batch_size, int in_dim, int in_channels,
+        int out_channels, int out_dim,
+        int stride, int padding, int kernel_dim,
+        const float* input,
+        const float* weights,
+        const float* bias,
+        float* output,
+        bool relu,
+        float output_scale,
+        int pool_size = 0, int pool_stride = 0, int pool_padding = 0);
                             
 #endif
