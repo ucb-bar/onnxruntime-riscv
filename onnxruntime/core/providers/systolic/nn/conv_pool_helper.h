@@ -7,6 +7,127 @@
 namespace onnxruntime {
 namespace systolic {
 
+/**
+ * Try to run a given NHWC conv on systolic if possible
+ * Gemmini only supports groups == 1. 
+ * Additionally, we must have strides and padding must be equal
+ * Kernel dimensions must also be square (W == H)
+ * 
+ * Note that all inputs/outputs/weights are here in NHWC format
+ * Bias is null if no bias
+ * @return true If successfully ran on systolic
+ */
+template<typename elem_t, typename bias_t>
+inline bool TryConvOnSystolic(char accelerator_mode,
+                              const std::vector<int64_t>& dilations,
+                              const std::vector<int64_t>& pads,
+                              const std::vector<int64_t>& strides,
+                              int64_t groups,
+                              const Tensor* X,
+                              const Tensor* W,
+                              const Tensor* B,
+                              OpKernelContext* context,
+                              const TensorShape& Y_dims_prepool,
+                              const TensorShape& Y_dims_postpool,
+                              bool relu,
+                              const PoolAttributes *pool_attrs_,
+                              float output_scale) {
+  if (groups != 1) {
+    return false;
+  }
+
+  int input_dim, output_dim, kernel_dim;
+
+  // If input H != W
+  if ((input_dim = X->Shape()[1]) != X->Shape()[2]) {
+    return false;
+  }
+
+  // If output H != W
+  // N.B., systolic takes as input the dimension before pooling
+  if ((output_dim = Y_dims_prepool[1]) != Y_dims_prepool[2]) {
+    return false;
+  }
+
+  // If Kernel kH != hW
+  if ((kernel_dim = W->Shape()[0]) != W->Shape()[1]) {
+    return false;
+  }
+
+  // All dilations must be equal to 1.
+  if (std::any_of(dilations.begin(), dilations.end(), [&](int i) { return i != 1; })) {
+    return false;
+  }
+
+  // All pads must be the same
+  if (std::any_of(pads.begin(), pads.end(), [&](int i) { return i != pads[0]; })) {
+    return false;
+  }
+
+  // All strides must be the same
+  if (std::any_of(strides.begin(), strides.end(), [&](int i) { return i != strides[0]; })) {
+    return false;
+  }
+
+  int pool_size = 0;
+  int pool_stride = 0;
+  int pool_padding = 0;
+  if (pool_attrs_ && pool_attrs_->fused_pool) {
+    // printf("Checking pool attrs %zd %zd %zd %zd %zd \n", pool_attrs_.kernel_shape[0], pool_attrs_.kernel_shape[1],
+    //     pool_attrs_.strides[0],  pool_attrs_.strides[1]),
+    //      pool_attrs_.pads[0], pool_attrs_.pads[1]);
+    if ((pool_size = pool_attrs_->kernel_shape[0]) != pool_attrs_->kernel_shape[1]) {
+      return false;
+    }
+    if ((pool_stride = pool_attrs_->strides[0]) != pool_attrs_->strides[1]) {
+      return false;
+    }
+    if ((pool_padding = pool_attrs_->pads[0]) != pool_attrs_->pads[1]) {
+      return false;
+    }
+  }
+
+  const auto* Xdata = X->template Data<elem_t>();
+  const auto* Wdata = W->template Data<elem_t>();
+  const auto* Bdata = B != nullptr ? B->template Data<bias_t>() : nullptr;
+
+  // Allocate tensor for node output. Node that we must take care to use proper shape.
+  Tensor* Y = context->Output(0, pool_attrs_ && pool_attrs_->fused_pool ? Y_dims_postpool : Y_dims_prepool);
+
+  // Bail out early if one of the dimensions is zero.
+  if (Y->Shape().Size() == 0) {
+    return true;
+  }
+
+  auto* Ydata = Y->template MutableData<elem_t>();
+
+  int batch_size = X->Shape()[0];
+  int input_channels = X->Shape()[3];
+  int output_channels = W->Shape()[3];
+
+  SystolicConv(accelerator_mode,
+               batch_size,
+               input_dim,
+               input_channels,
+               output_channels,
+               output_dim,
+               strides[0],
+               pads[0],
+               kernel_dim,
+               /*input= */ Xdata,
+               /*weights= */ Wdata,
+               /*bias= */ Bdata,
+               /*output= */ Ydata,
+               /*relu =  */ relu,
+               /* output_scale= */ output_scale,
+               pool_size,
+               pool_stride,
+               pool_padding);
+
+  // printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
+  return true;
+}
+
 template <typename T>
 void Im2Col_NHWC(const T* data_im, int64_t channels, int64_t height,
                                                int64_t width, int64_t kernel_h, int64_t kernel_w,

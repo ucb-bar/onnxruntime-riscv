@@ -36,7 +36,6 @@ inline void DumpTensor(Tensor* tensor) {
     printf("%f ", tensor->template Data<T>()[i]);
   }
   printf("\n");
-
 }
 
 template <typename T>
