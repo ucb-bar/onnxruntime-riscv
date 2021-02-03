@@ -68,6 +68,32 @@ inline void GemmlowpDebug(const T* lhs_data, const T* rhs_data, T* result_data,
   
 }
 
+inline void GemmlowpDebug(int m, int n, int k, const float* lhs_data, const float* rhs_data, float* result_data) {
+  printf("lhs matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < k; j++) {
+      printf("%f ", lhs_data[i * k + j]);
+    }
+    printf("\n");
+  }
+
+  printf("rhs matrix\n");
+  for (int i = 0; i < k; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%f ", rhs_data[i * n + j]);
+    }
+    printf("\n");
+  }
+
+  printf("out matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      printf("%f ", result_data[i * n + j]);
+    }
+    printf("\n");
+  }
+}
+
 inline void PrintMatrix(int m, int k, const float* data) {
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < k; j++) {
@@ -123,4 +149,5 @@ inline void GemmlowpDebug(int m, int n, int k,
     printf("\n");
   }
   }
+  
 }

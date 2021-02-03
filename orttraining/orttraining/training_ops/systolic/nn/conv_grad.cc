@@ -30,6 +30,15 @@
 namespace onnxruntime {
 namespace systolic {
 
+template<typename T>
+inline void DumpTensor(Tensor* tensor) {
+  for (int i = 0; i < tensor->Shape().Size(); i++){
+    printf("%f ", tensor->template Data<T>()[i]);
+  }
+  printf("\n");
+
+}
+
 template <typename T>
 Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   ORT_UNUSED_PARAMETER(context);
@@ -156,6 +165,8 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
                    col_buffer_data,
                    1,
                    dWdata + group_id * W_offset);
+
+    //GemmlowpDebug(M / conv_attrs_.group, kernel_dim, output_image_size, dYdata + group_id * Y_offset, col_buffer_data,  dWdata + group_id * W_offset);
     }
     if (dB) {
       printf("dB Provided\n");
@@ -230,6 +241,11 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
       }
     }
   }
+  // printf("dX\n");
+  // DumpTensor<float>(dX);
+  // printf("dW\n");
+  // DumpTensor<float>(dW);
+
   return Status::OK();
 }
 
