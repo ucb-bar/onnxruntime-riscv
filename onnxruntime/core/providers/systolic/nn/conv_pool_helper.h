@@ -26,7 +26,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                               const Tensor* X,
                               const Tensor* W,
                               const Tensor* B,
-                              OpKernelContext* context,
+                              Tensor* output,
                               const TensorShape& Y_dims_prepool,
                               const TensorShape& Y_dims_postpool,
                               bool relu,
@@ -91,8 +91,9 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   const auto* Wdata = W->template Data<elem_t>();
   const auto* Bdata = B != nullptr ? B->template Data<bias_t>() : nullptr;
 
-  // Allocate tensor for node output. Node that we must take care to use proper shape.
-  Tensor* Y = context->Output(0, pool_attrs_ && pool_attrs_->fused_pool ? Y_dims_postpool : Y_dims_prepool);
+  // Assume that tensor allocated to us is already sized appropriately.
+  // That is, if pooling is to be applied the size is post-pool.
+  Tensor* Y = output;
 
   // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
@@ -129,7 +130,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
 }
 
 template <typename T>
-void Im2Col_NHWC(const T* data_im, int64_t channels, int64_t height,
+inline void Im2Col_NHWC(const T* data_im, int64_t channels, int64_t height,
                                                int64_t width, int64_t kernel_h, int64_t kernel_w,
                                                int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
                                                int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
@@ -181,7 +182,7 @@ void Im2Col_NHWC(const T* data_im, int64_t channels, int64_t height,
   }    // for each image row
 }
 
-Status ValidateConvInputShapeNHWC(const Tensor* X, const Tensor* W, const int64_t group) {
+inline Status ValidateConvInputShapeNHWC(const Tensor* X, const Tensor* W, const int64_t group) {
   const int64_t C = X->Shape()[3];
   const int64_t M = W->Shape()[3];
   const int64_t C_over_groups = W->Shape()[2];
@@ -208,7 +209,7 @@ Status ValidateConvInputShapeNHWC(const Tensor* X, const Tensor* W, const int64_
 }
 
 template <typename T, StorageOrder kOrder>
-void ComputeMaxPool2D(
+inline void ComputeMaxPool2D(
     int W,
     int t,
     int b,
@@ -219,7 +220,7 @@ void ComputeMaxPool2D(
     EigenArrayMap<T>* Y_arr);
 
 template <>
-void ComputeMaxPool2D<int8_t, StorageOrder::NHWC>(
+inline void ComputeMaxPool2D<int8_t, StorageOrder::NHWC>(
     const int W,
     const int t,
     const int b,
@@ -237,7 +238,7 @@ void ComputeMaxPool2D<int8_t, StorageOrder::NHWC>(
 }
 
 template <typename T, StorageOrder kOrder>
-void RunMaxPool2D(
+inline void RunMaxPool2D(
     const int N,
     const int C,
     const int X_H,

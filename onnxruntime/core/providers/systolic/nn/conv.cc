@@ -88,11 +88,13 @@ Status Conv_nhwc<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> Y_dims = {Y_dims_nchw[0], Y_dims_nchw[2], Y_dims_nchw[3], Y_dims_nchw[1]};
   auto Y_dims_shape = TensorShape(Y_dims);
 
+  Tensor* Y = context->Output(0, Y_dims_shape);
+
   // If we can run on Systolic, do so!
   if (TryConvOnSystolic<float, float>(
           static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
           dilations,
-          pads, strides, conv_attrs_.group, X, W, B, context,
+          pads, strides, conv_attrs_.group, X, W, B, Y,
           Y_dims_shape, Y_dims_shape,
           fused_relu_, /*pool_attrs= */ nullptr, /*real_multiplier=*/ 1)) {
     return Status::OK();
@@ -102,7 +104,6 @@ Status Conv_nhwc<T>::Compute(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  Tensor* Y = context->Output(0, Y_dims_shape);
   TensorShape output_shape = Y->Shape().Slice(1, 3);
 
   // fprintf(stderr, "INPUT SHAPE %s\n", input_shape.ToString().c_str());

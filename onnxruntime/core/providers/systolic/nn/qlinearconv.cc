@@ -46,7 +46,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 /**
  * Reference https://github.com/pytorch/pytorch/blob/master/caffe2/operators/conv_op_impl.h
  * 
- * Note that the above reference (caffe2) uses a OIHW layout for the weights, but we use HWIO
+ * Note that the above reference (caffe2) uses a OHWI layout for the weights, but we use HWIO
  * With `OHWI` you have to transpose each output weight group
  * (which ends up essentially doing at a high-level `o|HWI` -> `HWI|o` for the slice of `o` that you care about),
  * whereas with `HWIO` you don't transpose.
@@ -151,11 +151,13 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   }
   auto Y_dims_postpool_shape = TensorShape(Y_dims_post_pool);
 
+  Tensor *output = context->Output(0, pool_attrs_.fused_pool ? Y_dims_postpool_shape : Y_dims_shape);
+
   // If we can run on Systolic, do so!
   if (TryConvOnSystolic<int8_t, int32_t>(
           static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
           dilations,
-          pads, strides, conv_attrs_.group, X, W, B, context,
+          pads, strides, conv_attrs_.group, X, W, B, output,
           Y_dims_shape, Y_dims_postpool_shape,
           fused_relu_, &pool_attrs_, real_multiplier)) {
     return Status::OK();
@@ -171,7 +173,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
     Y_pre_pool_tensor = std::move(Tensor(DataTypeImpl::GetType<int8_t>(), Y_dims_shape, alloc));
     Y = &Y_pre_pool_tensor;
   } else {
-    Y = context->Output(0, Y_dims_shape);
+    Y = output;
   }
 
   TensorShape output_shape = Y->Shape().Slice(1, 3);
@@ -302,7 +304,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   // printf("\n");
 
   if (pool_attrs_.fused_pool) {
-    Tensor* Y_post_pool = context->Output(0, Y_dims_postpool_shape);
+    Tensor* Y_post_pool = output;
 
     RunMaxPool2D<int8_t, StorageOrder::NHWC>(
         Y_dims_post_pool[0], Y_dims_post_pool[3],
