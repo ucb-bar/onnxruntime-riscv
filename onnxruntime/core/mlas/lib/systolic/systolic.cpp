@@ -403,7 +403,7 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   // }
   // printf("Relu? %d\n", relu);
 
-  tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
+  tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
                   stride, padding, kernel_dim, input, weights, bias, output,
                   relu, output_scale, /*relu6_shift= */ 0,
                   pool_size, pool_stride, pool_padding,
