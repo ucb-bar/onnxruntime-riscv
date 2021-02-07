@@ -150,6 +150,7 @@ inline void ReferenceGemm(
   ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N);
 }
 
+
 /**
  * Wrapper function around tiled_matmul_auto that provides a BLAS like interface
  * C := alpha*op( A )op( B ) + beta*D
@@ -277,6 +278,37 @@ void SystolicGemm(char accelerator_mode,
   }
 
   tiled_gemm_auto(M, N, K, A, B, beta == 0 ? nullptr : C, C, /*activation= */ false,
+                  alpha, beta, /* repeating_bias= */ 0,
+                  TransA, TransB, get_accelerator_mode(accelerator_mode));
+}
+
+void SystolicGemm(char accelerator_mode,
+                  bool TransA,
+                  bool TransB,
+                  size_t M,
+                  size_t N,
+                  size_t K,
+                  scale_t alpha,
+                  const elem_t* A,
+                  int lda,
+                  const elem_t* B,
+                  int ldb,
+                  acc_scale_t beta,
+                  elem_t* C,
+                  int ldc) {
+#ifndef FOR_FIRESIM
+  printf("Called into systolic gemm!\n");
+  printf("Using accelerated gemm with dimensions (%zd, %zd, %zd)\n", M, N, K);
+#endif
+  if (accelerator_mode == 0 && (TransA || TransB) ) {
+    printf("DOING SYSTOLIC GEMM ON CPU\n");
+    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+    return;
+  }
+
+  tiled_gemm_auto(M, N, K,
+                 lda, ldb, ldc, ldc,
+                 A, B, beta == 0 ? nullptr : C, C, /*activation= */ false,
                   alpha, beta, /* repeating_bias= */ 0,
                   TransA, TransB, get_accelerator_mode(accelerator_mode));
 }
