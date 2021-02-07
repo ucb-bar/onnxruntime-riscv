@@ -226,6 +226,52 @@ TEST(SystolicConvNHWCTest, ConvNHWCMultipleInputAndOutputChannel) {
   test.Run();
 }
 
+TEST(SystolicConvNHWCTest, ConvNHWCBatchTest) {
+  OpTester test("Conv_nhwc", 10);
+
+  std::vector<float> X = {110, 35, 111, 107, 5,
+                           79, 103, 5, 12, 123,
+                           34, 40, 41, 102, 33,
+                           117, 109, 73, 51, 123,
+                           6, 126, 56, 111, 111,
+                           
+                           -61, -41, -113, -92, -72,
+                           -94, -104, -84, -53, -95,
+                           -30, -81, -102, -44, -48,
+                           -62, -53, -108, -25, -72,
+                           -58, -57, -39, -22, -29};
+  std::vector<int64_t> X_shape = {2, 1, 5, 5};
+  NCHWtoNHWCconvert(X, X_shape);
+
+  std::vector<float> W = {1, 2,
+                           3, 4};
+
+  std::vector<int64_t> W_shape = {1, 1, 2, 2};
+  OIHWtoHWIOconvert(W, W_shape);
+
+  std::vector<float> expected_vals = {929, 686, 488, 745,
+                                      647, 497, 660, 796,
+                                      1001, 841, 768, 913,
+                                      957, 957, 887, 1174,
+
+                                      -741, -815, -661, -675,
+                                      -616, -823, -572, -467,
+                                      -490, -776, -514, -403,
+                                      -470, -496, -263, -251};
+
+  std::vector<int64_t> Y_shape = {2, 1, 4, 4};
+  NCHWtoNHWCconvert(expected_vals, Y_shape);
+
+  test.AddInput<float>("x", X_shape, X);
+  test.AddInput<float>("w", W_shape, W);
+
+  test.AddInput<float>("B", {1}, {100});
+
+  test.AddOutput<float>("y", Y_shape, expected_vals);
+
+  test.Run();
+}
+
 #endif
 
 }  // namespace test
