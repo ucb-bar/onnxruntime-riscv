@@ -1,5 +1,6 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 #include "core/common/exceptions.h"
 #include "core/providers/common.h"
 #include "core/common/common.h"
@@ -17,6 +18,7 @@ namespace systolic {
  * Bias is null if no bias
  * @return true If successfully ran on systolic
  */
+
 template<typename elem_t, typename bias_t>
 inline bool TryConvOnSystolic(char accelerator_mode,
                               const std::vector<int64_t>& dilations,
@@ -125,8 +127,77 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                pool_stride,
                pool_padding);
 
-  // printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
+  //printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
   return true;
+}
+
+template<typename T>
+void EigenAdd(int N, const T* a, const T* b, T* y) {
+  EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(a, N).array() + ConstEigenVectorMap<T>(b, N).array();
+}
+
+inline void Col2Im_NHWC(const float* data_col, int64_t channels, int64_t height,
+                                                    int64_t width, int64_t kernel_h, int64_t kernel_w,
+                                                    int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
+                                                    int64_t pad_l, int64_t pad_b, int64_t pad_r, int64_t stride_h,
+                                                    int64_t stride_w, float* data_im, int groups) {
+  const int dkernel_h = dilation_h * (kernel_h - 1) + 1;
+  const int dkernel_w = dilation_w * (kernel_w - 1) + 1;
+
+  memset(data_im, 0, height * width * channels * sizeof(float));  
+  const int height_col = (height + pad_t + pad_b - dkernel_h) / stride_h + 1;
+  const int width_col = (width + pad_l + pad_r - dkernel_w) / stride_w + 1;
+  int h_pad = -pad_t;
+
+  if (groups == 1) {
+    for (int h = 0; h < height_col; ++h) {
+      int w_pad = -pad_l;
+      for (int w = 0; w < width_col; ++w) {
+        for (int ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h) {
+          if (!(ih >= 0 && ih < height)) {
+            data_col += kernel_w * channels;
+            continue;
+          }
+          for (int iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w) {
+            if (iw >= 0 && iw < width){
+              float* img_data_patch = data_im + (ih * width + iw) * channels;
+              EigenAdd(channels, img_data_patch, data_col, img_data_patch);
+            }
+            data_col += channels;
+          } // iw
+        } // ih
+        w_pad += stride_w;
+      } // w
+      h_pad += stride_h;
+    } // h
+  } else {
+    const int C_per_G = channels / groups;
+    for (int h = 0; h < height_col; ++h) {
+      int w_pad = -pad_l;
+      for (int w = 0; w < width_col; ++w) {
+        int r = 0;
+        for (int ih = h_pad; ih < h_pad + dkernel_h; ih += dilation_h, ++r) {
+          int s = 0;
+          for (int iw = w_pad; iw < w_pad + dkernel_w; iw += dilation_w, ++s) {
+            if ((ih >= 0 && ih < height) &&
+                (iw >= 0 && iw < width)) {
+              float* img_data_patch = data_im + (ih * width + iw) * channels;
+              for (int g = 0; g < groups; ++g) {
+                EigenAdd(
+                    C_per_G,
+                    img_data_patch + g * C_per_G,
+                    data_col + ((g * kernel_h + r) * kernel_w + s) * C_per_G,
+                    img_data_patch + g * C_per_G);
+              }
+            }
+          } // iw
+        } // ih
+        data_col += kernel_h * kernel_w * channels;
+        w_pad += stride_w;
+      } // w
+      h_pad += stride_h;
+    } // h
+  }
 }
 
 template <typename T>

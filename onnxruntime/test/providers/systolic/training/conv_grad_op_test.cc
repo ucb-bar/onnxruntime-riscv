@@ -96,6 +96,101 @@ TEST(SystolicConvGradTest, BasicTest) {
   test.Run();
 }
 
+TEST(SystolicConvGradTest, BatchSizeTest) {
+  OpTester test("ConvGrad", 9);
+
+  std::vector<float> X = {1, 2, 3,
+                          4, 5, 6,
+                          7, 8, 9,
+                          
+                          -1, -2, -3,
+                          -4, -5, -6,
+                          -7, -8, -9};
+  std::vector<int64_t> X_shape = {2, 1, 3, 3};
+
+  std::vector<float> W = {-1, -2, -3, -4};
+  std::vector<int64_t> W_shape = {1, 1, 2, 2};
+
+  std::vector<float> dY = {0.1, 0.2,
+                           0.3, 0.4,
+                          
+                           1, 0,
+                           0, 1};
+  std::vector<int64_t> dY_shape = {2, 1, 2, 2};
+
+  test.AddInput<float>("dY", dY_shape, dY);
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W);
+
+  std::vector<int64_t> dX_shape = {2, 1, 3, 3};
+  std::vector<int64_t> dW_shape = {1, 1, 2, 2};
+  std::vector<int64_t> dB_shape = {1};
+
+  std::vector<float> expected_dX = {-0.1, -0.4, -0.4,
+                                    -0.6, -2., -1.6,
+                                    -0.9, -2.4, -1.6,
+                                      
+                                    -1, -2, 0,
+                                    -3, -5, -2,
+                                    0, -3, -4};
+  std::vector<float> expected_dW = {-2.3, -3.3,
+                                    -5.3, -6.3};
+  std::vector<float> expected_dB = {3};
+
+  test.AddOutput<float>("dX", dX_shape, expected_dX);
+  test.AddOutput<float>("dW", dW_shape, expected_dW);
+  test.AddOutput<float>("dB", dB_shape, expected_dB);
+
+  test.Run();
+}
+
+TEST(SystolicConvGradTest, MultipleOutputChannel) {
+  OpTester test("ConvGrad", 9);
+
+  std::vector<float> X = {1, 2, 3,
+                          4, 5, 6,
+                          7, 8, 9};
+  std::vector<int64_t> X_shape = {1, 1, 3, 3};
+
+  std::vector<float> W = {-1, -2,
+                          -3, -4,
+                          
+                          1, 0,
+                          0, 1};
+  std::vector<int64_t> W_shape = {2, 1, 2, 2};
+
+  std::vector<float> dY = {0.1, 0.2,
+                           0.3, 0.4,
+                           
+                           3, 1,
+                           4, 1};
+  std::vector<int64_t> dY_shape = {1, 2, 2, 2};
+
+  test.AddInput<float>("dY", dY_shape, dY);
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W);
+
+  std::vector<int64_t> dX_shape = {1, 1, 3, 3};
+  std::vector<int64_t> dW_shape = {2, 1, 2, 2};
+  std::vector<int64_t> dB_shape = {2};
+
+  std::vector<float> expected_dX = {2.9, 0.6, -0.4,
+                                   3.4, 2, -0.6,
+                                  -0.9, 1.6, -0.6 };
+  std::vector<float> expected_dW = {3.7, 4.7,
+                                    6.7, 7.7,
+
+                                    26, 35,
+                                    53, 62};
+  std::vector<float> expected_dB = {1, 9};
+
+  test.AddOutput<float>("dX", dX_shape, expected_dX);
+  test.AddOutput<float>("dW", dW_shape, expected_dW);
+  test.AddOutput<float>("dB", dB_shape, expected_dB);
+
+  test.Run();
+}
+
 TEST(SystolicConvGradTest, BasicNHWCTest) {
   OpTester test("ConvGrad_nhwc", 9);
 
@@ -126,6 +221,117 @@ TEST(SystolicConvGradTest, BasicNHWCTest) {
   NCHWtoNHWCconvert(expected_dX, dX_shape);
 
   std::vector<float> expected_dB = {1};
+
+  test.AddOutput<float>("dX", dX_shape, expected_dX);
+  test.AddOutput<float>("dW", dW_shape, expected_dW);
+  test.AddOutput<float>("dB", dB_shape, expected_dB);
+
+  test.Run();
+}
+
+TEST(SystolicConvGradTest, WeightMultipleOutputChannelNHWCTest) {
+  OpTester test("ConvGrad_nhwc", 9);
+
+  std::vector<float> X = {1, 2, 3,
+                          4, 5, 6,
+                          7, 8, 9};
+  std::vector<int64_t> X_shape = {1, 1, 3, 3};
+  NCHWtoNHWCconvert(X, X_shape);
+
+  std::vector<float> W = {-1, -2,
+                          -3, -4,
+
+                          1, 0,
+                          0, 1};
+  std::vector<int64_t> W_shape = {2, 1, 2, 2};
+  OIHWtoHWIOconvert(W, W_shape);
+
+  std::vector<float> dY = {0.1, 0.2,
+                           0.3, 0.4,
+                           
+                           3, 1,
+                           4, 1};
+  std::vector<int64_t> dY_shape = {1, 2, 2, 2};
+
+  NCHWtoNHWCconvert(dY, dY_shape);
+
+  test.AddInput<float>("dY", dY_shape, dY);
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W);
+
+  std::vector<int64_t> dX_shape = {1, 1, 3, 3};
+  std::vector<int64_t> dW_shape = {2, 1, 2, 2};
+  std::vector<int64_t> dB_shape = {2};
+
+
+  std::vector<float> expected_dX = {2.9, 0.6, -0.4,
+                                   3.4, 2, -0.6,
+                                  -0.9, 1.6, -0.6 };
+  std::vector<float> expected_dW = {3.7, 4.7,
+                                    6.7, 7.7,
+
+                                    26, 35,
+                                    53, 62};
+
+  OIHWtoHWIOconvert(expected_dW, dW_shape);
+  NCHWtoNHWCconvert(expected_dX, dX_shape);
+
+  std::vector<float> expected_dB = {1, 9};
+
+  test.AddOutput<float>("dX", dX_shape, expected_dX);
+  test.AddOutput<float>("dW", dW_shape, expected_dW);
+  test.AddOutput<float>("dB", dB_shape, expected_dB);
+
+  test.Run();
+}
+
+TEST(SystolicConvGradTest, BatchSizeNHWCTest) {
+  OpTester test("ConvGrad_nhwc", 9);
+
+  std::vector<float> X = {1, 2, 3,
+                          4, 5, 6,
+                          7, 8, 9,
+                          
+                          -1, -2, -3,
+                          -4, -5, -6,
+                          -7, -8, -9};
+  std::vector<int64_t> X_shape = {2, 1, 3, 3};
+  NCHWtoNHWCconvert(X, X_shape);
+
+  std::vector<float> W = {-1, -2, -3, -4};
+  std::vector<int64_t> W_shape = {1, 1, 2, 2};
+  OIHWtoHWIOconvert(W, W_shape);
+
+  std::vector<float> dY = {0.1, 0.2,
+                           0.3, 0.4,
+                          
+                           1, 0,
+                           0, 1};
+  std::vector<int64_t> dY_shape = {2, 1, 2, 2};
+  NCHWtoNHWCconvert(dY, dY_shape);
+
+  test.AddInput<float>("dY", dY_shape, dY);
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W);
+
+  std::vector<int64_t> dX_shape = {2, 1, 3, 3};
+  std::vector<int64_t> dW_shape = {1, 1, 2, 2};
+  std::vector<int64_t> dB_shape = {1};
+
+  std::vector<float> expected_dX = {-0.1, -0.4, -0.4,
+                                    -0.6, -2., -1.6,
+                                    -0.9, -2.4, -1.6,
+                                      
+                                    -1, -2, 0,
+                                    -3, -5, -2,
+                                    0, -3, -4};
+  std::vector<float> expected_dW = {-2.3, -3.3,
+                                    -5.3, -6.3};
+
+  OIHWtoHWIOconvert(expected_dW, dW_shape);
+  NCHWtoNHWCconvert(expected_dX, dX_shape);
+
+  std::vector<float> expected_dB = {3};
 
   test.AddOutput<float>("dX", dX_shape, expected_dX);
   test.AddOutput<float>("dW", dW_shape, expected_dW);
