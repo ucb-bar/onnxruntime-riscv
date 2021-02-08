@@ -42,6 +42,7 @@ if [ -f "${root_path}/systolic_runner/halide_interop/model_converter/generated/l
     extra_defs="-DUSE_CUSTOM_OP_LIBRARY ${extra_defs}"
 fi
 
-
+# Clean the old binary since we never really invoke this script unless we want to force a build
 rm -f ort_test
-make -s ort_test root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs}
+# 16 cores is surely overkill for 2 jobs
+make -s -j16 ort_test root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs}

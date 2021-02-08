@@ -50,4 +50,4 @@ fi
 
 # Remove pre-existing binary
 rm -f mnist_train
-make -s mnist_train root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs}
+make -s -j16 mnist_train root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs}
