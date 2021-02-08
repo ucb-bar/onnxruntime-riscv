@@ -1,5 +1,6 @@
 *.json
 *.data
+*.o
 **/ort_test
 **/batch_image.txt
 **/bert_qkv.txt
