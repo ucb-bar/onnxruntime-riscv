@@ -1,28 +1,14 @@
 CXX = riscv64-unknown-linux-gnu-g++
 CFLAGS = -march=rv64imafdc -mabi=lp64d -Wno-error=attributes \
-  	-Wall -Wextra -ffunction-sections -fdata-sections -Wno-parentheses -g -Wno-nonnull-compare \
+   	-Wall -Wextra -ffunction-sections -fdata-sections -Wno-parentheses -g -Wno-nonnull-compare \
   	-latomic -static
-CDEFS = -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -DEIGEN_MPL2_ONLY -DEIGEN_USE_THREADS -DENABLE_ORT_FORMAT_LOAD \
-		-DENABLE_TRAINING -DNSYNC_ATOMIC_CPP11 -DONNX_ML=1 -DONNX_NAMESPACE=onnx \
-		-DONNX_USE_LITE_PROTO=1 -DPLATFORM_POSIX -DSYSTOLIC_INT8=1 -DUSE_EIGEN_FOR_BLAS \
-		-DUSE_SYSTOLIC=1 -D__ONNX_NO_DOC_STRINGS ${extra_defs}
+CDEFS = -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS ${extra_defs}
 
-mnist_data_provider.o: mnist_data_provider.cc mnist_data_provider.h
-	$(CXX) -c -o $@ $< $(CFLAGS) $(CDEFS) \
-				-I ${root_path}/orttraining \
-				-I ${root_path}/include/onnxruntime \
-				-I ${root_path}/cmake/external/optional-lite/include \
-				-I ${root_path}/core \
-				-I ${build_path} \
-				-I ${build_path}/external/onnx \
-				-I ${root_path}/cmake/external/onnx \
-				-I ${root_path}/cmake/external/nsync/public \
-				-I ${root_path}/cmake/external/SafeInt \
-				-I ${root_path}/onnxruntime \
-				-I ${root_path}/cmake/external/protobuf/src \
+stb_image.o:
+	$(CXX) -c -o src/stb_image.o src/stb_image.cpp $(CFLAGS) $(CDEFS)
 
-mnist_train: mnist_data_provider.o main.cc
-	$(CXX) -o mnist_train mnist_data_provider.o main.cc $(CDEFS) \
+ort_test: stb_image.o
+	$(CXX) -o ort_test src/runner.cpp src/stb_image.o $(CDEFS) \
 				-I ${root_path}/include/onnxruntime/core/session \
 				-I ${root_path}/include/onnxruntime/core/providers \
 				-I ${root_path}/cmake/external/cxxopts/include \
