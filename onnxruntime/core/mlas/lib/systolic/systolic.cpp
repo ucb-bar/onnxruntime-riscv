@@ -415,3 +415,12 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   // }
   // printf("\n");
 }
+
+
+// We do this to clear out gemmini on every process launch
+#ifdef FOR_FIRESIM
+__attribute__((constructor))
+void cleargemmini() {
+  gemmini_flush(0);
+}
+#endif
