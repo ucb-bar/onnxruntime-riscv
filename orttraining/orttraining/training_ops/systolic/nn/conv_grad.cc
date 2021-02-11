@@ -32,6 +32,18 @@
 namespace onnxruntime {
 namespace systolic {
 
+template<typename T>
+inline void transpose(const T *src, T *dst, size_t m, size_t n) {
+  const size_t block = 32;
+  for (size_t i = 0; i < m; i += block) {
+      for(size_t j = 0; j < n; ++j) {
+          for(size_t b = 0; b < block && i + b < m; ++b) {
+              dst[j*m + i + b] = src[(i + b)*n + j];
+          }
+      }
+  }
+}
+
 /**
  * After the im2col and gemm for dW, we get the result in NHWC format.
  * NHWC here is equivalent to OHWI format. We convert this to HWIO (HWCN)
@@ -41,21 +53,14 @@ namespace systolic {
  * i.e. batch -> out_channels, channels -> in_channels
  */
 template <typename T>
-inline void NHWCtoHWIO(const T* in_vals, T* out_vals, const TensorShape& output_shape) {
+inline void OHWItoHWIO(const T* in_vals, T* out_vals, const TensorShape& output_shape) {
   int H = output_shape[0];
   int W = output_shape[1];
-  int C = output_shape[2];
-  int N = output_shape[3];
-
-  for (int n = 0; n < N; n++) {
-    for (int h = 0; h < H; h++) {
-      for (int w = 0; w < W; w++) {
-        for (int c = 0; c < C; c++) {
-          out_vals[((h * W + w) * C + c) * N + n] = in_vals[((n * H + h) * W + w) * C + c];
-        }
-      }
-    }
-  }
+  int I = output_shape[2];
+  int O = output_shape[3];
+  // Note that because we are doing OHWI -> HWIO where we just move the single axis O inwards,
+  // we can treat this as a O x HWI matrix and just do a 2D transpose.
+  transpose(in_vals, out_vals, O, H*W*I);
 }
 
 template <typename T>
@@ -176,16 +181,16 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                    1,
                    ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
                    kernel_dim);
-      GemmlowpDebug(/*transA= */ true, /*transB= */ false,
-                    static_cast<int>(M / conv_attrs_.group),
-                    static_cast<int>(kernel_dim),
-                    static_cast<int>(output_image_size),
-                    dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
-                    M,
-                    col_buffer_data + group_id * kernel_dim,
-                    conv_attrs_.group * kernel_dim,
-                    ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
-                    kernel_dim);
+      // GemmlowpDebug(/*transA= */ true, /*transB= */ false,
+      //               static_cast<int>(M / conv_attrs_.group),
+      //               static_cast<int>(kernel_dim),
+      //               static_cast<int>(output_image_size),
+      //               dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
+      //               M,
+      //               col_buffer_data + group_id * kernel_dim,
+      //               conv_attrs_.group * kernel_dim,
+      //               ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
+      //               kernel_dim);
     }
     if (dB) {
       // Gradient with respect to bias can be computed independent from group.
@@ -206,7 +211,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   printf("dW_ohwi");
   PrintMinMax( dW->Shape().Size(), ohwi_dW_data);
   // At this point ohwi_dW_data is formatted as [output_channels (derived from M), h, w, input channels]
-  NHWCtoHWIO(ohwi_dW_data, dWdata, dW->Shape());
+  OHWItoHWIO(ohwi_dW_data, dWdata, dW->Shape());
   // printf("\n");
   printf("dW finished\n");
   // DumpTensor<float>(dW);
