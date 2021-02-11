@@ -340,7 +340,7 @@ if (NOT MSVC)
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endif ()
 
-if(onnxruntime_USE_SYSTOLIC)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(riscv.*|RISCV.*)")
   # For riscv platform
   set(onnxruntime_LINK_LIBATOMIC true)
 endif()

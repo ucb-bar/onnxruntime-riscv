@@ -3120,6 +3120,7 @@ main(
     int argc, char *argv[]  __attribute__((unused))
     )
 {
+    (void)(argc); // Suppress unused argc
     setbuf(stdout, NULL);
 
 #ifdef FOR_FIRESIM
@@ -3132,9 +3133,6 @@ main(
 #endif
     
 #ifdef USE_SYSTOLIC
-#define UNUSED(x) (void)(x)
-    UNUSED(argc); // Suppress spurious argc warning
-#undef UNUSED
 #ifdef SYSTOLIC_INT8
     printf("Systolic Int8 Conv tests.\n");
     onnxruntime::make_unique<MlasSystolicConvTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();

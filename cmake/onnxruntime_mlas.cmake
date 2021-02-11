@@ -166,11 +166,16 @@ else()
     endif()
   endif()
 
-  if(onnxruntime_USE_SYSTOLIC)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(riscv.*|RISCV.*)")
+    # We re-use the power sgemm kernel here
     set(mlas_platform_srcs
-      ${ONNXRUNTIME_ROOT}/core/mlas/lib/systolic/systolic.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/power/SgemmKernelPower.cpp
     )
+    if (onnxruntime_USE_SYSTOLIC)
+      set(mlas_platform_srcs ${mlas_platform_srcs}
+        ${ONNXRUNTIME_ROOT}/core/mlas/lib/systolic/systolic.cpp
+      )
+    endif()
     if (onnxruntime_USE_HWACHA)
       enable_language(ASM)
       set(mlas_platform_srcs ${mlas_platform_srcs}

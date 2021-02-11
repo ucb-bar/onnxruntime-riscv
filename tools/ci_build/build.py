@@ -740,6 +740,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_MPI=" + (
             "ON" if args.use_mpi else "OFF"),
     ]
+    if args.riscv:
+        cmake_args += ["-DCMAKE_SYSTEM_PROCESSOR=riscv"]
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
