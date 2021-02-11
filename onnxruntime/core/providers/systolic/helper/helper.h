@@ -182,3 +182,33 @@ inline void GemmlowpDebug(int m, int n, int k,
     }
   }
 }
+
+template <typename T>
+inline void GemmlowpDebug(bool transA, bool transB, int m, int n, int k,
+                          const T* lhs_data, int strideA,
+                          const T* rhs_data, int strideB,
+                          T* out, int strideOut) {
+  printf("lhs matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < k; j++) {
+      std::cout << lhs_data[!transA ? (i * strideA + j) :  (j * strideA + i)] << " ";
+    }
+    printf("\n");
+  }
+
+  printf("rhs matrix\n");
+  for (int i = 0; i < k; i++) {
+    for (int j = 0; j < n; j++) {
+      std::cout << rhs_data[!transB ? (i * strideB + j) : (j * strideB + i)] << " ";
+    }
+    printf("\n");
+  }
+
+  printf("out matrix\n");
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      std::cout << out[i * strideOut + j] << " ";
+    }
+    printf("\n");
+  }
+}

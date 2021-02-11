@@ -116,6 +116,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   const T* Wdata = W->template Data<T>();
   const T* dYdata = dY->template Data<T>();
 
+  // Note that we allocate a temporary buffer to accumulate into, after which we convert back to NHWC
   BufferUniquePtr ohwi_dW(alloc->Alloc(sizeof(T) * dW->Shape().Size()), BufferDeleter(alloc));
   T* ohwi_dW_data = static_cast<T*>(ohwi_dW.get());
 
@@ -134,6 +135,8 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                               bias_multiplier_data,
                               &CPUMathUtil::Instance());
   }
+
+  // We first calculate dW
 
   // We loop over all the images, and accumulate the gradient for each.
   // Note how in the Gemm we add into the existing.
@@ -162,7 +165,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
     // We can then multiply (C x HW) * (im2col of X) to get an OHWI output
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       SystolicGemm(acc_mode, /*transA= */ true, /*transB= */ false,
-                   static_cast<int>(M / conv_attrs_.group),
+                   static_cast<int>(M / conv_attrs_.group), // Do one matrix-vector product per output channel
                    static_cast<int>(kernel_dim),
                    static_cast<int>(output_image_size),
                    1,
@@ -173,15 +176,16 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                    1,
                    ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
                    kernel_dim);
-      // GemmlowpDebug(static_cast<int>(M / conv_attrs_.group),
-      //               static_cast<int>(kernel_dim),
-      //               static_cast<int>(output_image_size),
-      //               dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
-      //               M,
-      //               col_buffer_data + group_id * kernel_dim,
-      //               conv_attrs_.group * kernel_dim,
-      //               dWdata + group_id * (M / conv_attrs_.group) * kernel_dim,
-      //               kernel_dim, 1, nullptr, 0);
+      GemmlowpDebug(/*transA= */ true, /*transB= */ false,
+                    static_cast<int>(M / conv_attrs_.group),
+                    static_cast<int>(kernel_dim),
+                    static_cast<int>(output_image_size),
+                    dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
+                    M,
+                    col_buffer_data + group_id * kernel_dim,
+                    conv_attrs_.group * kernel_dim,
+                    ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
+                    kernel_dim);
     }
     if (dB) {
       // Gradient with respect to bias can be computed independent from group.
@@ -264,18 +268,20 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // printf("\n");
-  printf("dX finished\n");
+  // // printf("\n");
+  // printf("dX finished\n");
+  // // DumpTensor<float>(dX);
+
+
+  // printf("dX\n");
   // DumpTensor<float>(dX);
-
-
-  printf("dX\n");
-  //DumpTensor<float>(dX);
-  PrintMinMax<float>(dX);
-  printf("dW\n");
-  PrintMinMax<float>(dW);
-  printf("dB\n");
-  PrintMinMax<float>(dB);
+  // //PrintMinMax<float>(dX);
+  // printf("dW\n");
+  // DumpTensor<float>(dW);
+  // //PrintMinMax<float>(dW);
+  // printf("dB\n");
+  // DumpTensor<float>(dB);
+  // //PrintMinMax<float>(dB);
 
   return Status::OK();
 }  // namespace systolic
