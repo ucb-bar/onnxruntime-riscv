@@ -132,7 +132,7 @@ struct MlasSgemmSplatAElements
         MLAS_FLOAT32X4 ABroadcast[RowCount]
         )
     {
-        #ifdef USE_SYSTOLIC
+        #ifdef MLAS_TARGET_CPU_ONLY
         ABroadcast[Row] = MlasBroadcastFloat32x4(AElements[Row][Lane]);
         #else
         ABroadcast[Row] = vec_splat(AElements[Row], Lane);
