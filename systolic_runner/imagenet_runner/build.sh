@@ -18,7 +18,6 @@ extra_defs=""
 # Only set if we build with --enable_training
 training_libs=""
 
-# Check for hwacha support
 for var in "$@"
 do
 	if [ $var = "--use_hwacha" ]; then

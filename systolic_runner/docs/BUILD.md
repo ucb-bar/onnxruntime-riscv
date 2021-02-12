@@ -18,33 +18,19 @@ For training, `fp32` is needed.
 
 Then run `./build.sh --parallel`. Note that while Microsoft claims cmake might not get the dependency order right for `--parallel`,
 in my experience it has worked fine.
-This will build with debug symbols – for release mode (`-O3` you can use `./build.sh --config=Release --parallel`).
+This will build with debug symbols – for release mode (`-O3`) you can use `./build.sh --config=Release --parallel`.
 
-To build the `image-net` runner, use the same command you used for building ORT, (i.e. if you built in release mode, use `./build.sh --config=Release`)
+To build the `image-net` runner (located in the `systolic` folder at the root), use the exact same command you used for building ORT, (i.e. if you built in release mode and without training, you would use `./build.sh --config=Release`)
+
+To build with training support, add `--enable_training` when building ORT and the imagenet runner.
+
+**TL;DR**: `git submodule update --init --recursive` then `./build.sh --config=Release --parallel --enable_training` for both ORT and the model runners
 
 ### Building for Firesim
 
-When building for running with Firesim (as opposed to `spike pk`), you must add the following to the beginning of `main` in `runner.cpp` in the `imagenet_runner` to prevent page-fault related issues.
+When building for running with Firesim (as opposed to `spike pk` or `qemu`), please build with `--for_firesim` on both the main ORT library and any model runner. This flag will 1) ensure that `mlockall` is performed at process start which prevents page-fault issues from Gemmini accessing a swapped out page 2) flush gemmini on process start. 
 
-```
-  if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
-      perror("mlockall failed");
-      exit(1);
-    }
-```
-
-(You may also need to `#include <sys/mman.h>`).
-
-You must also add to the end of `systolic_include.h` in `onnxruntime/core/mlas/lib/systolic/systolic_include.h` the following to ensure that Gemmini flushes the TLB for subsequent runs in a new process.
-
-```
-__attribute__((constructor))
-void cleargemmini() {
-  gemmini_flush(0);
-}
-```
-
-Please follow the [FireSim documentation](https://docs.fires.im/en/latest/) for instructions on how to use FireSim to run the built binary. When building the FireMarshal workload using buildroot linux, you will need to enable RoCC Extensions by patching `arch/riscv/kernel/process.c` in `firemarshal/riscv-linux` (if this is not done, you may encounter "Unhandled signal 4" trap):
+Please follow the [FireSim documentation](https://docs.fires.im/en/latest/) for instructions on how to use FireSim to run the built binary. When building the FireMarshal workload using buildroot linux, you may need to enable RoCC Extensions by patching `arch/riscv/kernel/process.c` in `firemarshal/riscv-linux` (if this is not done, you may encounter "Unhandled signal 4" trap):
 
 * Change line 70 (`regs->status |= SR_FS_INITIAL;`) to `regs->status |= SR_FS_INITIAL | SR_XS_INITIAL`).
 
@@ -66,7 +52,7 @@ Please follow the [FireSim documentation](https://docs.fires.im/en/latest/) for 
         printf "Your PATH contains a newline (\\\n) character.\n"
 ```
 
-## Running
+## Running via Spike
 
 To run using `spike`, please first pull `master` for `riscv-isa-sim` in `esp-tools`.
 
@@ -117,3 +103,7 @@ Note that by default, Chipyard adds `chipyard/riscv-tools-install/bin/spike` to 
 See the README on imagenet runner for documentation on how to use onnxruntime to run an imagenet model. Sample quantized models are provided in the [releases](https://github.com/pranav-prakash/onnxruntime-riscv/releases) tab, or you can perform post-training quantization on a model yourself using the quantization tool in the systolic_runner folder. 
 
 You can also run other models by creating the appropriate runner script that calls into the onnxruntime APIs.
+
+## Running via Qemu
+
+Refer to the last paragraph of above.
