@@ -24,7 +24,7 @@ ort_test: stb_image.o
 				-I ${root_path}/onnxruntime \
 				-I ${root_path}/cmake/external/protobuf/src \
 				$(CFLAGS) ${build_path}/libonnx_test_runner_common.a ${build_path}/libonnxruntime_test_utils.a \
-   ${build_path}/libonnxruntime_training_runner.a ${build_path}/libonnxruntime_training.a \
+   ${training_libs} \
    ${build_path}/libonnxruntime_session.a ${build_path}/libonnxruntime_optimizer.a ${build_path}/libonnxruntime_providers.a \
     ${build_path}/libonnxruntime_util.a ${build_path}/libonnxruntime_framework.a ${build_path}/libonnxruntime_util.a \
      ${build_path}/libonnxruntime_graph.a ${build_path}/libonnxruntime_providers_systolic.a ${build_path}/libonnxruntime_common.a \

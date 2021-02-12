@@ -15,6 +15,8 @@ build_path=${root_path}/build/${release_path}
 
 extra_libs=""
 extra_defs=""
+# Only set if we build with --enable_training
+training_libs=""
 
 # Check for hwacha support
 for var in "$@"
@@ -30,6 +32,7 @@ do
     fi
     if [ $var = "--enable_training" ]; then
         extra_libs="${build_path}/tensorboard/libtensorboard.a ${extra_libs}"
+        training_libs="${build_path}/libonnxruntime_training_runner.a ${build_path}/libonnxruntime_training.a"
     fi
 
 done
@@ -45,4 +48,4 @@ fi
 # Clean the old binary since we never really invoke this script unless we want to force a build
 rm -f ort_test
 # 16 cores is surely overkill for 2 jobs
-make -s -j16 ort_test root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs}
+make -s -j16 ort_test root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs} training_libs=${training_libs}
