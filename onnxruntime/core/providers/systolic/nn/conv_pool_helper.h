@@ -136,6 +136,7 @@ void EigenAdd(int N, const T* a, const T* b, T* y) {
   EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(a, N).array() + ConstEigenVectorMap<T>(b, N).array();
 }
 
+/* https://github.com/pytorch/pytorch/blob/master/caffe2/utils/math_cpu.cc#L2383 */
 inline void Col2Im_NHWC(const float* data_col, int64_t channels, int64_t height,
                                                     int64_t width, int64_t kernel_h, int64_t kernel_w,
                                                     int64_t dilation_h, int64_t dilation_w, int64_t pad_t,
@@ -290,6 +291,7 @@ inline void ComputeMaxPool2D(
     const ConstEigenArrayMap<T>& X_arr,
     EigenArrayMap<T>* Y_arr);
 
+// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/pool_op.cc
 template <>
 inline void ComputeMaxPool2D<int8_t, StorageOrder::NHWC>(
     const int W,
