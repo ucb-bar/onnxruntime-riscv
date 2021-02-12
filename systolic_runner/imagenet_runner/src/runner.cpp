@@ -317,16 +317,17 @@ int main(int argc, char* argv[]) {
       }
 
       totalCases += 1;
+      // The most likely prediction is at the end of the list
       std::vector<int> topFiveOut = inferOnImage(path, cmd["preprocess"].as<std::string>(),
                   session, input_node_names, input_node_dims, output_node_names);
       int expected_label = getLabelOfBatchImage(path);
       assert(expected_label < 1000 && "Expected label out of bounds");
       printf("Expected was %d - %s\n", expected_label, imagenet_labels[expected_label]);
 
-      for (int i = 0; i < topFiveOut.size(); i++) {
+      for (size_t i = 0; i < topFiveOut.size(); i++) {
         if (topFiveOut[i] == expected_label) {
           topFiveRight += 1;
-          topOneRight += (i == topFiveOut.size() - 1);
+          topOneRight += ((i + 1) == topFiveOut.size());
           break;
         }
       }
