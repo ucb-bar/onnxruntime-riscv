@@ -1,8 +1,27 @@
 ## Building
 
-To build, first ensure that you have the Risc-V toolchain setup, built with`esp-tools`
-(from Chipyard, use `/scripts/build-toolchains.sh esp-tools`).
- 
+### Setting up your Toolchain
+
+To build, first ensure that you have the Risc-V toolchain setup. We recommend using [Chipyard](https://chipyard.readthedocs.io/en/latest/Chipyard-Basics/Initial-Repo-Setup.html) to install the riscv toolchain, but if you prefer you can also install riscv-g++ manually.
+
+Note that there are two "flavors" of the risc-v toolchain: the standard one (riscv-tools), and a variant (esp-tools) with specific support for ucb-bar Gemmini and Hwacha accelerators. In particular, esp-tools has a version of g++ that supports assembling instructions for Hwacha, and has a version of spike that supports the Gemmini and hwacha extensions.
+
+For this project, it actually suffices to use standard (riscv-tools) gcc to build the binaries since emitting Gemmini instructions doesn't need a custom assembler (note that building the optional hwacha backend will need esp-tools, though). But since we would need the spike from `esp-tools` to simulate the binary anyway, we recommend just grabbing `esp-tools` to make things simpler.
+
+To summarize, here are all the ways you can acquire a suitable toolchain:
+
+* Using chipyard (probably easiest, but might be overkill since it installs lots of extra dependencies)
+     - Follow the above linked Chipyard docs, making sure to use `./scripts/build-toolchains.sh esp-tools` to install the esp-tools toolchain
+     - As mentioned, building `riscv-tools` would also be sufficient to compile onnxruntime, but that version of spike won't be able to simulate Gemmini
+* Installing a toolchain manually
+     - You can manually install the gnu-toolchain, riscv-pk, and riscv-isa-sim found within this [esp-tools](https://github.com/ucb-bar/chipyard/tree/master/toolchains/esp-tools) folder
+     - Note that the [esp-tools repo](https://github.com/ucb-bar/esp-tools) is OUT OF DATE and should not be used. (See https://github.com/pranav-prakash/onnxruntime-riscv/issues/27)
+
+
+**tl;dr** Using the esp-tools risc-v toolchain from Chipyard is the best option for most people
+
+### Building this repo
+
 Once you have riscv g++ in your `PATH`, clone this repo and `git submodule update --init --recursive`.
 
 Ensure that the `systolic_params.h` matches the gemmini config you wish to run against (that is, its contents should match the auto-generated `gemmini_params.h` file from the Gemmini build). While you should likely not need to touch `systolic_include.h`, if the Gemmini ISA has changed recently and this repo has not yet been updated to match, `systolic_include.h` will need to be updated as well -- symptoms of a Gemmini-version mismatch include freezing or incorrect outputs when running the unit tests or entire networks.
@@ -54,9 +73,7 @@ Please follow the [FireSim documentation](https://docs.fires.im/en/latest/) for 
 
 ## Running via Spike
 
-To run using `spike`, please first pull `master` for `riscv-isa-sim` in `esp-tools`.
-
-You will next need to patch `riscv-pk` to no-op the futex and tid syscalls as follows:
+You will first need to patch `riscv-pk` to no-op the futex and tid syscalls as follows:
 
 
 ```
@@ -96,7 +113,17 @@ diff --git a/pk/syscall.c b/pk/syscall.c
 Finally please also double check that the proxy kernel is patched to enable RoCC extensions (should be done by default), as is shown in commit 
 https://github.com/riscv/riscv-pk/commit/c53de08b9ba719f3e7b02fc1a029d194a190da48
 
-You can rebuild spike + pk via `./build-spike-pk.sh`
+You can rebuild pk via:
+
+```
+$ mkdir build
+$ cd build
+$ ../configure --prefix=$RISCV --host=riscv64-unknown-elf
+$ make
+$ make install
+```
+
+Then please pull `master` for the `riscv-isa-sim` in [esp-tools](https://github.com/ucb-bar/chipyard/tree/master/toolchains/esp-tools) so Spike uses the latest Gemmini ISA.
 
 Note that by default, Chipyard adds `chipyard/riscv-tools-install/bin/spike` to your PATH, which does not contain the gemmini extension. Please ensure (manually adding the `esp-tools` build folder to $PATH if needed) that `which spike` instead references the spike from `esp-tools`.
 
