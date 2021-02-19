@@ -156,13 +156,11 @@ def parse_arguments():
     parser.add_argument(
         "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
     parser.add_argument(
+        "--enable_memory_profile", action='store_true', help="Enable memory profile in ORT.")
+    parser.add_argument(
         "--enable_training", action='store_true', help="Enable training in ORT.")
     parser.add_argument(
-        "--enable_training_python_frontend_e2e_tests", action="store_true",
-        help="Enable the pytorch frontend training tests.")
-    parser.add_argument(
-        "--enable_training_pipeline_e2e_tests", action="store_true",
-        help="Enable the pipeline c++ e2e tests.")
+        "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
     parser.add_argument(
         "--disable_nccl", action='store_true', help="Disable Nccl.")
     parser.add_argument(
@@ -342,6 +340,8 @@ def parse_arguments():
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.")
     parser.add_argument(
+        "--use_coreml", action='store_true', help="Build with CoreML support.")
+    parser.add_argument(
         "--use_nnapi", action='store_true', help="Build with NNAPI support.")
     parser.add_argument(
         "--nnapi_min_api", type=int,
@@ -447,17 +447,23 @@ def parse_arguments():
         help="Build ONNXRuntime micro-benchmarks.")
 
     # options to reduce binary size
-    parser.add_argument("--minimal_build", action='store',
-                        const='on', default='off', nargs='?', type=str.lower,
+    parser.add_argument("--minimal_build", default=None, nargs='*', type=str.lower,
                         help="Create a build that only supports ORT format models. "
                         "See /docs/ONNX_Runtime_Format_Model_Usage.md for more information. "
                         "RTTI is automatically disabled in a minimal build. "
                         "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
-                        "as a parameter. e.g. '--minimal_build extended'.")
-    parser.add_argument("--include_ops_by_model", type=str, help="include ops from model(s) under designated path.")
+                        "as a parameter. e.g. '--minimal_build extended'. "
+                        "To enable support for custom operators pass 'custom_ops' as a parameter. "
+                        "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
+                        "'--minimal_build extended custom_ops'")
     parser.add_argument("--include_ops_by_config", type=str,
                         help="include ops from config file. "
                         "See /docs/Reduced_Operator_Kernel_build.md for more information.")
+    parser.add_argument("--enable_reduced_operator_type_support", action='store_true',
+                        help='If --include_ops_by_config is specified, and the configuration file was created from ORT '
+                             'format models with type reduction enabled, limit the types individual operators support '
+                             'where possible to further reduce the build size. '
+                             'See /docs/Reduced_Operator_Kernel_build.md for more information.')
 
     parser.add_argument("--disable_contrib_ops", action='store_true',
                         help="Disable contrib ops (reduces binary size)")
@@ -475,7 +481,8 @@ def parse_arguments():
     # Code coverage
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
-
+    parser.add_argument(
+        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
     return parser.parse_args()
 
 
@@ -485,7 +492,7 @@ def resolve_executable_path(command_or_path):
     if executable_path is None:
         raise BuildError("Failed to resolve executable path for "
                          "'{}'.".format(command_or_path))
-    return os.path.realpath(executable_path)
+    return os.path.abspath(executable_path)
 
 
 def get_linux_distro():
@@ -631,35 +638,26 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DCMAKE_SYSTEM_NAME=Linux",
         "-DUNIX=True",
         "-Donnxruntime_USE_SYSTOLIC=" + "ON",
-        "-Donnxruntime_FOR_FIRESIM=" + (
-            "ON" if args.for_firesim else "OFF"),
-        "-Donnxruntime_USE_HWACHA=" + (
-            "ON" if args.use_hwacha else "OFF"),
-        "-Donnxruntime_RUN_ONNX_TESTS=" + (
-            "ON" if args.enable_onnx_tests else "OFF"),
-        "-Donnxruntime_BUILD_WINML_TESTS=" + (
-            "OFF" if args.skip_winml_tests else "ON"),
+        "-Donnxruntime_FOR_FIRESIM=" + ("ON" if args.for_firesim else "OFF"),
+        "-Donnxruntime_USE_HWACHA=" + ("ON" if args.use_hwacha else "OFF"),
+        "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
+        "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
-        "-Donnxruntime_USE_FEATURIZERS=" + (
-            "ON" if args.use_featurizers else "OFF"),
+        "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
-            "ON" if args.use_mimalloc == "stl" or
-            args.use_mimalloc == "all" else "OFF"),
+            "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + (
-            "ON" if args.use_mimalloc == "arena" or
-            args.use_mimalloc == "all" else "OFF"),
-        "-Donnxruntime_ENABLE_PYTHON=" + (
-            "ON" if args.enable_pybind else "OFF"),
+            "ON" if args.use_mimalloc == "arena" or args.use_mimalloc == "all" else "OFF"),
+        "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
         "-Donnxruntime_BUILD_NODEJS=" + ("ON" if args.build_nodejs else "OFF"),
-        "-Donnxruntime_BUILD_SHARED_LIB=" + (
-            "ON" if args.build_shared_lib else "OFF"),
+        "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
         "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
@@ -673,72 +671,58 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             else "OFF"),
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar else "OFF"),
-        "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + (
-            "ON" if args.enable_msinternal else "OFF"),
+        "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-        "-Donnxruntime_TENSORRT_HOME=" + (
-            tensorrt_home if args.use_tensorrt else ""),
+        "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
-        # By default - we currently support only cross compiling for
-        # ARM/ARM64 (no native compilation supported through this
-        # script).
-        "-Donnxruntime_CROSS_COMPILING=" + (
-            "ON" if args.arm64 or args.arm or args.riscv else "OFF"),
+        # By default - we currently support only cross compiling for ARM/ARM64
+        # (no native compilation supported through this script).
+        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm or args.riscv else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         "-Donnxruntime_DISABLE_ORT_FORMAT_LOAD=" + ("ON" if args.disable_ort_format_load else "OFF"),
-        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build != 'off' else "OFF"),
-        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build == 'extended' else "OFF"),
-        "-Donnxruntime_REDUCED_OPS_BUILD=" + (
-            "ON" if args.include_ops_by_config or args.include_ops_by_model else "OFF"),
-        "-Donnxruntime_MSVC_STATIC_RUNTIME=" + (
-            "ON" if args.enable_msvc_static_runtime else "OFF"),
+        # Need to use 'is not None' with minimal_build check as it could be an empty list.
+        "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
+        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
+                                                   else "OFF"),
+        "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
+                                                     else "OFF"),
+        "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if args.include_ops_by_config else "OFF"),
+        "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
-        "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + (
-            "ON" if args.enable_language_interop_ops else "OFF"),
+        "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
         "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-        "-Donnxruntime_USE_TELEMETRY=" + (
-            "ON" if args.use_telemetry else "OFF"),
+        "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
+        "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
-        "-Donnxruntime_USE_ACL_1902=" + (
-            "ON" if args.use_acl == "ACL_1902" else "OFF"),
-        "-Donnxruntime_USE_ACL_1905=" + (
-            "ON" if args.use_acl == "ACL_1905" else "OFF"),
-        "-Donnxruntime_USE_ACL_1908=" + (
-            "ON" if args.use_acl == "ACL_1908" else "OFF"),
-        "-Donnxruntime_USE_ACL_2002=" + (
-            "ON" if args.use_acl == "ACL_2002" else "OFF"),
-        "-Donnxruntime_USE_ARMNN=" + (
-            "ON" if args.use_armnn else "OFF"),
-        "-Donnxruntime_ARMNN_RELU_USE_CPU=" + (
-            "OFF" if args.armnn_relu else "ON"),
-        "-Donnxruntime_ARMNN_BN_USE_CPU=" + (
-            "OFF" if args.armnn_bn else "ON"),
+        "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
+        "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
+        "-Donnxruntime_USE_ACL_1908=" + ("ON" if args.use_acl == "ACL_1908" else "OFF"),
+        "-Donnxruntime_USE_ACL_2002=" + ("ON" if args.use_acl == "ACL_2002" else "OFF"),
+        "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
+        "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
+        "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         # Training related flags
-        "-Donnxruntime_ENABLE_NVTX_PROFILE=" + (
-            "ON" if args.enable_nvtx_profile else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING=" + (
-            "ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
-        "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + (
-            "ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_NCCL=" + (
-            "OFF" if args.disable_nccl else "ON"),
-        "-Donnxruntime_BUILD_BENCHMARKS=" + (
-            "ON" if args.build_micro_benchmarks else "OFF"),
+        "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
+        "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
-        "-Donnxruntime_USE_MPI=" + (
-            "ON" if args.use_mpi else "OFF"),
+        "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
+        "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
     ]
     if args.riscv:
         cmake_args += ["-DCMAKE_SYSTEM_PROCESSOR=riscv"]
@@ -786,9 +770,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                            "ON" if args.use_openvino.startswith("HETERO") else "OFF"),
                        "-Donnxruntime_USE_OPENVINO_DEVICE=" + (args.use_openvino),
                        "-Donnxruntime_USE_OPENVINO_MULTI=" + (
-                           "ON" if args.use_openvino.startswith("MULTI") else "OFF"),
-                       "-Donnxruntime_USE_OPENVINO_BINARY=" + (
-                           "ON" if args.use_openvino else "OFF")]
+                           "ON" if args.use_openvino.startswith("MULTI") else "OFF")]
 
     # TensorRT and OpenVINO providers currently only supports
     # full_protobuf option.
@@ -829,6 +811,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_verstr = subprocess.check_output(['cmake', '--version']).decode('utf-8').split()[2]
         if args.use_xcode and LooseVersion(cmake_verstr) >= LooseVersion('3.19.0'):
             cmake_args += ["-T", "buildsystem=1"]
+        if args.apple_deploy_target:
+            cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
+
+    if args.use_coreml:
+        if not is_macOS():
+            raise BuildError("Build CoreML EP requires macOS")
+        cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:
         if is_macOS():
@@ -1324,82 +1313,12 @@ def run_training_python_frontend_e2e_tests(cwd):
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_mixed_precision'], cwd=cwd)
 
-    # this test is not stable. it occasionally causes segfault due to its session creation/release pattern.
-    # need to skip to unblock release
-    # run_subprocess([
-    #     sys.executable, 'orttraining_test_transformers.py',
-    #     'BertModelTest.test_for_pretraining_mixed_precision_with_gradient_accumulation'], cwd=cwd)
-
-
-def run_training_pipeline_e2e_tests(cwd):
-    # pipeline tests are to be added here:
-    log.info("Running pipeline e2e tests.")
-
-    import torch
-    ngpus = torch.cuda.device_count()
-
-    command = ['./onnxruntime_training_bert',
-               '--ort_log_severity', '1',
-               '--optimizer=Lamb',
-               '--learning_rate=3e-3',
-               '--max_seq_length=128',
-               '--max_predictions_per_seq=20',
-               '--warmup_ratio=0.2843',
-               '--warmup_mode=Poly',
-               '--model_name', '/bert_ort/bert_models/nv/bert-large/' +
-               'bert-large-uncased_L_24_H_1024_A_16_V_30528_S_512_Dp_0.1_optimized_layer_norm_opset12',
-               '--train_data_dir', '/bert_data/128/books_wiki_en_corpus/train',
-               '--test_data_dir', '/bert_data/128/books_wiki_en_corpus/test',
-               '--display_loss_steps', '1',
-               '--use_nccl',
-               '--use_mixed_precision',
-               '--allreduce_in_fp16',
-               '--gradient_accumulation_steps', '48',
-               '--num_train_steps', '96',
-               '--train_batch_size', '50']
-
-    # TODO: currently the CI machine only has 4 GPUs for parallel tests.
-    # Fill in more pipeline partition options when the machine has different GPUs counts.
-    if ngpus != 4:
-        return
-
-    # Test 4-way pipeline parallel
-    pp_command = ['mpirun', '-n', str(ngpus)] + command + ['--pipeline_parallel_size', '4', '--cut_group_info',
-                                                           '1149:407-1219/1341/1463/1585/1707/1829,' +
-                                                           '1881:407-1951/2073/2195/2317/2439/2561,' +
-                                                           '2613:407-2683/2805/2927/3049/3171/3293']
-    command_str = ', '.join(pp_command)
-    log.debug('RUN: ' + command_str)
-    run_subprocess(pp_command, cwd=cwd)
-
-    # Test 2-way data parallel + 2-way pipeline parallel
-    pp_dp_command = ['mpirun', '-n', str(ngpus)]
-    pp_dp_command = pp_dp_command + command
-    pp_dp_command = pp_dp_command + ['--data_parallel_size', '2', '--pipeline_parallel_size',
-                                     '2', '--cut_group_info',
-                                     '1881:407-1951/2073/2195/2317/2439/2561/2683/2805/2927/3049/3171/3293']
-    command_str = ', '.join(pp_dp_command)
-    log.debug('RUN: ' + command_str)
-    run_subprocess(pp_dp_command, cwd=cwd)
-
 
 def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
     for config in configs:
         log.info("Running tests for %s configuration", config)
         cwd = get_config_build_dir(build_dir, config)
         cwd = os.path.abspath(cwd)
-
-        # TODO: temporarily disable this test to restore pipeline health. This test fails due to
-        # an OOM regression. Invetigation undergoing.
-        # if args.enable_training and args.use_cuda and args.enable_training_pipeline_e2e_tests:
-        #     # run distributed pipeline test on 4-GPU CI machine.
-        #     run_training_pipeline_e2e_tests(cwd=cwd)
-        #     continue
-
-        if args.enable_training and args.use_cuda and args.enable_training_pipeline_e2e_tests:
-            # run distributed pipeline test on 4-GPU CI machine.
-            run_training_pipeline_e2e_tests(cwd=cwd)
-            continue
 
         if args.android:
             run_android_tests(args, source_dir, config, cwd)
@@ -1450,8 +1369,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 return
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
-            # models can run
-            if args.include_ops_by_model or args.include_ops_by_config or args.minimal_build != 'off':
+            # models can run.
+            if args.include_ops_by_config or args.minimal_build is not None:
                 return
 
             if is_windows():
@@ -1487,6 +1406,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if onnx_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
+                               cwd=cwd, dll_path=dll_path)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -1607,7 +1528,7 @@ def derive_linux_build_property():
         return "/p:IsLinuxBuild=\"true\""
 
 
-def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl):
+def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1630,6 +1551,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.DNNL\""
     elif use_cuda:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
+    elif use_nuphar:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
     else:
         pass
 
@@ -1824,9 +1747,7 @@ def main():
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
     if not (args.update or args.clean or args.build or args.test):
-        log.debug(
-            "Defaulting to running update, build "
-            "[and test for native builds].")
+        log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
         if cross_compiling:
@@ -1837,11 +1758,11 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_model or args.include_ops_by_config:
-        from exclude_unused_ops import exclude_unused_ops
-        models_path = args.include_ops_by_model if args.include_ops_by_model else ''
-        config_path = args.include_ops_by_config if args.include_ops_by_config else ''
-        exclude_unused_ops(models_path, config_path, use_cuda=args.use_cuda)
+    if args.include_ops_by_config and args.update:
+        from exclude_unused_ops_and_types import exclude_unused_ops_and_types
+        exclude_unused_ops_and_types(args.include_ops_by_config,
+                                     args.enable_reduced_operator_type_support,
+                                     args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -1858,7 +1779,7 @@ def main():
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')
 
-    if args.minimal_build and args.disable_ort_format_load:
+    if args.minimal_build is not None and args.disable_ort_format_load:
         raise BuildError('Minimal build requires loading ORT format models.')
 
     if args.nnapi_min_api:
@@ -2062,7 +1983,8 @@ def main():
                 args.use_cuda,
                 args.use_openvino,
                 args.use_tensorrt,
-                args.use_dnnl
+                args.use_dnnl,
+                args.use_nuphar
             )
 
     if args.test and args.build_nuget:

@@ -21,6 +21,7 @@ std::unique_ptr<IExecutionProvider> DefaultSystolicExecutionProvider(bool enable
 std::unique_ptr<IExecutionProvider> DefaultHwachaExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider();
 
 // EP for internal testing
 std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(

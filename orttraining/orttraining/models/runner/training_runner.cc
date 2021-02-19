@@ -805,6 +805,9 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       // loop through the data
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+        MemoryInfo::SetIteration(step_);
+#endif
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
 
         const bool stablized_perf_measurement_started = step_ >= stabilized_perf_start_step;
@@ -1285,7 +1288,7 @@ constexpr const char* k_loss_scaler_state = "loss_scaler_state";
 template <typename T>
 Status FromString(const std::string& s, T& t) {
   std::istringstream i{s};
-  ORT_RETURN_IF_NOT(i >> t && i.eof());
+  ORT_RETURN_IF_NOT(i >> t && i.eof(), "i >> t && i.eof() was false");
   return Status::OK();
 }
 }  // namespace
@@ -1312,7 +1315,7 @@ Status TrainingRunner::LoadCheckpointProperties(
     const std::unordered_map<std::string, std::string>& properties) {
   auto load_property = [&properties](const char* name, auto& val) {
     auto prop_it = properties.find(name);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(FromString(prop_it->second, val));
     return Status::OK();
   };
@@ -1326,7 +1329,7 @@ Status TrainingRunner::LoadCheckpointProperties(
 
   if (loss_scaler_) {
     auto prop_it = properties.find(property_names::k_loss_scaler_state);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(loss_scaler_->LoadFromString(prop_it->second));
   }
 
