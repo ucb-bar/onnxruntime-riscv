@@ -45,6 +45,10 @@ More detailed analysis can be performed by parsing the resulting json directly. 
 map(select(.args.op_name != null))  | group_by(.args.op_name) | map({(.[0].args.op_name) : map(.dur) | add}) | sort_by(.[]) | add
 ```
 
+Some other links of interest that will parse files to generate report:
+https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/perfstats.py
+https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/tensorrt/perf
+
 ## Benchmark
 
 We provide some tools to make benchmarking on the ILSVRC2012 easy. Use `preprocess_batch` to sample a number of images, preprocess by cropping, and write a list of file paths that can be consumed by the runner. Use `batch_infer` to parallelize execution, spawning several runners for each split. Since the results of CPU emulation of Gemmini should be equivalent to results from the real thing, we recommend using `qemu` to get a guage of accuracy quickly. `postprocess_batch.py` will analyze the output files from the batch run to get the aggregated statistics.
