@@ -10,21 +10,10 @@ class QLinearBinaryOp(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
-        # Don't bother quantizing if none of the inputs are quantized as might reduce performance
-        if node.input[0] not in self.quantizer.quantized_value_map and \
-           node.input[1] not in self.quantizer.quantized_value_map:
-            return super().quantize()
-
-        # Check whether all inputs are floats, so we can quantize it
-        can_quantize = self.quantizer._is_valid_quantize_value(node.output[0]) and \
-                       self.quantizer._is_valid_quantize_value(node.input[0]) and \
-                       self.quantizer._is_valid_quantize_value(node.input[1])
 
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])
-        if (not data_found or not can_quantize):  # only try to quantize when given quantization parameters for it
-            if can_quantize:
-                print("Skipping potentially quantizable {} op (name: {}) since output parameter not found".format(node.op_type, node.name))
+        if (not data_found):  # only try to quantize when given quantization parameters for it
             return super().quantize()
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \

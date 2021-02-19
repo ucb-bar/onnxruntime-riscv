@@ -12,9 +12,6 @@ class QuantOperatorBase:
             parameter new_nodes_list: List of new nodes created before processing current node
             return: List of new nodes created
         '''
-        if self.node.op_type == 'Constant':
-            raise ValueError("Cannot handle constant node. Use the onnx transform to convert to initializer")
-
         nodes = []
         for index, node_input in enumerate(self.node.input):
             dequantize_node = self.quantizer._dequantize_value(node_input)

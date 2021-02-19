@@ -14,12 +14,7 @@ class GatherQuant(QuantOperatorBase):
     def quantize(self):
         node = self.node
         assert (node.op_type == "Gather")
-
-        # Don't bother quantizing if input not already quantized as might reduce performance
-        if node.input[0] not in self.quantizer.quantized_value_map:
-            return super().quantize()
-
-        if (not self.quantizer._is_valid_quantize_weight(node.input[0])):
+        if (not self.quantizer.is_valid_quantize_weight(node.input[0])):
             super().quantize()
             return
 

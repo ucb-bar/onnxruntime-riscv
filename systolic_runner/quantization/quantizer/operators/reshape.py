@@ -4,7 +4,7 @@ from ..quant_utils import QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
 
 
-class QReshape(QuantOperatorBase):
+class ReshapeQuant(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 

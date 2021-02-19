@@ -18,4 +18,4 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
             self.quantizer.quantize_inputs(node, [2, 3, 4])
 
         super().quantize()
-        self.quantizer.new_nodes += nodes 
+        self.quantizer.new_nodes += nodes
