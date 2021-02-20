@@ -125,6 +125,8 @@ $ make install
 
 Then please pull `master` for the `riscv-isa-sim` in [esp-tools](https://github.com/ucb-bar/chipyard/tree/master/toolchains/esp-tools) so Spike uses the latest Gemmini ISA.
 
+Note that you will want to ensure the `gemmini_params.h` used by spike matches the version used by onnxruntime. I.e., if you built for FP32 Gemmini (check the CMake file as mentioned in the previous section) ensure it matches `systolic_params_fp32.h`.
+
 Note that by default, Chipyard adds `chipyard/riscv-tools-install/bin/spike` to your PATH, which does not contain the gemmini extension. Please ensure (manually adding the `esp-tools` build folder to $PATH if needed) that `which spike` instead references the spike from `esp-tools`.
 
 See the README on imagenet runner for documentation on how to use onnxruntime to run an imagenet model. Sample quantized models are provided in the [releases](https://github.com/pranav-prakash/onnxruntime-riscv/releases) tab, or you can perform post-training quantization on a model yourself using the quantization tool in the systolic_runner folder. 
