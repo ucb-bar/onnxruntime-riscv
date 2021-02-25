@@ -5,8 +5,8 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/util/math.h"
+#include "core/mlas/inc/mlas.h"
 #include "pool_attributes.h"
 
 namespace onnxruntime {
