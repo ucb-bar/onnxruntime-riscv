@@ -12,6 +12,7 @@ namespace systolic {
 #ifdef SYSTOLIC_FP32
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, ConvGrad);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, ConvGrad_nhwc);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, MaxPoolGrad_nhwc);
 #endif
 
 Status RegisterSystolicTrainingKernels(KernelRegistry& kernel_registry) {
@@ -19,6 +20,7 @@ Status RegisterSystolicTrainingKernels(KernelRegistry& kernel_registry) {
 #ifdef SYSTOLIC_FP32
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, ConvGrad)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, ConvGrad_nhwc)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kSystolicExecutionProvider, kOnnxDomain, 9, MaxPoolGrad_nhwc)>,
 #endif
   };
 

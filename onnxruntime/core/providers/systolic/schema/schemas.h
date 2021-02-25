@@ -21,8 +21,8 @@ using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
-using ONNX_NAMESPACE::TypeProto;
 using ONNX_NAMESPACE::TensorProto;
+using ONNX_NAMESPACE::TypeProto;
 
 #define ONNX_SYSTOLIC_OPERATOR_SCHEMA(name) \
   ONNX_SYSTOLIC_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
@@ -312,6 +312,21 @@ void RegisterSystolicTrainingSchemas() {
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
+
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(MaxPoolGrad_nhwc)
+      .SinceVersion(9)
+      .Input(0, "dY", "Gradient of output, Y", "T")
+      .Input(1, "Indices", "Indices tensor from max pooling across the input tensor.", "I")
+      .Output(0, "dX", "Gradient of input, X", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "I",
+          {"tensor(int64)"},
+          "Constrain index tensor to int64");
 }
 
 void RegisterSystolicSchemas() {
@@ -488,13 +503,13 @@ void RegisterSystolicSchemas() {
             nullptr,
             dilations, strides, pads, kernel_shape, auto_pad,
             ceil_mode, /*use_dilation= */ true, /*require_kernel_shape= */ true);
-         //dump_vector(pool_output_shape, "Pool output shape");
-          auto output_shape =
-              ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-          output_shape->clear_dim();
-          for (int64_t dim : pool_output_shape) {
-            output_shape->add_dim()->set_dim_value(dim);
-          }
+        //dump_vector(pool_output_shape, "Pool output shape");
+        auto output_shape =
+            ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        output_shape->clear_dim();
+        for (int64_t dim : pool_output_shape) {
+          output_shape->add_dim()->set_dim_value(dim);
+        }
       });
 }
 
