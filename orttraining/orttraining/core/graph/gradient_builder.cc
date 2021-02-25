@@ -689,6 +689,14 @@ IMPLEMENT_GRADIENT_BUILDER(GetMaxPoolGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetMaxPoolGradient_nhwc) {
+  return std::vector<NodeDef>{
+      NodeDef("MaxPoolGrad_nhwc",
+              {GO(0), O(1)},
+              {GI(0)},
+              SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetPoolGradient) {
   return std::vector<NodeDef>{
       NodeDef(SrcNodeOpType() + "Grad",
