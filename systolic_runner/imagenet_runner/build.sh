@@ -15,6 +15,7 @@ build_path=${root_path}/build/${release_path}
 
 extra_libs=""
 extra_defs=""
+extra_providers=""
 # Only set if we build with --enable_training
 training_libs=""
 
@@ -23,7 +24,7 @@ do
 	if [ $var = "--use_hwacha" ]; then
 		echo "Building with hwacha support"
         extra_defs="-DUSE_HWACHA ${extra_defs}"
-        extra_libs="${build_path}/libonnxruntime_providers_hwacha.a ${extra_libs}"
+        extra_providers="${build_path}/libonnxruntime_providers_hwacha.a ${extra_providers}"
 	fi
     if [ $var = "--for_firesim" ]; then 
         echo "Building with mlockall for running on Firesim"
@@ -47,5 +48,6 @@ fi
 # Clean the old binary since we never really invoke this script unless we want to force a build
 rm -f ort_test
 # 16 cores is surely overkill for 2 jobs
-make -s -j16 ort_test root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs} training_libs=${training_libs}
+make -s -j16 ort_test root_path="${root_path}" build_path="${build_path}" extra_libs="${extra_libs}" \
+                       extra_defs="${extra_defs}" training_libs="${training_libs}" extra_providers="${extra_providers}"
 echo "Please ignore any dlopen warning above. Glibc hates being statically linked."

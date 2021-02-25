@@ -16,6 +16,7 @@ build_path=${root_path}/build/${release_path}
 extra_libs=""
 extra_defs=""
 training_enabled=""
+extra_providers=""
 
 # Check for hwacha support
 for var in "$@"
@@ -23,7 +24,7 @@ do
 	if [ $var = "--use_hwacha" ]; then
 		echo "Building with hwacha support"
         extra_defs="-DUSE_HWACHA ${extra_defs}"
-        extra_libs="${build_path}/libonnxruntime_providers_hwacha.a ${extra_libs}"
+        extra_providers="${build_path}/libonnxruntime_providers_hwacha.a ${extra_providers}"
 	fi
     if [ $var = "--for_firesim" ]; then 
         echo "Building with mlockall for running on Firesim"
@@ -50,4 +51,5 @@ fi
 
 # Remove pre-existing binary
 rm -f mnist_train
-make -s -j16 mnist_train root_path=${root_path} build_path=${build_path} extra_libs=${extra_libs} extra_defs=${extra_defs}
+make -s -j16 mnist_train root_path="${root_path}" build_path="${build_path}" extra_libs="${extra_libs}" \
+                         extra_defs="${extra_defs}" extra_providers="${extra_providers}"
