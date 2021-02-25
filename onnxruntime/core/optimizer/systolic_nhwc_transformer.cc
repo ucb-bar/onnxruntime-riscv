@@ -12,7 +12,7 @@ namespace onnxruntime {
 
 class SystolicNhwcTransformerImpl {
  public:
-  SystolicNhwcTransformerImpl(Graph& graph, bool force_nhwc) noexcept : graph_(graph), force_nhwc_(force_nhwc) {}
+  SystolicNhwcTransformerImpl(Graph& graph, bool pretraining_pass) noexcept : graph_(graph), pretraining_pass_(pretraining_pass) {}
 
   void Transform(Node& node, const logging::Logger& logger);
   void Finalize(bool& modified, const logging::Logger& logger);
@@ -44,7 +44,7 @@ class SystolicNhwcTransformerImpl {
     }
   };
 
-  size_t RemoveOutputEdges(Node& node);
+  size_t RemoveOutputEdges(Node& node, int idx);
   void CreateNhwcArgument(Node& node, Node& nhwc_node, const std::string& basename);
   void FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_arg);
   void InsertReorderInput(Node& node);
@@ -53,6 +53,7 @@ class SystolicNhwcTransformerImpl {
   void TransformConv(Node& node, const logging::Logger& logger, uint32_t weightIdx, uint32_t biasIdx);
   void TransformQLinearAdd(Node& node, const logging::Logger& logger);
   void TransformMaxPool(Node& node, const logging::Logger& logger);
+  bool FuseMaxPoolWithConv(Node& node, const logging::Logger& logger);
   void TransformPassThrough(Node& node, const logging::Logger& logger);
 
   bool ShouldTransform(Node& node, const logging::Logger& logger);
@@ -61,7 +62,7 @@ class SystolicNhwcTransformerImpl {
 
   // Whether we should convert a node to NHWC even if it is not claimed by Systolic
   // This is used for the pre-training NHWC transform pass
-  bool force_nhwc_;
+  bool pretraining_pass_;
 
   // Stores a queue of nodes to be removed after walking through the graph.
   std::deque<NodeIndex> removed_nodes_;
@@ -111,8 +112,8 @@ bool IsAttributeUnsetOrWithExpectedValues(const Node& node, const std::string& a
   return true;
 }
 
-template<typename T>
-void OcIcHW_to_HWIO(int OC, int IC, int H, int W, const T* oihw_input, std::vector<T> &hwio_output) {
+template <typename T>
+void OcIcHW_to_HWIO(int OC, int IC, int H, int W, const T* oihw_input, std::vector<T>& hwio_output) {
   for (int k = 0; k < H * W; k++) {
     for (int ic = 0; ic < IC; ic++) {
       for (int oc = 0; oc < OC; oc++) {
@@ -123,46 +124,46 @@ void OcIcHW_to_HWIO(int OC, int IC, int H, int W, const T* oihw_input, std::vect
 }
 
 bool SystolicNhwcTransformerImpl::ShouldTransform(Node& node, const logging::Logger& logger) {
-  if (this->force_nhwc_) {
-    LOGS(logger, VERBOSE) << "Converting " << node.OpType() << " to NHWC since force_nhwc is set";
+  if (this->pretraining_pass_) {
+    LOGS(logger, VERBOSE) << "Converting " << node.OpType() << " to NHWC since pretraining_pass is set";
     return true;
   } else if (node.GetExecutionProviderType() == kSystolicExecutionProvider) {
     LOGS(logger, VERBOSE) << "Converting " << node.OpType() << " to NHWC since it is claimed by Systolic";
     return true;
   }
-  LOGS(logger, VERBOSE) << "Not converting " << node.OpType() << " to NHWC; not claimed by Systolic and force_nhwc=false";
+  LOGS(logger, VERBOSE) << "Not converting " << node.OpType() << " to NHWC; not claimed by Systolic and pretraining_pass=false";
   return false;
 }
 
-size_t SystolicNhwcTransformerImpl::RemoveOutputEdges(Node& node) {
-  size_t output_edges_count = node.GetOutputEdgesCount();
-  if (output_edges_count > 0) {
-    graph_utils::RemoveNodeOutputEdges(graph_, node);
-  }
+size_t SystolicNhwcTransformerImpl::RemoveOutputEdges(Node& node, int idx) {
+  size_t output_edges_count = graph_utils::RemoveNodeOutputEdges(graph_, node, idx);
   // Bias the edge count to handle the case of a node that produces a graph
   // output.
-  if (!graph_.GetNodeOutputsInGraphOutputs(node).empty()) {
+  auto GraphOutputIdxs = graph_.GetNodeOutputsInGraphOutputs(node);
+  if (std::find(GraphOutputIdxs.begin(), GraphOutputIdxs.end(), idx) != GraphOutputIdxs.end()) {
     output_edges_count++;
   }
   return output_edges_count;
 }
 
 void SystolicNhwcTransformerImpl::CreateNhwcArgument(Node& node,
-                                             Node& nhwc_node, const std::string& basename) {
-  size_t original_uses = RemoveOutputEdges(node);
-
-  // Create a new NodeArg to track the output from the NHWC node.
+                                                     Node& nhwc_node, const std::string& basename) {
   auto& output_defs = nhwc_node.MutableOutputDefs();
-  auto* output_original_arg = output_defs[0];
-  std::string output_reorder_def_name = graph_.GenerateNodeArgName(basename + "_nhwc");
-  auto* output_nhwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
-  nhwc_args_[output_original_arg] =
-      onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
-  output_defs[0] = output_nhwc_arg;
+  for (int idx = 0; idx < (int)output_defs.size(); idx++) {
+    size_t original_uses = RemoveOutputEdges(node, idx);
+
+    // Create a new NodeArg to track the output from the NHWC node.
+    auto* output_original_arg = output_defs[idx];
+    std::string output_reorder_def_name = graph_.GenerateNodeArgName(basename + "_nhwc_" + std::to_string(idx));
+    auto* output_nhwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
+    nhwc_args_[output_original_arg] =
+        onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
+    output_defs[idx] = output_nhwc_arg;
+  }
 }
 
 void SystolicNhwcTransformerImpl::FuseNhwcArgument(Node& node, const NhwcArgument& nhwc_arg) {
-  size_t original_uses = RemoveOutputEdges(node);
+  size_t original_uses = RemoveOutputEdges(node, /*idx=*/0);
 
   // Associate the existing NHWC NodeArg with the output from this node.
   auto* output_original_arg = node.MutableOutputDefs()[0];
@@ -362,25 +363,25 @@ void SystolicNhwcTransformerImpl::TransformQLinearAdd(Node& node, const logging:
   }
 }
 
-void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& logger) {
+bool SystolicNhwcTransformerImpl::FuseMaxPoolWithConv(Node& node, const logging::Logger& logger) {
   auto& input_defs = node.MutableInputDefs();
   auto& output_defs = node.MutableOutputDefs();
 
   // MaxPool has a variant that returns indices as well... we can't support that
   if (output_defs.size() != 1) {
-    return;
+    return false;
   }
 
   auto it = nhwc_args_.find(input_defs[0]);
   // If the input is indeed in NHWC format
   if (it == nhwc_args_.end()) {
-    return;
+    return false;
   }
 
   auto& nhwc_input = it->second;
   // Check whether the input to this node is a QLinearConv node and the output of QLinearConv only goes to this node
   if (nhwc_input->output_node_.OpType() != "QLinearConv_nhwc" && nhwc_input->starting_original_uses_ != 1) {
-    return;
+    return false;
   }
 
   input_defs[0] = nhwc_input->nhwc_arg_;
@@ -392,19 +393,19 @@ void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Lo
   // limitations which we check before dispatching to it (otherwise we handle it on cpu).
   std::vector<int64_t> kernel_shape;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(node, "kernel_shape", kernel_shape) && kernel_shape.size() == 2)) {
-    return;
+    return false;
   }
   if (!IsAttributeUnsetOrWithExpectedValue(node, "auto_pad", "NOTSET")) {
-    return;
+    return false;
   }
   if (!IsAttributeUnsetOrWithExpectedValue(node, "ceil_mode", 0)) {
-    return;
+    return false;
   }
   if (!IsAttributeUnsetOrWithExpectedValue(node, "dilations", {1, 1})) {
-    return;
+    return false;
   }
   if (!IsAttributeUnsetOrWithExpectedValue(node, "storage_order", 0)) {
-    return;
+    return false;
   }
 
   LOGS(logger, VERBOSE) << "We can handle these params. Fusing MaxPool with preceding NHWC conv";
@@ -423,7 +424,50 @@ void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Lo
   output_defs[0]->ClearShape();
   FuseNhwcArgument(node, *nhwc_input);
   removed_nodes_.push_front(node.Index());
+  return true;
+}
 
+void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Logger& logger) {
+  auto& input_defs = node.MutableInputDefs();
+  auto& output_defs = node.MutableOutputDefs();
+
+  // If this isn't the pre-training pass we can try to fuse a maxpool with a conv
+  if (!this->pretraining_pass_ && FuseMaxPoolWithConv(node, logger)) {
+    return;
+  }
+
+  // However if the fusino is unsuccessful (or if we're in pre-trianing) then fall-back to separate NHWC Pool node
+  auto it = nhwc_args_.find(input_defs[0]);
+  // If the input is indeed in NHWC format
+  if (it == nhwc_args_.end()) {
+    return;
+  }
+
+  if (!IsAttributeUnsetOrWithExpectedValue(node, "storage_order", 0)) {
+    return;
+  }
+  if (!IsAttributeUnsetOrWithExpectedValue(node, "ceil_mode", 0)) {
+    return;
+  }
+  // Create the replacement node.
+  std::string nhwc_node_name = graph_.GenerateNodeName(node.Name() + "_nhwc");
+  Node& nhwc_node = graph_.AddNode(nhwc_node_name,
+                                   node.OpType() + "_nhwc",
+                                   nhwc_node_name,
+                                   input_defs,
+                                   output_defs,
+                                   &node.GetAttributes(),
+                                   kOnnxDomain);
+  nhwc_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  printf("MaxPool Output Edges %zd\n", node.GetOutputEdgesCount());
+
+  auto* nhwc_input = it->second.get();
+  nhwc_node.MutableInputDefs()[0] = nhwc_input->nhwc_arg_;
+  nhwc_input->remaining_original_uses_--;
+
+  LOGS(logger, VERBOSE) << "Transforming " << node.OpType() << " to NHWC";
+  CreateNhwcArgument(node, nhwc_node, output_defs[0]->Name());
+  removed_nodes_.push_front(node.Index());
 }
 
 void SystolicNhwcTransformerImpl::Transform(Node& node, const logging::Logger& logger) {
@@ -484,10 +528,10 @@ void SystolicNhwcTransformerImpl::Finalize(bool& modified, const logging::Logger
 }
 
 Status SystolicNhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  if (this->force_nhwc_) {
+  if (this->pretraining_pass_) {
     LOGS(logger, VERBOSE) << "All potential nodes will be converted to NHWC. This should only be done pre-training";
   }
-  SystolicNhwcTransformerImpl impl(graph, this->force_nhwc_);
+  SystolicNhwcTransformerImpl impl(graph, this->pretraining_pass_);
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
