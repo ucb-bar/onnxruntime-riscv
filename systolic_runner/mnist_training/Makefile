@@ -10,6 +10,7 @@ CDEFS = -Dgsl_CONFIG_CONTRACT_VIOLATION_THROWS -DEIGEN_MPL2_ONLY -DEIGEN_USE_THR
 mnist_data_provider.o: mnist_data_provider.cc mnist_data_provider.h
 	$(CXX) -c -o $@ $< $(CFLAGS) $(CDEFS) \
 				-I ${root_path}/orttraining \
+				-I ${root_path}/cmake/external/mp11/include \
 				-I ${root_path}/include/onnxruntime \
 				-I ${root_path}/cmake/external/optional-lite/include \
 				-I ${root_path}/core \
@@ -26,6 +27,7 @@ mnist_train: mnist_data_provider.o main.cc
 				-I ${root_path}/include/onnxruntime/core/session \
 				-I ${root_path}/include/onnxruntime/core/providers \
 				-I ${root_path}/cmake/external/cxxopts/include \
+				-I ${root_path}/cmake/external/mp11/include \
 				-I ${root_path}/orttraining \
 				-I ${root_path}/include/onnxruntime \
 				-I ${root_path}/cmake/external/optional-lite/include \
