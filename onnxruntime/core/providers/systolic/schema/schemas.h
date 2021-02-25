@@ -22,6 +22,7 @@ using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::TypeProto;
+using ONNX_NAMESPACE::TensorProto;
 
 #define ONNX_SYSTOLIC_OPERATOR_SCHEMA(name) \
   ONNX_SYSTOLIC_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
@@ -313,7 +314,6 @@ void RegisterSystolicTrainingSchemas() {
           "Constrain input and output types to float tensors.");
 }
 
-
 void RegisterSystolicSchemas() {
 #ifdef ENABLE_TRAINING
   RegisterSystolicTrainingSchemas();
@@ -398,7 +398,7 @@ void RegisterSystolicSchemas() {
         nhwcConvPoolShapeInference(ctx, x_idx, w_idx);
       });
 
- ONNX_SYSTOLIC_OPERATOR_SCHEMA(Conv_nhwc)
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(Conv_nhwc)
       .SinceVersion(1)
       .SetDoc("Internal node for NHWC layout optimization. Also supports relu/maxpool Used with Systolic.")
       .Input(0, "X", "", "T", OpSchema::Single, /*is_homogeneous= */ true, /*min_arity= */ 1, OpSchema::Differentiable)
@@ -428,7 +428,7 @@ void RegisterSystolicSchemas() {
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         int x_idx = 0;
         int w_idx = 1;
-        
+
         auto x_type = ctx.getInputType(x_idx);
         auto w_type = ctx.getInputType(w_idx);
         if (nullptr == x_type || nullptr == w_type ||
@@ -436,9 +436,65 @@ void RegisterSystolicSchemas() {
             w_type->value_case() != TypeProto::kTensorType) {
           fail_type_inference("inputs are expected to have tensor type.");
         }
-      
+
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         nhwcConvPoolShapeInference(ctx, x_idx, w_idx);
+      });
+
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(MaxPool_nhwc)
+      .SinceVersion(1)
+      .SetDoc("Internal node for NHWC training.")
+      .Input(0, "X", "", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(0, "Y", "", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(1, "Y", "", "I", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .TypeConstraint("T", {"tensor(int8)", "tensor(uint8)", "tensor(float16)", "tensor(float)", "tensor(double)"}, "")
+      .TypeConstraint("I", {"tensor(int64)"}, "Constrain index tensor to int64")
+      .Attr("kernel_shape", "", AttributeProto::INTS)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("ceil_mode", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("storage_order", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        //fprintf(stderr, "CALLED INTO SHAPE INFERENCE\n");
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) {
+          // MaxPool with two outputs case.
+          auto output_type = ctx.getOutputType(1);
+          if (output_type->value_case() == TypeProto::kTensorType ||
+              output_type->value_case() == TypeProto::VALUE_NOT_SET) {
+            output_type->mutable_tensor_type()->set_elem_type(TensorProto::INT64);
+          }
+        }
+        auto in_shape = ctx.getInputType(0)->tensor_type().shape();
+
+        std::vector<int64_t> dilations;
+        std::vector<int64_t> strides;
+        std::vector<int64_t> pads;
+        std::vector<int64_t> kernel_shape;
+        getRepeatedAttribute(ctx, "dilations", dilations);
+        getRepeatedAttribute(ctx, "strides", strides);
+        getRepeatedAttribute(ctx, "pads", pads);
+        getRepeatedAttribute(ctx, "kernel_shape", kernel_shape);
+        auto ceil_mode = getAttribute(ctx, "ceil_mode", 0);
+
+        const auto* auto_pad_attr = ctx.getAttribute("auto_pad");
+        std::string auto_pad = auto_pad_attr ? auto_pad_attr->s() : "NOTSET";
+
+        auto pool_output_shape = nhwcConvPoolShapeInference(
+            hasInputShape(ctx, 0) ? &in_shape : nullptr,
+            nullptr,
+            dilations, strides, pads, kernel_shape, auto_pad,
+            ceil_mode, /*use_dilation= */ true, /*require_kernel_shape= */ true);
+         //dump_vector(pool_output_shape, "Pool output shape");
+          auto output_shape =
+              ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          output_shape->clear_dim();
+          for (int64_t dim : pool_output_shape) {
+            output_shape->add_dim()->set_dim_value(dim);
+          }
       });
 }
 
