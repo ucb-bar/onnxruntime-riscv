@@ -734,8 +734,8 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-// TODO fix flaky test
-TEST(BatchNormTest, DISABLED_ForwardTrainingTest) {
+// TODO fix flaky test for CUDA
+TEST(BatchNormTest, ForwardTrainingTest) {
   OpTester test("BatchNormalization");
   float epsilon = 1e-05f;
   float momentum = 0.1f;
@@ -759,8 +759,8 @@ TEST(BatchNormTest, DISABLED_ForwardTrainingTest) {
   test.AddOutput<float>("saved_mean", channel_dims, {-0.306f, 0.115f});
   test.AddOutput<float>("saved_var", channel_dims, {1.229f, 0.861f});
 
-  // exclude CPU Execution Provider so that test is run with CUDA with ForwardTraining mode
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+  // exclude CUDA Execution Provider due to flakiness
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 #endif
 

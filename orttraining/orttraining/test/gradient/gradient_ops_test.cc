@@ -1369,10 +1369,9 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
 
 // TODO: Reshape missing
 
-#ifdef USE_CUDA
-// TODO fix flaky test
+// TODO fix flaky test for CUDA
 // failing random seed: 4133818171
-TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
+TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"BatchNormalization"};
@@ -1399,7 +1398,7 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}, {kCudaExecutionProvider});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1422,7 +1421,7 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}, {kCudaExecutionProvider});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1445,7 +1444,7 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}, {kCudaExecutionProvider});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1468,7 +1467,7 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("momentum", momentum)});
+                                          {MakeAttribute("momentum", momentum)}, {kCudaExecutionProvider});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1491,7 +1490,7 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_var_info(channel_shape, false);
 
     gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)});
+                                          {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}, {kCudaExecutionProvider});
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1519,7 +1518,6 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
   }
   */
 }
-#endif
 
 TEST(GradientCheckerTest, SigmoidGrad) {
   UnaryOpGradientTest("Sigmoid");
