@@ -301,7 +301,7 @@ void SystolicGemm(char accelerator_mode,
 #endif
   if (accelerator_mode == 0 && (TransA || TransB) ) {
     printf("DOING SYSTOLIC GEMM ON CPU\n");
-    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, B, beta, C);
+    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
     return;
   }
 

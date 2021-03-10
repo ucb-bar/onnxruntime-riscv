@@ -74,6 +74,11 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(1);
   const Tensor* W = context->Input<Tensor>(2);
 
+  printf("dY");
+  PrintMinMax(dY->Shape().Size(), dY->template Data<T>());
+  printf("X");
+  PrintMinMax(X->Shape().Size(), X->template Data<T>());
+
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[3];
   const int64_t M = W->Shape()[3];
@@ -249,12 +254,12 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                                     {"provider", KernelDef().Provider()}});
   }
 
-  printf("dW_ohwi");
-  PrintMinMax(dW->Shape().Size(), ohwi_dW_data);
+  //printf("dW_ohwi");
+  //PrintMinMax(dW->Shape().Size(), ohwi_dW_data);
   // At this point ohwi_dW_data is formatted as [output_channels (derived from M), h, w, input channels]
   OHWItoHWIO(ohwi_dW_data, dWdata, dW->Shape());
   // printf("\n");
-  printf("dW finished\n");
+  //printf("dW finished\n");
   // DumpTensor<float>(dW);
 
   // Now we proceed to calculate dX
@@ -284,21 +289,22 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                      dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
                      M,
                      Wdata + group_id * (M / conv_attrs_.group) * kernel_dim,
-                     kernel_dim,
+                     M / conv_attrs_.group,
                      0,
                      col_buffer_data + group_id * kernel_dim,
                      conv_attrs_.group * kernel_dim);
-
-        // GemmlowpDebug(
-        //     output_image_size,
-        //     kernel_dim,
-        //     M / conv_attrs_.group,
-        //     dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
-        //     M,
-        //     Wdata + group_id * (M / conv_attrs_.group) * kernel_dim,
-        //     kernel_dim,
-        //     col_buffer_data + group_id * kernel_dim,
-        //     conv_attrs_.group * kernel_dim, 1, nullptr, 0);
+        GemmlowpDebug(
+            /*transA= */ false,
+            /*transB= */ true,
+            output_image_size,
+            kernel_dim,
+            M / conv_attrs_.group,
+            dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
+            M,
+            Wdata + group_id * (M / conv_attrs_.group) * kernel_dim,
+            M / conv_attrs_.group,
+            col_buffer_data + group_id * kernel_dim,
+            conv_attrs_.group * kernel_dim);
       }
 
       if (profiling_enabled) {
@@ -356,15 +362,15 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   // printf("dX finished\n");
   // // DumpTensor<float>(dX);
 
-  // printf("dX\n");
-  // DumpTensor<float>(dX);
-  // //PrintMinMax<float>(dX);
-  // printf("dW\n");
+  printf("dX\n");
+  //DumpTensor<float>(dX);
+  PrintMinMax<float>(dX);
+  printf("dW\n");
   // DumpTensor<float>(dW);
-  // //PrintMinMax<float>(dW);
-  // printf("dB\n");
+  PrintMinMax<float>(dW);
+  printf("dB\n");
   // DumpTensor<float>(dB);
-  // //PrintMinMax<float>(dB);
+  PrintMinMax<float>(dB);
 
   return Status::OK();
 }  // namespace systolic
