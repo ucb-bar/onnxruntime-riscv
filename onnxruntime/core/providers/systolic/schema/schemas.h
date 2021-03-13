@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include "core/framework/utils.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -76,6 +77,13 @@ std::vector<int64_t> nhwcConvPoolShapeInference(
   // first dim is the batch axis and the next is the number of channels.
   size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
 
+  for (int i = 0; i < 4; i++) {
+    // Bail if it isn't statically known
+    if (!input_shape.dim(i).has_dim_value()) {
+      return {};
+    }
+  }
+
   // Reshape input to NCHW format for shape inference logic
   int input_shape_N = input_shape.dim(0).dim_value();
   int input_shape_H = input_shape.dim(1).dim_value();
@@ -113,6 +121,12 @@ std::vector<int64_t> nhwcConvPoolShapeInference(
     auto second_input_shape = *in2_shape;
     if (second_input_shape.dim_size() != 4) {
       fail_shape_inference("Not 4 dimensions for weights of qlinearconv_nhwc");
+    }
+    for (int i = 0; i < 4; i++) {
+      // Bail if it isn't statically known
+      if (!second_input_shape.dim(i).has_dim_value()) {
+        return {};
+      }
     }
     int second_input_kH = second_input_shape.dim(0).dim_value();
     int second_input_kW = second_input_shape.dim(1).dim_value();
@@ -454,6 +468,7 @@ void RegisterSystolicSchemas() {
 
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         nhwcConvPoolShapeInference(ctx, x_idx, w_idx);
+
       });
 
   ONNX_SYSTOLIC_OPERATOR_SCHEMA(MaxPool_nhwc)
