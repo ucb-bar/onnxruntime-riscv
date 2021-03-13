@@ -10,6 +10,9 @@
 #ifdef USE_CUSTOM_OP_LIBRARY
 #include "custom_op_library.h"
 #endif
+#ifdef FOR_FIRESIM
+#include <sys/mman.h>
+#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -27,6 +30,15 @@ unsigned long long read_cycles()
 int main(int argc, char* argv[]) {
   setbuf(stdout, NULL);
   printf("Loaded runner program\n");
+
+#ifdef FOR_FIRESIM
+  if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+      perror("mlockall failed");
+      exit(1);
+  } else {
+    printf("Finished mlockall\n");
+  }
+#endif
 
   cxxopts::ParseResult cmd = parse(argc, argv);
   //*************************************************************************
