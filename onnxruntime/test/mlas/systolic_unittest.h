@@ -463,6 +463,27 @@ class MlasSystolicGemmTest : public MlasTestBase {
 
   void
   Test(
+      size_t M,
+      size_t N,
+      size_t K,
+      int lda,
+      int ldb,
+      int ldc,
+      float alpha,
+      float beta) {
+    // We make the buffer bigger to ensure the strided is striding properly    
+    const T* A = BufferA.GetBuffer(std::max(K, M)*std::max(K, M));
+    const T* B = BufferB.GetBuffer(std::max(N, K)*std::max(N, K));
+    T* C = BufferC.GetBuffer(std::max(N, M)*std::max(N, M));
+    T* CReference = BufferCReference.GetBuffer(std::max(N, M)*std::max(N, M));
+
+    Test(false, false, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, CReference);
+    Test(false, true, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, CReference);
+    Test(true, false, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, CReference);
+  }
+
+  void
+  Test(
       bool TransA,
       bool TransB,
       size_t M,
@@ -523,6 +544,39 @@ class MlasSystolicGemmTest : public MlasTestBase {
       }
     }
   }
+
+void
+  Test(
+      bool TransA,
+      bool TransB,
+      size_t M,
+      size_t N,
+      size_t K,
+      float alpha,
+      const T* A,
+      int lda,
+      const T* B,
+      int ldb,
+      float beta,
+      T* C,
+      int ldc,
+      T* CReference) {
+    printf("Testing Systolic strided Gemm %zd %zd %zd | TransA? %d, TransB? %d\n", M, N, K, TransA, TransB);
+    std::fill_n(C, M * N, -0.5f);
+    std::fill_n(CReference, M * N, -0.5f);
+
+    SystolicGemm(acceleration_type_, TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, CReference, ldc);
+
+    for (size_t f = 0; f < M * N; f++) {
+      // Sensitive to comparing positive/negative zero.
+      if (C[f] != CReference[f]) {
+        printf("mismatch TransA=%d, TransB=%d, M=%zd, N=%zd, K=%zd, alpha=%f, beta=%f  %f %f!\n", TransA, TransB, M, N, K, alpha, beta, float(C[f]), float(CReference[f]));
+        break;
+      }
+    }
+  }
+
 
   void ReferenceGemm(
       bool TransA,
@@ -647,6 +701,8 @@ class MlasSystolicGemmTest : public MlasTestBase {
     Test(5, 7, 9, 1.0f, 1.0f);
     Test(13, 15, 17, 0.5f, 0.5f);
     Test(11, 15, 17, 0.5f, 0.0f);
+    // Test strided
+    Test(196, 200, 16, 16, 200, 200, 1.0f, 0.0f);
   }
 
   MlasSystolicGemmTest(char acceleration_type) : acceleration_type_(acceleration_type) {}

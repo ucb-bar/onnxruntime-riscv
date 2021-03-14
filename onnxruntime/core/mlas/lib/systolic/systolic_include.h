@@ -693,7 +693,13 @@ static elem_t scale_and_sat(acc_t x, int act, acc_scale_t scale, size_t relu6_sh
 #define GEMMINI_SCALE(x, scale) (x)
 #endif
 
-static void matmul_cpu(size_t DIM_I, size_t DIM_J, size_t DIM_K,
+#ifdef HAS_MVIN_ACC_SCALE
+#define GEMMINI_ACC_SCALE(x, scale) MVIN_SCALE_ACC((x), (scale))
+#else
+#define GEMMINI_ACC_SCALE(x, scale) (x)
+#endif
+
+static void matmul_cpu(bool transA, bool transB, size_t DIM_I, size_t DIM_J, size_t DIM_K,
         const elem_t* A, const elem_t* B, const acc_t * D,
         elem_t* C,
         size_t stride_A, size_t stride_B, size_t stride_D, size_t stride_C,
@@ -701,7 +707,7 @@ static void matmul_cpu(size_t DIM_I, size_t DIM_J, size_t DIM_K,
         int act, acc_scale_t scale, size_t relu6_shift, bool repeating_bias) {
 
   const int no_bias = D == NULL;
-  if (DIM_I % 4 == 0 && DIM_J % 4 == 0) {
+  if (!transA && !transB && DIM_I % 4 == 0 && DIM_J % 4 == 0) {
     for (size_t i = 0; i < DIM_I; i += 4) {
       for (size_t j = 0; j < DIM_J; j += 4) {
 
@@ -711,7 +717,7 @@ static void matmul_cpu(size_t DIM_I, size_t DIM_J, size_t DIM_K,
           for (size_t jj = 0; jj < 4; jj++) {
             const size_t bias_row = repeating_bias ? 0 : i + ii;
             result[ii][jj] = no_bias ? 0 :
-              GEMMINI_SCALE(*(D + bias_row*stride_D + j + jj), D_scale_factor);
+              GEMMINI_ACC_SCALE(*(D + bias_row*stride_D + j + jj), D_scale_factor);
           }
 
         for (size_t k = 0; k < DIM_K; k++) {
@@ -802,17 +808,20 @@ static void matmul_cpu(size_t DIM_I, size_t DIM_J, size_t DIM_K,
   } else {
     for (size_t i = 0; i < DIM_I; i++) {
       for (size_t j = 0; j < DIM_J; j++) {
+        const elem_t* a = !transA ? (A + (i * stride_A)) : A + i;
+        const elem_t* b = !transB ? (B + j) : (B + (j * stride_B));
+        elem_t* c = C + (i * stride_C) + j;
 
         const size_t bias_row = repeating_bias ? 0 : i;
-
-        acc_t result = no_bias ? 0 : GEMMINI_SCALE(*(D + bias_row * stride_D + j), D_scale_factor);
+        acc_t sum = no_bias ? 0 : GEMMINI_ACC_SCALE(*(D + bias_row * stride_D + j), D_scale_factor);
 
         for (size_t k = 0; k < DIM_K; k++) {
-          //acc_t past_opixel = result;
-          result += GEMMINI_SCALE(*(A + i*stride_A + k), A_scale_factor) * GEMMINI_SCALE(*((elem_t*)B + k*stride_B + j), B_scale_factor);
+          sum += (GEMMINI_SCALE(*a, A_scale_factor) * GEMMINI_SCALE(*b, B_scale_factor));
+          b += !transB ? stride_B : 1;
+          a += !transA ? 1 : stride_A;
         }
 
-        *(C + i*stride_C + j) = scale_and_sat(result, act, scale, relu6_shift);
+        *c = scale_and_sat(sum, act, scale, relu6_shift);
       }
     }
   }
@@ -895,7 +904,7 @@ void tiled_matmul(size_t dim_I, size_t dim_J, size_t dim_K,
   char matmul_type_str[][4] = {"OS", "WS", "CPU"};
 
   // Check if transpose options are correct
-  if (((tiled_matmul_type == OS || tiled_matmul_type == CPU) && (transpose_A || transpose_B)) ||
+  if (((tiled_matmul_type == OS) && (transpose_A || transpose_B)) ||
     (tiled_matmul_type == WS && transpose_A && transpose_B)) {
     printf("Not implemented: %s matmul, a_transpose=%d, b_transpose=%d\n", matmul_type_str[tiled_matmul_type], transpose_A, transpose_B);
     exit(1);
@@ -920,7 +929,7 @@ void tiled_matmul(size_t dim_I, size_t dim_J, size_t dim_K,
         full_C, low_D,
         (int)tiled_matmul_type);
   } else /*if (tiled_matmul_type == CPU)*/ {
-    matmul_cpu(dim_I, dim_J, dim_K,
+    matmul_cpu(transpose_A, transpose_B, dim_I, dim_J, dim_K,
             A, B, (const acc_t*) D, (elem_t*)C,
             stride_A, stride_B, stride_D, stride_C,
             A_scale_factor, B_scale_factor, D_scale_factor,

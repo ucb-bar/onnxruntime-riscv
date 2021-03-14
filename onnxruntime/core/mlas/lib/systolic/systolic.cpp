@@ -35,120 +35,6 @@ inline tiled_matmul_type_t get_accelerator_mode(int mode) {
 
 /* Internal -- no need to touch */
 
-/**
- * Used as CPU fallback for Gemm
- */
-template <typename T>
-inline void ReferenceGemm(
-    bool TransA,
-    bool TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const T* A,
-    size_t lda,
-    const T* B,
-    size_t ldb,
-    float beta,
-    T* C,
-    size_t ldc) {
-  if (!TransA) {
-    if (!TransB) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + (m * lda);
-          const T* b = B + n;
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += ldb;
-            a += 1;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + (m * lda);
-          const T* b = B + (n * ldb);
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += 1;
-            a += 1;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-    }
-
-  } else {
-    if (!TransB) {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + m;
-          const T* b = B + n;
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += ldb;
-            a += lda;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-
-    } else {
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++) {
-          const T* a = A + m;
-          const T* b = B + (n * ldb);
-          T* c = C + (m * ldc) + n;
-          T sum = 0.0f;
-
-          for (size_t k = 0; k < K; k++) {
-            sum += (*b * *a);
-            b += 1;
-            a += lda;
-          }
-
-          *c = (beta != 0 ? (*c * beta) : 0) + (sum * alpha);
-        }
-      }
-    }
-  }
-}
-
-
-template <typename T>
-inline void ReferenceGemm(
-    bool TransA,
-    bool TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    float alpha,
-    const T* A,
-    const T* B,
-    float beta,
-    T* C) {
-  int lda = TransA ? M : K;
-  int ldb = TransB ? K : N;
-  ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N);
-}
-
 
 /**
  * Wrapper function around tiled_matmul_auto that provides a BLAS like interface
@@ -270,11 +156,6 @@ void SystolicGemm(char accelerator_mode,
   printf("Called into systolic gemm!\n");
   printf("Using accelerated gemm with dimensions (%zd, %zd, %zd)\n", M, N, K);
 #endif
-  if (accelerator_mode == 0 && (TransA || TransB) ) {
-    printf("DOING SYSTOLIC GEMM ON CPU\n");
-    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, B, beta, C);
-    return;
-  }
 
   tiled_gemm_auto(M, N, K, A, B, beta == 0 ? nullptr : C, C, /*activation= */ false,
                   alpha, beta, /* repeating_bias= */ 0,
@@ -299,12 +180,6 @@ void SystolicGemm(char accelerator_mode,
   printf("Called into systolic gemm!\n");
   printf("Using accelerated gemm with dimensions (%zd, %zd, %zd)\n", M, N, K);
 #endif
-  if (accelerator_mode == 0 && (TransA || TransB) ) {
-    printf("DOING SYSTOLIC GEMM ON CPU\n");
-    ReferenceGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
-    return;
-  }
-
   tiled_gemm_auto(M, N, K,
                  lda, ldb, ldc, ldc,
                  A, B, beta == 0 ? nullptr : C, C, /*activation= */ false,

@@ -3206,6 +3206,8 @@ main(
     }
 #endif
     
+    // NOTE: IF Gemmini tests freeze, first try disabling guard page
+    // To see if cuase is an OOB read into the guard page
 #ifdef USE_SYSTOLIC
 #ifdef SYSTOLIC_INT8
     printf("Systolic Int8 Conv tests.\n");
@@ -3216,9 +3218,9 @@ main(
     onnxruntime::make_unique<MlasSystolicMatmulTest<int8_t, int32_t>>(argc - 1)->ExecuteShort();
 #endif
 #ifdef SYSTOLIC_FP32
-    printf("Systolic Fp32Gemm. These may freeze on Firesim due to OOB read into guard page.\n");
+    printf("Systolic Fp32Gemm.\n");
     onnxruntime::make_unique<MlasSystolicGemmTest<float>>(argc - 1)->ExecuteShort();
-    printf("Systolic Fp32 Matmul tests. These may freeze on Firesim due to OOB read into guard page.\n");
+    printf("Systolic Fp32 Matmul tests.\n");
     onnxruntime::make_unique<MlasSystolicMatmulTest<float, float>>(argc - 1)->ExecuteShort();
 #endif
 #endif
