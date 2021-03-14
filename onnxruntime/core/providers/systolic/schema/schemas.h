@@ -58,14 +58,16 @@ optional<TensorShapeProto> nhwcConvPoolShapeInference(
     bool require_kernel_shape /*whether we need the kernel_shape attr (for pool) */) {
   // we need the first input shape for this inference.
   if (!in1_shape) {
-    fprintf(stderr, "Returning null since in1 shape not provided. Bad model?\n");
+    // This can happen if shape inference function is not defined for an upstream node
+    // E.g. for fused nodes ORT currently does not apply any shape inference
+    //fprintf(stderr, "Returning null since in1 shape not provided. Bad model?\n");
     return nullopt;
   }
 
   // if kernel shape is an input (and not attribute)
   // we need the shape of the second input.
   if (!require_kernel_shape && !in2_shape) {
-    fprintf(stderr, "Returning null since in2 shape not provided. Bad model?\n");
+    //fprintf(stderr, "Returning null since in2 shape not provided. Bad model?\n");
     return nullopt;
   }
 
@@ -223,7 +225,6 @@ optional<TensorShapeProto> nhwcConvPoolShapeInference(
   *output_shape_nhwc.add_dim() = output_shape.dim(2);
   *output_shape_nhwc.add_dim() = output_shape.dim(3);
   *output_shape_nhwc.add_dim() = output_shape.dim(1);
-
   return optional<TensorShapeProto>(output_shape_nhwc);
 }
 
