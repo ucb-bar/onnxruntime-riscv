@@ -261,12 +261,10 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
                   bool relu,
                   float output_scale,
                   int pool_size = 0, int pool_stride = 0, int pool_padding = 0) {
-#ifndef FOR_FIRESIM
   printf("Called into systolic conv\n");
   if (pool_size != 0) {
     printf("Using systolic pooling\n");
   }
-#endif
   // printf("Debugging info\n");
   // printf("Batch size, in_w/h, in_channel %d %d %d\n", batch_size, in_dim, in_channels);
   // printf("Out_channels, out_w/h %d %d\n", out_channels, out_dim);
