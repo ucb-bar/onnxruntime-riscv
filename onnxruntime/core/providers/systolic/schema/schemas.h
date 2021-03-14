@@ -60,7 +60,7 @@ optional<TensorShapeProto> nhwcConvPoolShapeInference(
   if (!in1_shape) {
     // This can happen if shape inference function is not defined for an upstream node
     // E.g. for fused nodes ORT currently does not apply any shape inference
-    //fprintf(stderr, "Returning null since in1 shape not provided. Bad model?\n");
+    fprintf(stderr, "Warning: input shape to nhwc convpool shape inference not found.\n");
     return nullopt;
   }
 

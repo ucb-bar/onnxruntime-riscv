@@ -36,6 +36,7 @@ std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearAddReluM
     meta_def->outputs.push_back(arg.Name());
     return common::Status::OK();
   });
+  meta_def->inference_function = qlinearadd->Op()->GetTypeAndShapeInferenceFunction();
 
   return meta_def;
 }
