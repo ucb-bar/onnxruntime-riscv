@@ -125,7 +125,7 @@ $ make install
 
 Then please pull `master` for the `riscv-isa-sim` in [esp-tools](https://github.com/ucb-bar/chipyard/tree/master/toolchains/esp-tools) so Spike uses the latest Gemmini ISA.
 
-Note that you will want to ensure the `gemmini_params.h` used by spike matches the version used by onnxruntime. I.e., if you built for FP32 Gemmini (check the CMake file as mentioned in the previous section) ensure it matches `systolic_params_fp32.h`.
+Note that you will want to ensure the `gemmini_params.h` used by spike matches the version used by onnxruntime. I.e., if you built for FP32 Gemmini (check the CMake file as mentioned in the previous section) ensure it matches `systolic_params_fp32.h`. It's also a good idea to change the definition of the `ROUND_NEAR_EVEN` macro to `nearbyint(x)` so the CPU version isn't excessively slow.
 
 Note that by default, Chipyard adds `chipyard/riscv-tools-install/bin/spike` to your PATH, which does not contain the gemmini extension. Please ensure (manually adding the `esp-tools` build folder to $PATH if needed) that `which spike` instead references the spike from `esp-tools`.
 
