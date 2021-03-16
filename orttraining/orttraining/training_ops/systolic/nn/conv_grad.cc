@@ -63,6 +63,47 @@ inline void OHWItoHWIO(const T* in_vals, T* out_vals, const TensorShape& output_
   transpose(in_vals, out_vals, O, H * W * I);
 }
 
+/**
+ * Crash-course in NN Conv Backpropagation:
+ * Let gradient with respect to weights be dW and grad wrt input be dX.
+ * 
+ * dW can be computed via im2col + gemm and dX via gemm + im2col
+ * 
+ * Some tidbits to help understand how the dW computation works:
+ * https://medium.com/@mayank.utexas/backpropagation-for-convolution-with-strides-fb2f2efc4faa
+ * In simple-case (non-strided, non-padded we have)
+ * dW = IHWO_to_HWIO(conv2d(input=NHWC_TO_CHWN(x), filter=NHWC_TO_HWNC(dilated(dY)))
+ * (which can be expressed only in terms of 2D transpositions by summing across batch in software)
+ *   dW = IHWO_to_HWIO(sum([conv2d(input=1HWC_TO_CHW1(x_n), filter=1HWC_TO_HW1C(dilated(dY))) for n in N]))
+ * Transposing the im2col effectively gives as the columns the elements that a dilated kernel would have acted upon
+ * (work this out for the simple examples shown in the unit test)
+ * 
+ * Then when dealing with multiple channels and multiple batches, we swap channel and batch dimensions
+ * (doing each channel independently and accumulating the gradient over the batches)
+ * Thus we arrive at the neat formula `dW = transpose(im2col(X) @ transpose(dY))`
+ * For an illustration see https://hackmd.io/@bouteille/B1Cmns09I#%E2%97%8B-Kernel-gradient-Intuition
+ * 
+ * The operation that computes `dX` is known in the literature by names such as ConvTranspose or fractionally strided conv
+ * More info about the operator: https://d2l.ai/chapter_computer-vision/transposed-conv.html
+ * You can see why it's called "conv transpose" here: https://stackoverflow.com/a/64732177/2612743
+ * 
+ * The generalization of the above results in the gemm + col2im method of computing
+ * (see https://stackoverflow.com/a/64457058 for why the col2im is needed)
+ * https://hackmd.io/@bouteille/B1Cmns09I#%E2%8B%86-Layer-gradient-Intuition has a good graphical explanation
+ * (but ignore the formula presented, since it should be convtranspose not conv)
+ * 
+ * https://medium.com/apache-mxnet/transposed-convolutions-explained-with-ms-excel-52d13030c7e8
+ * Is an excellent article describing everything you need to know about ConvTranspose.
+ * Combining the above and these two:
+ * https://www.adityaagrawal.net/blog/deep_learning/bprop_strided_conv
+ * https://medium.com/@mayank.utexas/backpropagation-for-convolution-with-strides-8137e4fc2710
+ * 
+ * You should have everything you need to understand how to express a ConvTranspose in terms of a Conv
+ * See https://gist.github.com/pranav-prakash/08f66af9ac62ab408261f5a479ceae13
+ * for the equivalency. But the gist is that you dilate the input, rotate the kernel 180deg (reverse both H and W dims),
+ * then perform a conv with FULL padding
+ */
+
 template <typename T>
 Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   printf("IN SYSTOLIC CONVGRAD NHWC\n");
