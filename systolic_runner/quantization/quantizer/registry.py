@@ -12,6 +12,7 @@ from .operators.maxpool import QMaxPool
 from .operators.averagepool import QAveragePool
 from .operators.reshape import QNoop
 from .operators.reshape import QShape
+from .operators.reshape import QScatter
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
@@ -42,6 +43,8 @@ QLinearOpsRegistry = {
     "Size": QShape,
     "Transpose": QNoop,
     "Flatten": QNoop,
+    "Resize": QNoop,
+    "ScatterElements": QScatter,
     "Unsqueeze": QNoop,
     "Squeeze": QNoop,
     "Tile": QNoop,

@@ -50,6 +50,13 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()),
     Resize<uint8_t>);
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Resize,
+    11, 12,
+    int8_t,
+    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>()),
+    Resize<int8_t>);
+
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Resize,
     13,

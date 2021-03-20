@@ -30,7 +30,7 @@ import math
 # When more nodes are extended to support quantization, add them to this list
 # Values are the relevant input indices that should be quantized
 QUANTIZATION_CANDIDATES = {'Conv': [0], 'ConvTranspose': [0], 'MatMul': [0, 1], 'Attention': [0, 1],
-                           'MaxPool': [0], 'AveragePool': [0]}
+                           'MaxPool': [0], 'AveragePool': [0], 'ScatterElements': [0]}
 # Binary ops that need to be checked for floating-point before quantizing
 BINARY_OPS_TO_QUANTIZE = ['Add', 'Mul', 'Concat']
 
@@ -61,26 +61,42 @@ def can_quantize_name(node, name, value_infos, idx = None):
 def create_reduce_nodes(edge_to_reduce, added_nodes, added_outputs,
                         reduced_edges, value_infos):
 
-    # dim = len(value_infos[edge_to_reduce].type.tensor_type.shape.dim)
-    # shape = (1,) if dim == 1 else list(1 for i in range(dim))
+    # When doing ReduceMax/ReduceMin, keep dimension if tensor contains dim with value of 0,
+    # for example:
+    #     dim = [ dim_value: 0 ] 
+    #  
+    # otherwise, don't keep dimension. 
+    #
+    keepdims = 0
+    shape = ()
+    if edge_to_reduce in value_infos:
+        dim = value_infos[edge_to_reduce].type.tensor_type.shape.dim
+        for d in dim:
+            # A dimension can be either an integer value or a symbolic variable.
+            # Dimension with integer value and value of 0 is what we are looking for to keep dimension. 
+            # Please see the def of TensorShapeProto https://github.com/onnx/onnx/blob/master/onnx/onnx.proto#L630
+            if d.WhichOneof('value') == 'dim_value' and d.dim_value == 0:
+                keepdims = 1
+                shape = (1,) if len(dim) == 1 else list(1 for i in range(len(dim)))
+                break
 
     # Adding ReduceMin nodes
     reduce_min_node = onnx.helper.make_node('ReduceMin', [edge_to_reduce],
                                             [edge_to_reduce + '_ReduceMin'],
-                                            keepdims=0)
+                                            keepdims=keepdims)
     added_nodes.append(reduce_min_node)
     added_outputs.append(
         helper.make_tensor_value_info(reduce_min_node.output[0],
-                                      TensorProto.FLOAT, ()))
+                                      TensorProto.FLOAT, shape))
 
     # Adding ReduceMax nodes
     reduce_max_node = onnx.helper.make_node('ReduceMax', [edge_to_reduce],
                                             [edge_to_reduce + '_ReduceMax'],
-                                            keepdims=0)
+                                            keepdims=keepdims)
     added_nodes.append(reduce_max_node)
     added_outputs.append(
         helper.make_tensor_value_info(reduce_max_node.output[0],
-                                      TensorProto.FLOAT, ()))
+                                      TensorProto.FLOAT, shape))
     reduced_edges.append(edge_to_reduce)
 
 
@@ -95,7 +111,6 @@ def augment_graph(model, static):
     value_infos = {vi.name: vi for vi in shape_inferred.graph.value_info} 
     value_infos.update({ot.name: ot for ot in shape_inferred.graph.output})
     value_infos.update({vi.name: vi for vi in shape_inferred.graph.input})
-    import pdb; pdb.set_trace()
     added_nodes = []
     added_outputs = []
     reduced_edges = []
