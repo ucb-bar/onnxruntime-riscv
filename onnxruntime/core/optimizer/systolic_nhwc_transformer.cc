@@ -378,16 +378,20 @@ bool SystolicNhwcTransformerImpl::FuseMaxPoolWithConv(Node& node, const logging:
     return false;
   }
 
+
   auto& nhwc_input = it->second;
+
+
+  LOGS(logger, VERBOSE) << "Trying to fuse MaxPool " << node.Name() << " (contingent on attrs)";
+  LOGS(logger, VERBOSE) << "Starting orig uses " << nhwc_input->starting_original_uses_;
+  LOGS(logger, VERBOSE) << "Starting name" << nhwc_input->output_node_.Name();
   // Check whether the input to this node is a QLinearConv node and the output of QLinearConv only goes to this node
-  if (nhwc_input->output_node_.OpType() != "QLinearConv_nhwc" && nhwc_input->starting_original_uses_ != 1) {
+  if (nhwc_input->output_node_.OpType() != "QLinearConv_nhwc" || nhwc_input->starting_original_uses_ > 1) {
     return false;
   }
 
   input_defs[0] = nhwc_input->nhwc_arg_;
   nhwc_input->remaining_original_uses_--;
-
-  LOGS(logger, VERBOSE) << "Trying to fuse MaxPool (contingent on attrs)";
 
   // We only handle the most common cases (namely no dilations). Systolic has its own
   // limitations which we check before dispatching to it (otherwise we handle it on cpu).
@@ -440,6 +444,15 @@ void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Lo
   auto it = nhwc_args_.find(input_defs[0]);
   // If the input is indeed in NHWC format
   if (it == nhwc_args_.end()) {
+    return;
+  }
+  
+
+  //TODO: Currently we only implement float maxpool_nhwc. We should implement int8 maxpool_nhwc as well
+  // With the fast path added since we don't need to produce output tensor
+
+  if (input_defs[0]->TypeAsProto() == nullptr || 
+    input_defs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return;
   }
 

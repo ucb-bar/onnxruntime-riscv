@@ -122,6 +122,7 @@ class ONNXQuantizer:
         if 1 != len(ai_onnx_domain):
             raise ValueError('Failed to find proper ai.onnx domain')
         opset_version = ai_onnx_domain[0].version
+        self.opset_version = opset_version
 
         if opset_version == 10:
             print(

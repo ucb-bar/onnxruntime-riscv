@@ -34,6 +34,37 @@ MLASCALL(char accelerator_mode, int batch_size, int in_dim, int in_channels,
         float output_scale,
         int pool_size = 0, int pool_stride = 0, int pool_padding = 0);
 
+void SystolicGemm(
+   char accelerator_mode, 
+    bool TransA,
+    bool TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const int8_t* A,
+    const int8_t* B,
+    float beta,
+    int8_t* C,
+    float real_multiplier);
+
+void SystolicGemm(
+   char accelerator_mode, 
+    bool TransA,
+    bool TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    float alpha,
+    const int8_t* A,
+    int lda,
+    const int8_t* B,
+    int ldb,
+    float beta,
+    int8_t* C,
+    int ldc,
+    float real_multiplier);
+
 #endif
 
 #ifdef SYSTOLIC_FP32
@@ -63,7 +94,8 @@ void SystolicGemm(
     const float* A,
     const float* B,
     float beta,
-    float* C);
+    float* C,
+    float real_multiplier);
 
 void SystolicGemm(
    char accelerator_mode, 
@@ -79,7 +111,8 @@ void SystolicGemm(
     int ldb,
     float beta,
     float* C,
-    int ldc);
+    int ldc,
+    float real_multiplier);
 
 void SystolicConv
 MLASCALL(char accelerator_mode, int batch_size, int in_dim, int in_channels,

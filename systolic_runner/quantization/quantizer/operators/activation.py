@@ -12,6 +12,8 @@ class QLinearActivation(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "Relu" or node.op_type == 'Clip')
 
+        if (node.name == '2763'):
+            import pdb; pdb.set_trace()
         # When mode is QLinearOps, the output quantization params are calculated based on outputs from
         # activation nodes, therefore these nodes can be removed from the graph if they follow a quantized op.
         # If input to this node is not quantized then keep this node

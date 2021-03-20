@@ -9,6 +9,7 @@
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wunused-function"
 #include "systolic_include.h"
 #pragma GCC diagnostic pop
 
@@ -49,17 +50,18 @@ void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                      size_t strideD,
                      size_t strideC,
                      const elem_t* A, const elem_t* B,
-                     const acc_t* D, elem_t* C,
+                     const elem_t* D, elem_t* C,
                      int act, scale_t scaleAlpha, acc_scale_t scaleBeta, bool repeating_bias,
                      bool transA, bool transB,
-                     enum tiled_matmul_type_t tiled_matmul_type) {
+                     enum tiled_matmul_type_t tiled_matmul_type,
+                     acc_scale_t real_multiplier) {
   tiled_matmul_auto(dim_I, dim_J, dim_K,
                     A, B, D, C,
                     strideA, strideB, strideD, strideC,
                     scaleAlpha, MVIN_SCALE_IDENTITY, scaleBeta,
-                    act, ACC_SCALE_IDENTITY, /*relu6_shift= */ 0, repeating_bias,
+                    act, real_multiplier, /*relu6_shift= */ 0, repeating_bias,
                     transA, transB,
-                    /*full_c= */ false, /*low_d= */ false,
+                    /*full_c= */ false, /*low_d= */ true,
                     tiled_matmul_type);
 }
 
@@ -68,16 +70,17 @@ void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
  */
 void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                      const elem_t* A, const elem_t* B,
-                     const acc_t* D, elem_t* C,
+                     const elem_t* D, elem_t* C,
                      int act, scale_t scaleAlpha, acc_scale_t scaleBeta, bool repeating_bias,
                      bool transA, bool transB,
-                     enum tiled_matmul_type_t tiled_matmul_type) {
+                     enum tiled_matmul_type_t tiled_matmul_type,
+                     acc_scale_t real_multiplier) {
   int lda = transA ? dim_I : dim_K;
   int ldb = transB ? dim_K : dim_J;
   tiled_gemm_auto(dim_I, dim_J, dim_K, lda, ldb, dim_J, dim_J,
                   A, B, D, C,
                   act, scaleAlpha, scaleBeta, repeating_bias,
-                  transA, transB, tiled_matmul_type);
+                  transA, transB, tiled_matmul_type, real_multiplier);
 }
 
 /**
@@ -136,7 +139,6 @@ void SystolicMultiply(char accelerator_mode, bool relu, int dimI, int dimJ, int 
                     get_accelerator_mode(accelerator_mode));
 }
 
-#ifdef SYSTOLIC_FP32
 /**
  * Provides an interface similar to BLAS matrix multiply
  * C = alpha*A*B + beta*C
@@ -151,7 +153,8 @@ void SystolicGemm(char accelerator_mode,
                   const elem_t* A,
                   const elem_t* B,
                   acc_scale_t beta,
-                  elem_t* C) {
+                  elem_t* C,
+                  acc_scale_t real_multiplier) {
 #ifndef FOR_FIRESIM
   printf("Called into systolic gemm!\n");
   printf("Using accelerated gemm with dimensions (%zd, %zd, %zd)\n", M, N, K);
@@ -159,7 +162,7 @@ void SystolicGemm(char accelerator_mode,
 
   tiled_gemm_auto(M, N, K, A, B, beta == 0 ? nullptr : C, C, /*activation= */ false,
                   alpha, beta, /* repeating_bias= */ 0,
-                  TransA, TransB, get_accelerator_mode(accelerator_mode));
+                  TransA, TransB, get_accelerator_mode(accelerator_mode), real_multiplier);
 }
 
 void SystolicGemm(char accelerator_mode,
@@ -175,7 +178,8 @@ void SystolicGemm(char accelerator_mode,
                   int ldb,
                   acc_scale_t beta,
                   elem_t* C,
-                  int ldc) {
+                  int ldc,
+                  acc_scale_t real_multiplier) {
 #ifndef FOR_FIRESIM
   printf("Called into systolic gemm!\n");
   printf("Using accelerated gemm with dimensions (%zd, %zd, %zd)\n", M, N, K);
@@ -184,9 +188,8 @@ void SystolicGemm(char accelerator_mode,
                  lda, ldb, ldc, ldc,
                  A, B, beta == 0 ? nullptr : C, C, /*activation= */ false,
                   alpha, beta, /* repeating_bias= */ 0,
-                  TransA, TransB, get_accelerator_mode(accelerator_mode));
+                  TransA, TransB, get_accelerator_mode(accelerator_mode), real_multiplier);
 }
-#endif
 
 /**
  * Provides a matrix multiply that allows specifying strides
@@ -276,7 +279,7 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   // printf("Relu? %d\n", relu);
 
   tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
-                  stride, padding, kernel_dim, input, weights, bias, output,
+                  stride, /*dilation= */ 1, padding, kernel_dim, input, weights, bias, output,
                   relu, output_scale, /*relu6_shift= */ 0,
                   pool_size, pool_stride, pool_padding,
                   get_accelerator_mode(accelerator_mode));

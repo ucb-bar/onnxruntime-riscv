@@ -179,17 +179,24 @@ class PlannerImpl {
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
     auto status = ort_value_name_idx_map_.GetIdx(name, result);
+    //printf("Name: index %s %d\n", name.c_str(), (int) result);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return result;
   }
 
   int& UseCount(OrtValueIndex n) {
+    if (!(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size())) {
+      fprintf(stderr, "FAILED %d\n. Size bound %d", (int) n, (int)  ort_value_info_.size());
+    }
     ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size());
     return ort_value_info_[n].usecount;
   }
-  int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
+  int& UseCount(const OrtValueName& name) { OrtValueIndex idx = Index(name); return UseCount(idx); }
 
   int DecrementUseCount(OrtValueIndex n) {
+    if (n == -1) {
+      printf("DecrementUseCount");
+    }
     int& use_count = --UseCount(n);
     assert(use_count >= 0);
     return use_count;
@@ -235,6 +242,12 @@ class PlannerImpl {
     // record that the new buffer will reuse that original buffer
     Buffer(reused_for) = original;
     // adjust original buffer's usecount
+    if (original == -1) {
+      printf("246\n");
+    }
+    if (reused_for == -1) {
+      printf("249\n");
+    }
     UseCount(original) += UseCount(reused_for);
 
     // update allocation plan (for use at execution-time)
@@ -299,7 +312,11 @@ class PlannerImpl {
           if (p_input_arg->Exists()) {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
-            if (1 == UseCount(original)) {
+            if (original == -1) {
+              printf("Line 310");
+            }
+            ORT_ENFORCE(original != -1, "Could not find buffer corresponding to input: " + p_input_arg->Name());
+            if (original != -1 && (1 == UseCount(original))) {
               if (SameSize(*p_input_arg, *p_output_arg)) {
                 // we can reuse this input since it is its last use and permitted for in-place update
                 *reusable_input = input_arg_index;  // or original; both should be okay

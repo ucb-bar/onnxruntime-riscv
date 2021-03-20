@@ -187,8 +187,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  input_node_dims[1] = dimY;
-  input_node_dims[2] = dimX;
+  // input_node_dims[1] = dimY;
+  // input_node_dims[2] = dimX;
   size_t input_tensor_size = 3 * dimX * dimY;  // simplify ... using known dim values to calculate size
                                              // use OrtGetTensorShapeElementCount() to get official size!  
   float *input_tensor_values = new float[input_tensor_size];
@@ -200,9 +200,9 @@ int main(int argc, char* argv[]) {
       unsigned char g = *(data++);
       unsigned char b = *(data++);
 
-      input_tensor_values[(0*dimY + i)*dimX + j] = b - 102.9801;
-      input_tensor_values[(1*dimY + i)*dimX + j] = g - 115.9465;
-      input_tensor_values[(2*dimY + i)*dimX + j] = r - 122.7717;  
+      input_tensor_values[(0*dimY + i)*dimX + j] = (r/255.0 - 0.485)/0.229;
+      input_tensor_values[(1*dimY + i)*dimX + j] = (g/255.0 - 0.456)/0.224;
+      input_tensor_values[(2*dimY + i)*dimX + j] = (b/255.0 - 0.406)/0.225;
     }
   }
   printf("First few image values %f %f %f\n", input_tensor_values[0], input_tensor_values[1], input_tensor_values[2]);

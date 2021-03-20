@@ -45,6 +45,155 @@ using ONNX_NAMESPACE::TypeProto;
       op_schema_register_once##name##Counter) ONNX_UNUSED =                      \
       schema_func(ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__))
 
+void convTransposeShapeInference(InferenceContext& ctx, int input1Idx, int input2idx) {
+  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // we need at least two inputs to have a shape for this inference.
+  if (!(hasInputShape(ctx, input1Idx) && hasInputShape(ctx, input2idx))) {
+    return;
+  }
+
+  int64_t group = getAttribute(ctx, "group", 1);
+
+  auto input_shape = ctx.getInputType(input1Idx)->tensor_type().shape();
+  if (input_shape.dim_size() < 2) {
+    return;  // Input tensor should have at least two dimensions.
+  }
+
+  // first dim is the batch axis and the next is the number of channels.
+  size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - 2);
+
+  std::vector<int64_t> dilations;
+  if (getRepeatedAttribute(ctx, "dilations", dilations)) {
+    if (dilations.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    dilations.assign(n_input_dims, 1);
+  }
+
+  std::vector<int64_t> strides;
+  if (getRepeatedAttribute(ctx, "strides", strides)) {
+    if (strides.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    strides.assign(n_input_dims, 1);
+  }
+
+  std::vector<int64_t> kernel_shape;
+  if (getRepeatedAttribute(ctx, "kernel_shape", kernel_shape)) {
+    if (kernel_shape.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    auto second_input_shape = ctx.getInputType(input2idx)->tensor_type().shape();
+    for (int i = 2; i < second_input_shape.dim_size(); ++i) {
+      if (!second_input_shape.dim(i).has_dim_value()) {
+        return;
+      }
+      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+    }
+  }
+
+  std::vector<int64_t> effective_kernel_shape = kernel_shape;
+  for (int i = 0; i < static_cast<int>(kernel_shape.size()); i++) {
+    // accounting for dilation, how big is the kernel in this dimension
+    effective_kernel_shape[i] =
+        (effective_kernel_shape[i] - 1) * dilations[i] + 1;
+  }
+
+  std::vector<int64_t> pads;
+  if (getRepeatedAttribute(ctx, "pads", pads)) {
+    if (pads.size() != n_input_dims * 2) {
+      fail_shape_inference("Attribute pads has incorrect size");
+    }
+    const auto* auto_pad_attr = ctx.getAttribute("auto_pad");
+    if (nullptr != auto_pad_attr && auto_pad_attr->s() != "NOTSET") {
+      fail_shape_inference(
+          "The pads attribute cannot be used simultaneously with auto_pad attribute");
+    }
+  } else {
+    pads.assign(n_input_dims * 2, 0);
+    const auto* auto_pad_attr = ctx.getAttribute("auto_pad");
+    if ((nullptr != auto_pad_attr) && (auto_pad_attr->s() != "VALID")) {
+      int input_dims_size = static_cast<int>(n_input_dims);
+      for (int i = 0; i < input_dims_size; ++i) {
+        int64_t total_pad = effective_kernel_shape[i] - strides[i];
+        if (total_pad < 0)
+          total_pad = 0;
+        int64_t half_pad_small = total_pad >> 1;
+        int64_t half_pad_big = total_pad - half_pad_small;
+        if (auto_pad_attr->s() == "SAME_UPPER") {
+          pads[i] = half_pad_small;
+          pads[i + input_dims_size] = half_pad_big;
+        } else if (auto_pad_attr->s() == "SAME_LOWER") {
+          pads[i] = half_pad_big;
+          pads[i + input_dims_size] = half_pad_small;
+        }
+      }
+    }
+  }
+
+  std::vector<int64_t> output_shape;
+  bool output_shape_presented = true;
+  if (getRepeatedAttribute(ctx, "output_shape", output_shape)) {
+    if (output_shape.size() != n_input_dims) {
+      return;
+    }
+  } else {
+    output_shape_presented = false;
+  }
+
+  std::vector<int64_t> output_padding;
+  if (getRepeatedAttribute(ctx, "output_padding", output_padding)) {
+    if (output_padding.size() != n_input_dims) {  // Added only to one side.
+      return;
+    }
+  } else {
+    output_padding.assign(n_input_dims, 0);
+  }
+
+  auto final_output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  *final_output_shape->add_dim() = input_shape.dim(0);
+  *final_output_shape->add_dim() =
+      ctx.getInputType(input2idx)->tensor_type().shape().dim(1) *
+      group;  // channels should be the second dim of second input multiply
+              // group.
+
+  int size_of_output;
+  if (output_shape_presented) {
+    size_of_output = static_cast<int>(output_shape.size());
+    for (int i = 0; i < size_of_output; ++i) {
+      if (input_shape.dim(i + 2).has_dim_value()) {
+        if (output_shape[i] < input_shape.dim(i + 2).dim_value()) {
+          // TODO: throw exception?
+          return;  // output shape value cannot be smaller than the input shape
+                   // value
+        }
+      }
+      final_output_shape->add_dim()->set_dim_value(output_shape[i]);
+    }
+    return;
+  } else {
+    size_of_output = input_shape.dim_size() - 2;
+    for (int i = 0; i < size_of_output; ++i) {
+      if (input_shape.dim(i + 2).has_dim_value()) {
+        int64_t output_shape_dim =
+            strides[i] * (input_shape.dim(i + 2).dim_value() - 1) +
+            output_padding[i] + effective_kernel_shape[i] - pads[i] -
+            pads[i + n_input_dims];
+        final_output_shape->add_dim()->set_dim_value(output_shape_dim);
+      } else {
+        final_output_shape->add_dim();
+      }
+    }
+    return;
+  }
+}
+
 optional<TensorShapeProto> nhwcConvPoolShapeInference(
     const TensorShapeProto* in1_shape,
     const TensorShapeProto* in2_shape,
@@ -456,6 +605,35 @@ void RegisterSystolicSchemas() {
         nhwcConvPoolShapeInference(ctx, x_idx, w_idx);
       });
 
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(QLinearConvTranspose)
+      .SinceVersion(10)
+      .SetDoc("")
+      .Input(0, "x", "", "T1")
+      .Input(1, "x_scale", "", "tensor(float)")
+      .Input(2, "x_zero_point", "", "T1")
+      .Input(3, "w", "", "T2")
+      .Input(4, "w_scale", "", "tensor(float)")
+      .Input(5, "w_zero_point", "", "T2")
+      .Input(6, "y_scale", "", "tensor(float)")
+      .Input(7, "y_zero_point", "", "T3")
+      .Input(8, "B", "", "T4", OpSchema::Optional)
+      .Output(0, "y", "", "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain filter type to 8-bit integer tensor.")
+      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
+
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("output_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("output_padding", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "Stride along each spatial axis.", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .TypeAndShapeInferenceFunction(
+            [](InferenceContext& ctx) { convTransposeShapeInference(ctx, 0, 3); });
+
   ONNX_SYSTOLIC_OPERATOR_SCHEMA(MaxPool_nhwc)
       .SinceVersion(1)
       .SetDoc("Internal node for NHWC training.")
@@ -473,7 +651,7 @@ void RegisterSystolicSchemas() {
       .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
       .Attr("storage_order", "", AttributeProto::INT, static_cast<int64_t>(0))
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-//        fprintf(stderr, "CALLED INTO MAXPOOL SHAPE INFERENCE\n");
+        //        fprintf(stderr, "CALLED INTO MAXPOOL SHAPE INFERENCE\n");
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (ctx.getNumOutputs() > 1) {
           // MaxPool with two outputs case.

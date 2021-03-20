@@ -29,9 +29,10 @@ import math
 # Candidate nodes for quantization. Calibration will be done for these nodes only
 # When more nodes are extended to support quantization, add them to this list
 # Values are the relevant input indices that should be quantized
-QUANTIZATION_CANDIDATES = {'Conv': [0], 'MatMul': [0, 1], 'Attention': [0, 1], 'MaxPool': [0], 'AveragePool': [0]}
+QUANTIZATION_CANDIDATES = {'Conv': [0], 'ConvTranspose': [0], 'MatMul': [0, 1], 'Attention': [0, 1],
+                           'MaxPool': [0], 'AveragePool': [0]}
 # Binary ops that need to be checked for floating-point before quantizing
-BINARY_OPS_TO_QUANTIZE = ['Add', 'Mul']
+BINARY_OPS_TO_QUANTIZE = ['Add', 'Mul', 'Concat']
 
 
 def get_input_name_to_nodes(model):
@@ -58,7 +59,11 @@ def can_quantize_name(node, name, value_infos, idx = None):
 
 
 def create_reduce_nodes(edge_to_reduce, added_nodes, added_outputs,
-                        reduced_edges):
+                        reduced_edges, value_infos):
+
+    # dim = len(value_infos[edge_to_reduce].type.tensor_type.shape.dim)
+    # shape = (1,) if dim == 1 else list(1 for i in range(dim))
+
     # Adding ReduceMin nodes
     reduce_min_node = onnx.helper.make_node('ReduceMin', [edge_to_reduce],
                                             [edge_to_reduce + '_ReduceMin'],
@@ -90,7 +95,7 @@ def augment_graph(model, static):
     value_infos = {vi.name: vi for vi in shape_inferred.graph.value_info} 
     value_infos.update({ot.name: ot for ot in shape_inferred.graph.output})
     value_infos.update({vi.name: vi for vi in shape_inferred.graph.input})
-
+    import pdb; pdb.set_trace()
     added_nodes = []
     added_outputs = []
     reduced_edges = []
@@ -110,7 +115,7 @@ def augment_graph(model, static):
 
 
     for name in tensors_to_calibrate:
-        create_reduce_nodes(name, added_nodes, added_outputs, reduced_edges)
+        create_reduce_nodes(name, added_nodes, added_outputs, reduced_edges, value_infos)
 
     augmented_model = copy.deepcopy(model)
     augmented_model.graph.node.extend(added_nodes)

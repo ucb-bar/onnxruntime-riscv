@@ -31,6 +31,7 @@ class QLinearBinaryOp(QuantOperatorBase):
             self.quantizer.quantize_inputs(node, [0, 1], initializer_use_weight_qType=False)
 
         qlinear_binary_math_output = node.output[0] + "_quantized"
+
         qlinear_binary_math_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}
@@ -56,6 +57,9 @@ class QLinearBinaryOp(QuantOperatorBase):
                                                          [qlinear_binary_math_output], qlinear_binary_math_name,
                                                          **kwargs)
         nodes.append(qlinear_binary_math_node)
+
+        if node.output[0] == '2799':
+            import pdb; pdb.set_trace()
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(node.output[0], qlinear_binary_math_output, output_scale_name, output_zp_name,

@@ -130,3 +130,68 @@ class QLinearConv(QuantOperatorBase):
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
         self.quantizer.new_nodes += nodes
+
+class QLinearConvTranspose(QuantOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+        assert (node.op_type == "ConvTranspose")
+
+        if self.quantizer.is_input_a_weight(node.input[1]):
+            (quantized_input_names, zero_point_names, scale_names, nodes) = \
+                self.quantizer.quantize_inputs(node, [0])
+            quant_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], 0)
+            quantized_input_names.append(quant_weight_tuple[0])
+            zero_point_names.append(quant_weight_tuple[1])
+            scale_names.append(quant_weight_tuple[2])
+        else:
+            (quantized_input_names, zero_point_names, scale_names, nodes) = \
+                self.quantizer.quantize_inputs(node, [0, 1])
+
+        quantized_bias_name = ""
+        bias_present = False
+        if len(node.input) == 3:
+            quantized_bias_name = self.quantizer.quantize_bias(node, nodes)
+            bias_present = True
+        data_found, output_scale_name, output_zp_name, _, _ = \
+            self.quantizer._get_quantization_params(node.output[0])
+
+        if not data_found:
+            raise ValueError("Quantization parameters for output:\"{}\" of node:\"{}\" not specified".format(
+                node.output[0], node.name))
+
+        qlinear_conv_output = node.output[0] + "_quantized"
+        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name != "" else ""
+
+        kwargs = {}
+        for attribute in node.attribute:
+            kwargs.update(attribute_to_kwarg(attribute))
+        qlinear_conv_inputs = []
+        # Input 0
+        qlinear_conv_inputs.append(quantized_input_names[0])
+        qlinear_conv_inputs.append(scale_names[0])
+        qlinear_conv_inputs.append(zero_point_names[0])
+        # Input 1
+        qlinear_conv_inputs.append(quantized_input_names[1])
+        qlinear_conv_inputs.append(scale_names[1])
+        qlinear_conv_inputs.append(zero_point_names[1])
+
+        # Output
+        qlinear_conv_inputs.append(output_scale_name)
+        qlinear_conv_inputs.append(output_zp_name)
+
+        if bias_present:
+            qlinear_conv_inputs.append(quantized_bias_name)
+
+        qlinear_conv_node = onnx.helper.make_node("QLinearConvTranspose", qlinear_conv_inputs, [qlinear_conv_output],
+                                                  qlinear_conv_name, **kwargs)
+        nodes.append(qlinear_conv_node)
+
+        # Create an entry for this quantized value
+        q_output = QuantizedValue(node.output[0], qlinear_conv_output, output_scale_name, output_zp_name,
+                                  QuantizedValueType.Input, qType=self.quantizer.input_qType)
+        self.quantizer.quantized_value_map[node.output[0]] = q_output
+
+        self.quantizer.new_nodes += nodes

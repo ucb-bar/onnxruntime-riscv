@@ -11,7 +11,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, help="input model")
     parser.add_argument("--output", required=True, help="output model")
-    parser.add_argument("--replace_gemm", default=False, action='store_true', help="Whether to run gemm to matmul replacement")
+    parser.add_argument("--replace_gemm", default=True, action='store_true', help="Whether to run gemm to matmul replacement")
     args = parser.parse_args()
     return args
 

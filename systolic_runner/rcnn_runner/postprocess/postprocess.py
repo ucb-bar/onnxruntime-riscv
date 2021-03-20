@@ -8,7 +8,7 @@ import cv2
 
 classes = [line.rstrip('\n') for line in open('coco_classes.txt')]
 
-def display_objdetect_image(image, boxes, labels, scores, masks, score_threshold=0.7):
+def display_objdetect_image(image, boxes, labels, scores, masks, score_threshold=0.0):
     # Resize boxes
     ratio = 800.0 / min(image.size[0], image.size[1])
     boxes /= ratio
@@ -26,6 +26,7 @@ def display_objdetect_image(image, boxes, labels, scores, masks, score_threshold
         mask = mask[0, :, :, None]
         int_box = [int(i) for i in box]
         mask = cv2.resize(mask, (int_box[2]-int_box[0]+1, int_box[3]-int_box[1]+1))
+        import pdb; pdb.set_trace()
         mask = mask > 0.5
         im_mask = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
         x_0 = max(int_box[0], 0)
@@ -58,11 +59,12 @@ def display_objdetect_image(image, boxes, labels, scores, masks, score_threshold
 
 
 
-img = Image.open('../images/preprocessed.jpg')
+img = Image.open('../images/square.jpg')
 
 labels = np.fromfile("../labels.data", dtype=np.int64)
 NUM_CLASSES = labels.size
 boxes = np.fromfile("../boxes.data", dtype=np.float32).reshape((NUM_CLASSES, 4))
 scores = np.fromfile("../scores.data", dtype=np.float32).reshape((NUM_CLASSES))
-masks = np.fromfile("../masks.data", dtype=np.float32).reshape((NUM_CLASSES, 1, 28, 28))
+masks = np.fromfile("../masks.data", dtype=np.float32).reshape((NUM_CLASSES, 1, 800, 800))
+import pdb; pdb.set_trace()
 display_objdetect_image(img, boxes, labels, scores, masks)
