@@ -719,7 +719,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetDropoutGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
   std::vector<ArgDef> outputs;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
     // See https://github.com/microsoft/onnxruntime/issues/4762 for patch info
     if (/*IsGradientRequiredForSrcNodeInput(i)*/ true) {
       outputs.push_back(GI(i));
@@ -737,7 +737,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetConvGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetConvGradient_nhwc) {
   std::vector<ArgDef> outputs;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
     // See https://github.com/microsoft/onnxruntime/issues/4762 for patch info
     if (/*IsGradientRequiredForSrcNodeInput(i)*/ true) {
       outputs.push_back(GI(i));
