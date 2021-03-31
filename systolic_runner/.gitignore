@@ -2,6 +2,7 @@
 *.data
 *.o
 **/ort_test
+**/resnet_train
 **/batch_image.txt
 **/bert_qkv.txt
 quantization/models/*
