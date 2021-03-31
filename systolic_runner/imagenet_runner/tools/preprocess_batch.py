@@ -94,4 +94,4 @@ with Pool(processes=8) as pool:
         output_paths.append(ret_path)
 
 with open("batch_out.txt", "w") as outfile:
-    outfile.write("\n".join(output_paths))
+    outfile.write("\n".join(output_paths) + "\n")
