@@ -456,6 +456,40 @@ void RegisterSystolicSchemas() {
         nhwcConvPoolShapeInference(ctx, x_idx, w_idx);
       });
 
+  ONNX_SYSTOLIC_OPERATOR_SCHEMA(QLinearConvTranspose)
+      .SinceVersion(10)
+      .SetDoc("")
+      .Input(0, "x", "", "T1")
+      .Input(1, "x_scale", "", "tensor(float)")
+      .Input(2, "x_zero_point", "", "T1")
+      .Input(3, "w", "", "T2")
+      .Input(4, "w_scale", "", "tensor(float)")
+      .Input(5, "w_zero_point", "", "T2")
+      .Input(6, "y_scale", "", "tensor(float)")
+      .Input(7, "y_zero_point", "", "T3")
+      .Input(8, "B", "", "T4", OpSchema::Optional)
+      .Output(0, "y", "", "T3")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor.")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain filter type to 8-bit integer tensor.")
+      .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
+      .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
+
+      .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("output_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("output_padding", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "Stride along each spatial axis.", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
+      .TypeAndShapeInferenceFunction(
+            [](InferenceContext& ctx) { 
+              // TODO: We should also add a shape inference function for this
+              // We can re-use the existing convtranspose shape inference
+              // but we will need to account for the different input indices
+              propagateElemTypeFromInputToOutput(ctx, 0, 0);
+            });
+
   ONNX_SYSTOLIC_OPERATOR_SCHEMA(MaxPool_nhwc)
       .SinceVersion(1)
       .SetDoc("Internal node for NHWC training.")
