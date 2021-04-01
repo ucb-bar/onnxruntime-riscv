@@ -379,8 +379,9 @@ bool SystolicNhwcTransformerImpl::FuseMaxPoolWithConv(Node& node, const logging:
   }
 
   auto& nhwc_input = it->second;
+
   // Check whether the input to this node is a QLinearConv node and the output of QLinearConv only goes to this node
-  if (nhwc_input->output_node_.OpType() != "QLinearConv_nhwc" && nhwc_input->starting_original_uses_ != 1) {
+  if (nhwc_input->output_node_.OpType() != "QLinearConv_nhwc" || nhwc_input->starting_original_uses_ > 1) {
     return false;
   }
 
@@ -440,6 +441,15 @@ void SystolicNhwcTransformerImpl::TransformMaxPool(Node& node, const logging::Lo
   auto it = nhwc_args_.find(input_defs[0]);
   // If the input is indeed in NHWC format
   if (it == nhwc_args_.end()) {
+    return;
+  }
+  
+
+  //TODO: Currently we only implement float maxpool_nhwc. We should implement int8 maxpool_nhwc as well
+  // With the fast path added since we don't need to produce output tensor
+
+  if (input_defs[0]->TypeAsProto() == nullptr || 
+    input_defs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return;
   }
 
