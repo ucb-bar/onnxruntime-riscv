@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <math.h>
 
+#define XCUSTOM_ACC 3
 #define DIM 16
 #define ADDR_LEN 32
 #define BANK_NUM 4
