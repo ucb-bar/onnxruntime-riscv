@@ -34,7 +34,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     10,
     10,
     int8_t,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int8_t>()),
     Resize<int8_t>);
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
@@ -62,7 +62,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Resize,
     11, 12,
     int8_t,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()),
+    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>()),
     Resize<int8_t>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -90,7 +90,7 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Resize,
     13,
     int8_t,
-    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()),
+    KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>()),
     Resize<int8_t>);
 
 }  // namespace onnxruntime
