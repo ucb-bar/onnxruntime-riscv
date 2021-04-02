@@ -12,6 +12,10 @@ class QMaxPool(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "MaxPool")
 
+        if self.quantizer.opset_version < 12:
+            super().quantize()
+            return
+
         # If input to this node is not quantized then keep this node
         if node.input[0] not in self.quantizer.quantized_value_map:
             self.quantizer.new_nodes += [node]
