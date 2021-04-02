@@ -8,6 +8,7 @@ import cv2
 
 classes = [line.rstrip('\n') for line in open('coco_classes.txt')]
 
+# You might need to adjust score threshold
 def display_objdetect_image(image, boxes, labels, scores, masks, score_threshold=0.7):
     # Resize boxes
     ratio = 800.0 / min(image.size[0], image.size[1])
@@ -64,5 +65,6 @@ labels = np.fromfile("../labels.data", dtype=np.int64)
 NUM_CLASSES = labels.size
 boxes = np.fromfile("../boxes.data", dtype=np.float32).reshape((NUM_CLASSES, 4))
 scores = np.fromfile("../scores.data", dtype=np.float32).reshape((NUM_CLASSES))
+# For model exported from pytorch use 800x800
 masks = np.fromfile("../masks.data", dtype=np.float32).reshape((NUM_CLASSES, 1, 28, 28))
 display_objdetect_image(img, boxes, labels, scores, masks)

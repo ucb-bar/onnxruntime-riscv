@@ -68,29 +68,29 @@ def preprocess_caffe2_raw(raw_image):
     
     return np.stack([b_channel, g_channel, r_channel], axis=1)
 
-# def preprocess_rcnn_raw(raw_image):
-#     r_channel = raw_image[0, :, :]
-#     g_channel = raw_image[1, :, :]
-#     b_channel = raw_image[2, :, :]
-
-#     b_channel = (b_channel - 102.9801)
-#     g_channel = (g_channel - 115.9465)
-#     r_channel = (r_channel - 122.7717)
-    
-#     return np.stack([b_channel, g_channel, r_channel])
-
-# The version below is given for rcnn exported from pytorch
-# For version from model zoo, use the commented one above
+# The version below is given for rcnn from model zoo
+# For version exported from pytorch, use the commented one below
 def preprocess_rcnn_raw(raw_image):
-    r_channel = raw_image[:, 0, :, :]
-    g_channel = raw_image[:, 1, :, :]
-    b_channel = raw_image[:, 2, :, :]
+    r_channel = raw_image[0, :, :]
+    g_channel = raw_image[1, :, :]
+    b_channel = raw_image[2, :, :]
 
-    r_channel = ((r_channel/255.0) - 0.485)/0.229
-    g_channel = ((g_channel/255.0) - 0.456)/0.224
-    b_channel = ((b_channel/255.0) - 0.406)/0.225
+    b_channel = (b_channel - 102.9801)
+    g_channel = (g_channel - 115.9465)
+    r_channel = (r_channel - 122.7717)
     
-    return np.stack([r_channel, g_channel, b_channel], axis=1)
+    return np.stack([b_channel, g_channel, r_channel])
+
+# def preprocess_rcnn_raw(raw_image):
+#     r_channel = raw_image[:, 0, :, :]
+#     g_channel = raw_image[:, 1, :, :]
+#     b_channel = raw_image[:, 2, :, :]
+
+#     r_channel = ((r_channel/255.0) - 0.485)/0.229
+#     g_channel = ((g_channel/255.0) - 0.456)/0.224
+#     b_channel = ((b_channel/255.0) - 0.406)/0.225
+    
+#     return np.stack([r_channel, g_channel, b_channel], axis=1)
 
 def preprocess_method2(image_filepath, height, width):
     '''
