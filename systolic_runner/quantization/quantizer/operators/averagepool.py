@@ -19,7 +19,7 @@ def tensor_shape_to_list(tensor_type):
 
 class QAveragePool(QuantOperatorBase):
     '''
-    We convert an averagepool op into a strided convolution if it is supported
+    We convert an averagepool op into a strided dw-convolution if it is supported
     '''
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)

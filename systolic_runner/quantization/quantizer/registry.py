@@ -5,12 +5,14 @@ from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 #from .operators.scan import Scan
 from .operators.gather import GatherQuant
-from .operators.conv import QLinearConv, ConvInteger
+from .operators.conv import QLinearConv, ConvInteger, QLinearConvTranspose
 from .operators.activation import QLinearActivation
 from .operators.binary_op import QLinearBinaryOp
 from .operators.maxpool import QMaxPool
 from .operators.averagepool import QAveragePool
-from .operators.reshape import QReshape
+from .operators.reshape import QNoop
+from .operators.reshape import QShape
+from .operators.reshape import QScatter
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
@@ -26,6 +28,7 @@ IntegerOpsRegistry.update(CommonOpsRegistry)
 
 QLinearOpsRegistry = {
     "Conv": QLinearConv,
+    "ConvTranspose": QLinearConvTranspose,
     "MatMul": QLinearMatMul,
     "Add": QLinearBinaryOp,
     "Mul": QLinearBinaryOp,
@@ -33,9 +36,20 @@ QLinearOpsRegistry = {
     "Clip": QLinearActivation,
     "LeakyRelu" : QLinearActivation,
     "Sigmoid" : QLinearActivation,
+    # I don't remember why I commented this out
+    # IIRC it didn't affect accuracy _too_ much, but you can play around with it
+    # "AveragePool": QAveragePool,
     "MaxPool": QMaxPool,
-    "AveragePool": QAveragePool,
-    "Reshape": QReshape,
+    "Reshape": QNoop,
+    "Shape": QShape,
+    "Size": QShape,
+    "Transpose": QNoop,
+    "Flatten": QNoop,
+    "Resize": QNoop,
+    "ScatterElements": QScatter,
+    "Unsqueeze": QNoop,
+    "Squeeze": QNoop,
+    "Tile": QNoop,
     "Attention": AttentionQuant,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
