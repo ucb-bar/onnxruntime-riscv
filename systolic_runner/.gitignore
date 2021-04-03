@@ -5,6 +5,7 @@
 **/resnet_train
 **/batch_image.txt
 **/bert_qkv.txt
+**/batch_out.txt
 quantization/models/*
 halide_interop/model_converter/generated/*
 imagenet_runner/tools/batch_out.txt
