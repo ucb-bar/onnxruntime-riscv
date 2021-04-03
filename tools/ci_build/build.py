@@ -86,7 +86,7 @@ def _openvino_verify_device_type(device_read):
         comma_separated_devices = device_read.split(":")
         comma_separated_devices = comma_separated_devices[1].split(',')
         if (len(comma_separated_devices) < 2):
-            print("Atleast two devices required in Hetero Mode")
+            print("At least two devices required in Hetero Mode")
             status_hetero = False
         dev_options = ["CPU", "GPU", "MYRIAD", "FPGA", "HDDL"]
         for dev in comma_separated_devices:
@@ -183,10 +183,14 @@ def parse_arguments():
         help="""When running the Test phase, run symbolic shape inference against
         available test data directories.""")
 
-    # generate documentaiton
+    # generate documentation
     parser.add_argument(
         "--gen_doc", action='store_true',
         help="Generate documentation on contrib ops")
+
+    parser.add_argument(
+        "--gen-api-doc", action='store_true',
+        help="Generate API documentation for PyTorch frontend")
 
     # CUDA related
     parser.add_argument("--use_cuda", action='store_true', help="Enable CUDA.")
@@ -201,6 +205,8 @@ def parse_arguments():
         "--cudnn_home", help="Path to CUDNN home. "
         "Read from CUDNN_HOME environment variable if --use_cuda is true and "
         "--cudnn_home is not specified.")
+    parser.add_argument(
+        "--enable_cuda_line_info", action='store_true', help="Enable CUDA line info.")
 
     # Python bindings
     parser.add_argument(
@@ -264,7 +270,10 @@ def parse_arguments():
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--riscv", action='store_true',
-        help="Build for RISCV. Requires --update and no existing cache "
+        help="Build for RISCV. Requires --update and no existing cache ")
+    parser.add_argument(
+        "--arm64ec", action='store_true',
+        help="Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
@@ -274,8 +283,12 @@ def parse_arguments():
         choices=["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
         help="Specify the target Android Application Binary Interface (ABI)")
     parser.add_argument("--android_api", type=int, default=27, help='Android API Level, e.g. 21')
-    parser.add_argument("--android_sdk_path", type=str, help='Path to the Android SDK')
-    parser.add_argument("--android_ndk_path", default="", help="Path to the Android NDK")
+    parser.add_argument(
+        "--android_sdk_path", type=str, default=os.environ.get("ANDROID_HOME", ""),
+        help="Path to the Android SDK")
+    parser.add_argument(
+        "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""),
+        help="Path to the Android NDK")
     parser.add_argument("--android_cpp_shared", action="store_true",
                         help="Build with shared libc++ instead of the default static libc++.")
     parser.add_argument("--android_run_emulator", action="store_true",
@@ -456,13 +469,14 @@ def parse_arguments():
                         "To enable support for custom operators pass 'custom_ops' as a parameter. "
                         "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
                         "'--minimal_build extended custom_ops'")
+
     parser.add_argument("--include_ops_by_config", type=str,
-                        help="include ops from config file. "
-                        "See /docs/Reduced_Operator_Kernel_build.md for more information.")
+                        help="Include ops from config file. "
+                             "See /docs/Reduced_Operator_Kernel_build.md for more information.")
     parser.add_argument("--enable_reduced_operator_type_support", action='store_true',
-                        help='If --include_ops_by_config is specified, and the configuration file was created from ORT '
-                             'format models with type reduction enabled, limit the types individual operators support '
-                             'where possible to further reduce the build size. '
+                        help='If --include_ops_by_config is specified, and the configuration file has type reduction '
+                             'information, limit the types individual operators support where possible to further '
+                             'reduce the build size. '
                              'See /docs/Reduced_Operator_Kernel_build.md for more information.')
 
     parser.add_argument("--disable_contrib_ops", action='store_true',
@@ -483,7 +497,12 @@ def parse_arguments():
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
         "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
+
     return parser.parse_args()
+
+
+def is_reduced_ops_build(args):
+    return args.include_ops_by_config is not None
 
 
 def resolve_executable_path(command_or_path):
@@ -646,9 +665,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
+        "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
+        "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
-        "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + (
@@ -681,7 +701,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
         # By default - we currently support only cross compiling for ARM/ARM64
         # (no native compilation supported through this script).
-        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm or args.riscv else "OFF"),
+        "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm or args.riscv else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
         "-Donnxruntime_DISABLE_ML_OPS=" + ("ON" if args.disable_ml_ops else "OFF"),
         "-Donnxruntime_DISABLE_RTTI=" + ("ON" if args.disable_rtti else "OFF"),
@@ -693,7 +713,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                    else "OFF"),
         "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
                                                      else "OFF"),
-        "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if args.include_ops_by_config else "OFF"),
+        "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
         "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
@@ -723,6 +743,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
+        "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
     ]
     if args.riscv:
         cmake_args += ["-DCMAKE_SYSTEM_PROCESSOR=riscv"]
@@ -796,8 +817,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args += ["-Donnxruntime_NNAPI_MIN_API=" + str(args.nnapi_min_api)]
 
     if args.android:
+        if not args.android_ndk_path:
+            raise BuildError("android_ndk_path required to build for Android")
+        if not args.android_sdk_path:
+            raise BuildError("android_sdk_path required to build for Android")
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE=" + args.android_ndk_path + "/build/cmake/android.toolchain.cmake",
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(
+                args.android_ndk_path, 'build', 'cmake', 'android.toolchain.cmake'),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi)
         ]
@@ -1370,7 +1396,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run.
-            if args.include_ops_by_config or args.minimal_build is not None:
+            if is_reduced_ops_build(args) or args.minimal_build is not None:
                 return
 
             if is_windows():
@@ -1406,8 +1432,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if onnx_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
-                run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
-                               cwd=cwd, dll_path=dll_path)
+                if not args.disable_contrib_ops:
+                    run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
+                                   cwd=cwd, dll_path=dll_path)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -1630,7 +1657,7 @@ def prebuilt_protoc_from_host(cmake_path, source_dir, build_dir, args):
     return str(os.path.realpath("build/protoc/bin/protoc"))
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.enable_windows_store) and \
+    if (args.arm or args.arm64 or args.arm64ec or args.enable_windows_store) and \
             not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
@@ -1742,7 +1769,7 @@ def main():
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
-    cross_compiling = args.arm or args.arm64 or args.android or args.riscv
+    cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android or args.riscv
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
@@ -1758,11 +1785,12 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if args.include_ops_by_config and args.update:
-        from exclude_unused_ops_and_types import exclude_unused_ops_and_types
-        exclude_unused_ops_and_types(args.include_ops_by_config,
-                                     args.enable_reduced_operator_type_support,
-                                     args.use_cuda)
+    if is_reduced_ops_build(args) and args.update:
+        from reduce_op_kernels import reduce_ops
+        reduce_ops(
+            config_path=args.include_ops_by_config,
+            enable_type_reduction=args.enable_reduced_operator_type_support,
+            use_cuda=args.use_cuda)
 
     if args.use_tensorrt:
         args.use_cuda = True
@@ -1790,6 +1818,9 @@ def main():
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
+
+    if args.gen_api_doc and len(args.config) != 1:
+        raise BuildError('Using --get-api-doc requires a single build config')
 
     # Disabling unit tests for VAD-F as FPGA only supports
     # models with NCHW layout
@@ -1837,7 +1868,7 @@ def main():
             update_submodules(source_dir)
         if is_windows():
             if args.cmake_generator == 'Ninja':
-                if args.x86 or args.arm or args.arm64:
+                if args.x86 or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
@@ -1847,7 +1878,7 @@ def main():
                 cmake_extra_args = [
                     '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
                 ]
-            elif args.arm or args.arm64:
+            elif args.arm or args.arm64 or args.arm64ec:
                 # Cross-compiling for ARM(64) architecture
                 # First build protoc for host to use during cross-compilation
                 if path_to_protoc_exe is None:
@@ -1855,8 +1886,10 @@ def main():
                         cmake_path, source_dir, build_dir, args)
                 if args.arm:
                     cmake_extra_args = ['-A', 'ARM']
-                else:
+                elif args.arm64:
                     cmake_extra_args = ['-A', 'ARM64']
+                elif args.arm64ec:
+                    cmake_extra_args = ['-A', 'ARM64EC']
                 cmake_extra_args += ['-G', args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
@@ -1924,6 +1957,12 @@ def main():
             install_python_deps(args.numpy_version)
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
+        if args.use_cuda and args.cuda_version is None:
+            if is_windows():
+                # cuda_version is used while generating version_info.py on Windows.
+                raise BuildError("cuda_version must be specified on Windows.")
+            else:
+                args.cuda_version = ""
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -1998,6 +2037,12 @@ def main():
 
     if args.gen_doc and (args.build or args.test):
         generate_documentation(source_dir, build_dir, configs)
+
+    if args.gen_api_doc and (args.build or args.test):
+        print('Generating Python doc for ORTModule...')
+        docbuild_dir = os.path.join(source_dir, 'tools', 'doc')
+        run_subprocess(['bash', 'builddoc.sh', os.path.dirname(sys.executable),
+                        source_dir, build_dir, args.config[0]], cwd=docbuild_dir)
 
     log.info("Build complete")
 

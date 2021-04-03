@@ -96,7 +96,8 @@ function(AddTest)
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
-      XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES")
+      XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES"
+      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
 
     xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET}
       ${TEST_SRC_DIR}/xctest/ortxctest.m
@@ -120,7 +121,8 @@ function(AddTest)
       MACOSX_BUNDLE_GUI_IDENTIFIER com.onnxruntime.utest.${_UT_TARGET}
       MACOSX_BUNDLE_LONG_VERSION_STRING ${ORT_VERSION}
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
-      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION})
+      MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
+      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
@@ -330,7 +332,9 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc)
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc		  
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
@@ -638,7 +642,9 @@ endif()
 AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
-  LIBS onnx_test_runner_common ${onnxruntime_test_providers_libs}  ${onnxruntime_test_common_libs}  re2::re2 onnx_test_data_proto
+  LIBS
+    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs} re2::re2
+    onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
 
@@ -665,7 +671,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
 if (onnxruntime_USE_ROCM)
-  target_include_directories(onnxruntime_test_all PRIVATE ${onnxruntime_ROCM_HOME}/include/hiprand ${onnxruntime_ROCM_HOME}/include/rocrand)
+  target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 
 set(test_data_target onnxruntime_test_all)
@@ -851,9 +857,9 @@ if (WIN32)
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs 
-          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common 
-          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto 
+  set(onnxruntime_perf_test_libs
+          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
+          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
           ${onnxruntime_EXTERNAL_LIBRARIES}
           ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)

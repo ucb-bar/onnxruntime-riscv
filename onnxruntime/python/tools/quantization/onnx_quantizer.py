@@ -531,6 +531,10 @@ class ONNXQuantizer:
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         '''
 
+        # Handle case where bias already in quantizatio map
+        if bias_name in self.quantized_value_map:
+            return self.quantized_value_map[bias_name].q_name
+
         # get scale for weight
         weight_scale_name = self.quantized_value_map[weight_name].scale_name
         weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
@@ -569,10 +573,16 @@ class ONNXQuantizer:
         packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
         self.model.initializer().extend([packed_bias_scale_initializer])
 
+        # update zero initializer
+        quantized_bias_zp_name = quantized_bias_name + "_zero_point"
+        bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
+        packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
+        self.model.initializer().extend([packed_bias_zp_initializer])
+
         assert (bias_name not in self.quantized_value_map)
-        quantized_value = QuantizedValue(bias_name, quantized_bias_name, quantized_bias_scale_name, "",
-                                         QuantizedValueType.Initializer, 0 if bias_scale_data.size > 1 else None,
-                                         onnx_proto.TensorProto.INT32)
+        quantized_value = QuantizedValue(bias_name, quantized_bias_name, quantized_bias_scale_name,
+                                         quantized_bias_zp_name, QuantizedValueType.Initializer,
+                                         0 if bias_scale_data.size > 1 else None)
         self.quantized_value_map[bias_name] = quantized_value
 
         return quantized_bias_name
@@ -664,7 +674,7 @@ class ONNXQuantizer:
 
         # Log entry for this quantized weight
         quantized_value = QuantizedValue(weight.name, q_weight_name, scale_name, zp_name,
-                                         QuantizedValueType.Initializer, None, qType)
+                                         QuantizedValueType.Initializer, None)
         self.quantized_value_map[weight.name] = quantized_value
 
         return q_weight_name, zp_name, scale_name
@@ -710,7 +720,7 @@ class ONNXQuantizer:
         scale_name = weight_name + "_scale"
 
         quantized_value = QuantizedValue(weight_name, q_weight_name, scale_name, zp_name,
-                                         QuantizedValueType.Initializer, None, weight_qType)
+                                         QuantizedValueType.Initializer, None)
         self.quantized_value_map[weight_name] = quantized_value
 
         # Update packed weight, zero point, and scale initializers

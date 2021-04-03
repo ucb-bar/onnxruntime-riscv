@@ -30,10 +30,6 @@ set (CMAKE_C_STANDARD 99)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 
-# CentOS compiler is old but it does allow certain C++14 features
-# such as lambda captures and they are convenient
-# On the other hand it does not allow some others.
-# So we cant' regulate simply with the standard.
 set(CMAKE_CXX_STANDARD 14)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -156,6 +152,29 @@ option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
+# Enable bitcode for iOS
+option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
+
+# Single output director for all binaries
+set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
+
+function(set_msvc_c_cpp_compiler_warning_level warning_level)
+  if (NOT "${warning_level}" MATCHES "^[0-4]$")
+    message(FATAL_ERROR "Expected warning_level value of 0-4, got '${warning_level}'.")
+  endif()
+
+  if(MSVC)
+    set(warning_flag "/W${warning_level}")
+    get_property(opts DIRECTORY PROPERTY COMPILE_OPTIONS)
+    # only match the generator expression added by this function
+    list(FILTER opts EXCLUDE REGEX "^\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/W[0-4]>$")
+    list(APPEND opts "$<$<COMPILE_LANGUAGE:C,CXX>:${warning_flag}>")
+    set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${opts}")
+  endif()
+endfunction()
+
+# set default MSVC warning level to 3 for external dependencies
+set_msvc_c_cpp_compiler_warning_level(3)
 
 # Fuzz test has only been tested with BUILD_SHARED_LIB option,
 # using the MSVC compiler and on windows OS.
@@ -169,12 +188,16 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
   add_definitions(-DRE2_ON_VALGRIND=1)
 endif()
 
-if(WIN32)
-  string(APPEND CMAKE_CXX_FLAGS " /W3")
-endif()
-
 if (onnxruntime_ENABLE_NVTX_PROFILE)
   add_definitions(-DENABLE_NVTX_PROFILE=1)
+endif()
+
+if (onnxruntime_ENABLE_BITCODE)
+  if (NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
+    message(FATAL_ERROR "iOS platform required for onnxruntime_ENABLE_BITCODE")
+  endif()
+  set(CMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE YES)
+  set(CMAKE_XCODE_ATTRIBUTE_BITCODE_GENERATION_MODE "bitcode")
 endif()
 
 if (onnxruntime_ENABLE_MEMORY_PROFILE)
@@ -235,6 +258,13 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
 endif()
 
+# Enable space optimization for gcc/clang
+# Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
+if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
+  string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+  string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+endif()
+
 # ORT build with as much excluded as possible. Supports ORT flatbuffers models only.
 if (onnxruntime_MINIMAL_BUILD)
   add_compile_definitions(ORT_MINIMAL_BUILD)
@@ -248,7 +278,7 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
     add_compile_definitions(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   endif()
-  
+
   set(onnxruntime_REDUCED_OPS_BUILD ON)
 
   if (NOT onnxruntime_ENABLE_PYTHON)
@@ -269,7 +299,6 @@ if (onnxruntime_MINIMAL_BUILD)
       string(APPEND CMAKE_SHARED_LINKER_FLAGS " /debug")
     endif()
   else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections")
     if (CMAKE_HOST_SYSTEM MATCHES "Darwin")
       add_link_options(-Wl, -dead_strip)
     else()
@@ -322,6 +351,7 @@ if(onnxruntime_DISABLE_EXCEPTIONS)
 
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
+  add_compile_definitions("ONNX_NO_EXCEPTIONS")
 
   if(MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -339,7 +369,8 @@ endif()
 # don't have built-in support for 8 byte atomics
 # Derived from https://github.com/protocolbuffers/protobuf/blob/master/cmake/CMakeLists.txt
 set(onnxruntime_LINK_LIBATOMIC false)
-if (NOT MSVC)
+# We don't need to link libatomic on iOS
+if (NOT MSVC AND NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
   include(CheckCXXSourceCompiles)
   set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
   set(CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} -std=c++11)
@@ -382,6 +413,12 @@ if(onnxruntime_CROSS_COMPILING)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
     string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
   endif()
+endif()
+
+# Mark symbols to be invisible, for macOS/iOS target only
+# Due to many dependencies have different symbol visibility settings, set global compile flags here.
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
+  string(APPEND CMAKE_CXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
 endif()
 
 #must after OpenMP settings
@@ -534,7 +571,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   if(NOT TARGET GTest::gtest)
     message("Use gtest from submodule")
     # gtest and gmock
+    set_msvc_c_cpp_compiler_warning_level(4)
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
+    set_msvc_c_cpp_compiler_warning_level(3)
     set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
     set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
@@ -683,6 +722,10 @@ endif()
 
 add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
 
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(external/json EXCLUDE_FROM_ALL)
+
 if(onnxruntime_PREFER_SYSTEM_LIB)
   find_package(re2)
 endif()
@@ -728,7 +771,7 @@ endif()
 
 function(onnxruntime_add_shared_library target_name)
   add_library(${target_name} SHARED ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS}) 
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
@@ -766,9 +809,9 @@ function(onnxruntime_add_shared_library_module target_name)
 endfunction()
 
 #almost the same as the above function, except the first line of the body
-function(onnxruntime_add_executable target_name)  
+function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS}) 
+  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
   if (MSVC)
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
@@ -869,6 +912,7 @@ if (onnxruntime_USE_ARMNN)
 endif()
 
 if (onnxruntime_USE_DNNL)
+  add_definitions(-DUSE_DNNL=1)
   include(dnnl)
 endif()
 
@@ -960,7 +1004,9 @@ set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
 set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
+set_msvc_c_cpp_compiler_warning_level(4)
 add_subdirectory(external/flatbuffers EXCLUDE_FROM_ALL)
+set_msvc_c_cpp_compiler_warning_level(3)
 list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES flatbuffers)
 list(APPEND onnxruntime_EXTERNAL_LIBRARIES flatbuffers)
 
@@ -969,9 +1015,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND Onnxruntime_GCOV_COVERAGE)
   string(APPEND CMAKE_C_FLAGS   " -g -O0 --coverage ")
 endif()
 
-set(ORT_WARNING_FLAGS )
 #Adjust warning flags
+if(onnxruntime_USE_CUDA)
+  set_msvc_c_cpp_compiler_warning_level(3)
+else()
+  set_msvc_c_cpp_compiler_warning_level(4)
+endif()
 if (WIN32)
+    set(ORT_WARNING_FLAGS)
     add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
     if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
       add_definitions(-DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
@@ -979,11 +1030,6 @@ if (WIN32)
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
-    if(onnxruntime_USE_CUDA)
-      list(APPEND ORT_WARNING_FLAGS "/W3")
-    else()
-      list(APPEND ORT_WARNING_FLAGS "/W4")
-    endif()
     #Compiler bug, we should get such warnings. It will be fixed in a new VC release
     list(APPEND ORT_WARNING_FLAGS "/wd4127")
     # class needs to have dll-interface to be used by clients
@@ -992,7 +1038,7 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
     if (onnxruntime_ENABLE_STATIC_ANALYSIS)
         list(APPEND ORT_WARNING_FLAGS "/analyze:stacksize 131072")
-        list(APPEND ORT_WARNING_FLAGS "/wd6326") # potential comparison of a constant with another constant        
+        list(APPEND ORT_WARNING_FLAGS "/wd6326") # potential comparison of a constant with another constant
         if(onnxruntime_USE_OPENMP)
           list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
         endif()
@@ -1035,9 +1081,9 @@ if (WIN32)
     endforeach()
 else()
   add_definitions(-DPLATFORM_POSIX)
-  # Enable warning and enable space optimization in Linux
-  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
-  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra -ffunction-sections -fdata-sections")
+  # Enable warning
+  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra")
+  string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
 
   if(onnxruntime_DEV_MODE)
     string(APPEND CMAKE_CXX_FLAGS " -Werror")
@@ -1127,6 +1173,9 @@ if(onnxruntime_USE_OPENVINO)
   elseif (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
     set(OPENVINO_VERSION "2021.2")
     add_definitions(-DOPENVINO_2021_2=1)
+  elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
+    set(OPENVINO_VERSION "2021.3")
+    add_definitions(-DOPENVINO_2021_3=1)  
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1527,12 +1576,11 @@ if (onnxruntime_BUILD_NODEJS)
   include(onnxruntime_nodejs.cmake)
 endif()
 
-# some of the tests rely on the shared libs to be
-# built; hence the ordering
+if (onnxruntime_ENABLE_PYTHON)
+  include(onnxruntime_python.cmake)
+endif()
+
 if (onnxruntime_BUILD_UNIT_TESTS)
-  if (onnxruntime_ENABLE_PYTHON)
-    include(onnxruntime_python.cmake)
-  endif()
   include(onnxruntime_unittests.cmake)
 endif()
 
@@ -1560,3 +1608,15 @@ if (WINDOWS_STORE)
 endif()
 
 include(flake8.cmake)
+
+if(UNIX)
+  option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)
+else()
+  option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" OFF)
+endif()
+if(BUILD_PKGCONFIG_FILES)
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/libonnxruntime.pc.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc @ONLY)
+  install( FILES  ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc DESTINATION
+    ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
+endif()
