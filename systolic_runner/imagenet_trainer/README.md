@@ -1,12 +1,12 @@
 # Imagenet Trainer
 
-Here we provide a trainer for resnet50 (should be generalizable to all imagenet-type models). You can acquire a model to be trained in two ways
+Here we provide a trainer for resnet50 models (although much like the inference counterpart, this should be generalizable to any imagenet-type model). Models to be trained can be acquired in two ways: from the model zoo (pre-trained and thus good for verifying accuracy), or by exporting from pytorch.
 
-Note that depending on which model you run, you will have you change the image preprocessing inside `trainer.cpp`. You might also have to change the input/output names if you're trying to adapt it for a different model.
+Note that depending on which model you run, you will have you change the image preprocessing code inside `trainer.cpp`. You might also have to change the input/output names if you're trying to adapt it for a different model.
 
 ## From model zoo
 
-If you use the model from the model zoo, you'll want to increase the batch size
+If you use the pre-trained resnet50 model from the model zoo, you'll want to increase the batch size
 
 
 ```
@@ -23,12 +23,14 @@ model.graph.input[0].type.tensor_type.shape.dim[0].dim_value = 10
 onnx.save(model, "resnet50_zoo_dynamic.onnx")
 ```
 
-Above we increase batch-size to 10. Then be sure that you use the same batch size parameter flag when training.
+Above we increase batch-size to 10. Be sure that you use the same batch size parameter flag when training.
+
+As this model is pre-trained, you might want to manually modify some of the weights in the proto.
 
 
 ## From Pytorch
 
-If you load it from pytorch, you can export it with variable batch dimension
+Resnet50 models can also be exported from pytorch (either pre-trained from torchvision repo or a model with randomly initialized weights). Be sure to export the model with variable batch dimension:
 
 ```
 import torch
@@ -41,7 +43,6 @@ torch.onnx.export(model, x, "resnet50.onnx", opset_version=12, do_constant_foldi
 
 ## Running
 
-You can run this like
 
 ```
 qemu resnet_train --model_name model/resnet50.onnx  --train_data_txt batch_out.txt --num_train_steps 1 --train_batch_size 10 -x 0 -d 0 -O 0
