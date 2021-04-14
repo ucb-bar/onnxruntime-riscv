@@ -18,6 +18,14 @@ rather than dynamically computing them during inference (see below for details o
 
 For more detail on Systolic specific transformations see [quantizer.md](/systolic_runner/docs/quantizer.md).
 
+## Running the calibration tool
+
+See the quantizer readme in the systolic_docs folder for more information on the dataset format needed.
+
+# UPSTREAM README
+
+Below might be out of date as our calibration script has diverged. Read at your own risk.
+
 ## Overview
 
 Quantization in ORT refers to 8 bit linear quantization of an onnx model. There are 2 tools which aid converting an onnx model to an onnx quantized model. 

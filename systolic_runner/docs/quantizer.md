@@ -14,6 +14,13 @@ While the majority of the process is identical to Microsoft's original script, a
 The calibration script is responsible for running the floating point ONNX model and determining quantization parameters for every node.
 Under dynamic quantization, compouted parameters are limited to Conv and Matmul nodes; the rest are computed dynamically at runtime (see dynamic quantization in the quantizaiton README).
 
+To run the calibration script, you need to supply it with an input dataset. The format for `dataset_path` is like that of a model downloaded from the model zoo. That is, it should be a folder containing the folders `test_data_set_0`, `test_data_set_1`, etc. where each test data set folder contains the files `input_0.pb`  `output_0.pb` (if there are multiple inputs, have `input_1.pb`, `input_2.pb` etc.)
+
+You can generate these input files via python script in the doc [here](../rcnn_runner#quantization)
+I recommend doing the preprocessing as part of the input pb generation so that you can just run the calibration with `--preprocess=None`
+
+
+
 ## Quantizer 
 
 The quantizer goes through each node in the original ONNX proto, converting nodes to their quantized equivalents.
