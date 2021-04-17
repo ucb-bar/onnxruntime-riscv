@@ -61,6 +61,7 @@ void tiled_gemm_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                     act, ACC_SCALE_IDENTITY, /*relu6_shift= */ 0, repeating_bias,
                     transA, transB,
                     /*full_c= */ false, /*low_d= */ false,
+                    /*weightA= */ 3,
                     tiled_matmul_type);
 }
 
@@ -102,6 +103,7 @@ void tiled_matmul_auto(size_t dim_I, size_t dim_J, size_t dim_K,
                     act, scale, relu6_shift, repeating_bias,
                     transA, transB,
                     /*full_c= */ false, /*low_d= */ false,
+                    /*weightA= */ 3,
                     tiled_matmul_type);
 }
 
@@ -277,7 +279,8 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   // printf("Relu? %d\n", relu);
 
   tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
-                  stride, /*dilation= */ 1, padding, kernel_dim, input, weights, bias, output,
+                  stride, /*dilation= */ 1, padding, kernel_dim, /*wrot180= */ false, 
+                  input, weights, bias, output,
                   relu, output_scale, /*relu6_shift= */ 0,
                   pool_size, pool_stride, pool_padding,
                   get_accelerator_mode(accelerator_mode));
