@@ -19,7 +19,11 @@ To run the calibration script, you need to supply it with an input dataset. The 
 You can generate these input files via python script in the doc [here](../rcnn_runner#quantization)
 I recommend doing the preprocessing as part of the input pb generation so that you can just run the calibration with `--preprocess=None`
 
+## Exporting Quantized Models
 
+Pytorch quantized export was still WIP last I checked. On the other hand, exporting a quantized TFLite model can be done via https://github.com/onnx/tensorflow-onnx. They convert a quantized TFLite model into QDQ format (dequantize, conv, quantize) – In general MS has been moving away from the specialized QLinearConv ops in the model to expressing the model in QDQ format and then internally fusing the node into a qlinearconv on model initialization. The only issue is that we don't fully support the node fusion for QDQ format in the Gemmini backend yet (CPU EP does have this implemented so it shouldn't be too hard to just modify theirs). 
+
+Luckily the `quantize_qat` method in the upstream quantizer does exactly what we need – take a QDQ model and convert into a QLinearOp model. At the time of writing, our fork of the quantizer hasn't been bumped to upstream (see issue https://github.com/pranav-prakash/onnxruntime-riscv/issues/28) but it's an easy copy paste. More info on QDQ and QAT quantization can be found in https://github.com/pranav-prakash/onnxruntime-riscv/issues/32 https://github.com/microsoft/onnxruntime/issues/7144
 
 ## Quantizer 
 
