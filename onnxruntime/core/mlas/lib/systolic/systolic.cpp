@@ -280,6 +280,9 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
 
   tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
                   stride, /*dilation= */ 1, padding, kernel_dim, /*wrot180= */ false, 
+                  /*trans_output_1203= */ false,
+                  /*trans_input_3120= */ false,
+                  /*trans_weight_1203= */ false,
                   input, weights, bias, output,
                   relu, output_scale, /*relu6_shift= */ 0,
                   pool_size, pool_stride, pool_padding,
@@ -290,6 +293,32 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   //   printf("%d ", output[i]);
   // }
   // printf("\n");
+}
+
+void SystolicConvTranspose(char accelerator_mode, int batch_size, int in_dim, int in_channels,
+                  int out_channels, int out_dim,
+                  int stride, int padding, int kernel_dim,
+                  const elem_t* input,
+                  const elem_t* weights,
+                  const acc_t* bias,
+                  elem_t* output,
+                  bool relu,
+                  float output_scale) {
+  printf("Called into systolic conv transpose\n");
+
+
+  tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
+                  /*stride = */ 1,
+                  /*dilation= */ stride,
+                  /*padding= */ kernel_dim - 1 - padding,
+                  kernel_dim, /*wrot180= */ true, 
+                  /*trans_output_1203= */ false,
+                  /*trans_input_3120= */ false,
+                  /*trans_weight_1203= */ false,
+                  input, weights, bias, output,
+                  relu, output_scale, /*relu6_shift= */ 0,
+                  0, 0, 0,
+                  get_accelerator_mode(accelerator_mode));
 }
 
 
