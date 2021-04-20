@@ -311,7 +311,7 @@ void SystolicConvTranspose(char accelerator_mode, int batch_size, int in_dim, in
                   /*stride = */ 1,
                   /*dilation= */ stride,
                   /*padding= */ kernel_dim - 1 - padding,
-                  kernel_dim, /*wrot180= */ true, 
+                  kernel_dim, /*wrot180_and_trans_0132= */ true, 
                   /*trans_output_1203= */ false,
                   /*trans_input_3120= */ false,
                   /*trans_weight_1203= */ false,
@@ -321,6 +321,35 @@ void SystolicConvTranspose(char accelerator_mode, int batch_size, int in_dim, in
                   get_accelerator_mode(accelerator_mode));
 }
 
+
+/**
+ * Note that the batch size and dimensions are _after_ transposition is applied
+ */
+void SystolicConvBackpropFilter(char accelerator_mode, int batch_size, int in_dim, int in_channels,
+                  int out_channels, int out_dim,
+                  int stride, int padding, int kernel_dim,
+                  const elem_t* input,
+                  const elem_t* weights,
+                  const acc_t* bias,
+                  elem_t* output,
+                  bool relu,
+                  float output_scale) {
+  printf("Called into systolic conv backprop filter\n");
+
+
+  tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
+                  /*stride = */ 1,
+                  /*dilation= */ stride,
+                  /*padding= */ padding,
+                  kernel_dim, /*wrot180_and_trans_0132= */ false, 
+                  /*trans_output_1203= */ true,
+                  /*trans_input_3120= */ true,
+                  /*trans_weight_1203= */ true,
+                  input, weights, bias, output,
+                  relu, output_scale, /*relu6_shift= */ 0,
+                  0, 0, 0,
+                  get_accelerator_mode(accelerator_mode));
+}
 
 // We do this to clear out gemmini on every process launch
 #ifdef FOR_FIRESIM

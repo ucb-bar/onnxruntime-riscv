@@ -2296,7 +2296,7 @@ static void conv_cpu_without_pool(
         int batch_size, int in_dim, int in_channels,
         int out_channels, int out_dim,
         int stride, int dilation, int padding, int kernel_dim,
-        bool wrot180, bool trans_output_1203, bool trans_input_3120,
+        bool wrot180_and_trans_0132, bool trans_output_1203, bool trans_input_3120,
         bool trans_weight_1203,
 
         const elem_t * input,
@@ -2305,6 +2305,11 @@ static void conv_cpu_without_pool(
         elem_t * output,
 
         int act, acc_scale_t scale, size_t relu6_shift) {
+
+  int W_dilation = trans_weight_1203 ? dilation : 1;
+  if (!wrot180_and_trans_0132) {
+    dilation = 1;
+  }
 
   bool no_bias = bias == NULL;
 
@@ -2322,34 +2327,35 @@ static void conv_cpu_without_pool(
           const int krow_start = (kdim_start + orow * stride) % dilation;
 
           for (int krow = krow_start; krow < kernel_dim; krow += dilation) {
-            const int irow = (orow * stride + krow - padding) / dilation;
+            const int irow = (orow * stride + krow * W_dilation - padding) / dilation;
 
             const int kcol_start = (kdim_start + ocol * stride) % dilation;
 
             for (int kcol = kcol_start; kcol < kernel_dim; kcol += dilation) {
-              const int icol = (ocol * stride + kcol - padding) / dilation;
+              const int icol = (ocol * stride + kcol * W_dilation - padding) / dilation;
 
               for (int kch = 0; kch < in_channels; kch++) {
                 const elem_t * in = input + (b * in_dim * in_dim + irow * in_dim + icol) * in_channels + kch;
                 if (trans_input_3120) {
-                  // NHWC to CHWN
+                  // Because we want inp_transposed[n][h][w][c] we undo the nhwc -> chwn transform
+                  // to get inp_untransposed[c][h][w][n]
                   in = input + (kch * in_dim * in_dim + irow * in_dim + icol) * batch_size + b;
                 }
 
                 elem_t ipixel = irow < 0 || irow >= in_dim || icol < 0 || icol >= in_dim ?
                     0 : *in;
 
-                const int krow_ = wrot180 ? kernel_dim - krow - 1 : krow;
-                const int kcol_ = wrot180 ? kernel_dim - kcol - 1 : kcol;
+                const int krow_ = wrot180_and_trans_0132 ? kernel_dim - krow - 1 : krow;
+                const int kcol_ = wrot180_and_trans_0132 ? kernel_dim - kcol - 1 : kcol;
 
                 elem_t weight = *(weights + (krow_ * kernel_dim * in_channels + kcol_ * in_channels + kch) * out_channels + och);
                 if (trans_weight_1203) {
-                  // HWIO to WIHO
-                  weight = *(weights + (kcol_ * in_channels * kernel_dim + kch * kernel_dim + krow_) * out_channels + och);
-                } else if (wrot180) {
+                  // Because we want weights_transposed[h][w][i][o]
+                  // we undo the HWIO->WIHO transform to map it to untransposed[i][h][w][o]
+                  weight = *(weights + (kch * kernel_dim * kernel_dim  + krow_ * kernel_dim + kcol_) * out_channels + och);
+                } else if (wrot180_and_trans_0132) {
                   weight = *(weights + (krow_ * kernel_dim * out_channels + kcol_ * out_channels + och) * in_channels + kch);
                 }
-
                 opixel += weight * ipixel;
               }
             }
@@ -2357,8 +2363,10 @@ static void conv_cpu_without_pool(
 
           elem_t * out = output+(b*out_dim*out_dim+orow*out_dim+ocol)*out_channels + och;
           if (trans_output_1203) {
-            // NHWC to HWNC
-            out = output+(orow*out_dim*batch_size+ocol*batch_size+b)*out_channels + och;
+           // Because we want to transpose the output after writing. So instead of writing to
+           // output[n][h][w][c] we do the NHWC->HWNC transform
+           // And instead write to output[h][w][n][c]
+           out = output+(orow*out_dim*batch_size+ocol*batch_size+b)*out_channels + och;
           }
 
           *out = scale_and_sat(opixel, act, scale, relu6_shift);
@@ -2372,7 +2380,7 @@ static void conv_cpu(
         int batch_size, int in_dim, int in_channels,
         int out_channels, int out_dim,
         int stride, int dilation, int padding, int kernel_dim,
-        bool wrot180, bool trans_output_1203, bool trans_input_3120,
+        bool wrot180_and_trans_0132, bool trans_output_1203, bool trans_input_3120,
         bool trans_weight_1203,
 
         const elem_t * input,
@@ -2389,7 +2397,7 @@ static void conv_cpu(
         batch_size, in_dim, in_channels,
         out_channels, out_dim,
         stride, dilation, padding, kernel_dim,
-        wrot180, trans_output_1203, trans_input_3120, trans_weight_1203,
+        wrot180_and_trans_0132, trans_output_1203, trans_input_3120, trans_weight_1203,
         input, weights, bias, output,
         act, scale, relu6_shift);
     return;
@@ -2445,8 +2453,8 @@ static void conv_cpu(
                       elem_t ipixel = irow < 0 || irow >= in_dim || icol < 0 || icol >= in_dim ?
                           0 : *in;
 
-                      const int krow_ = wrot180 ? kernel_dim - krow - 1 : krow;
-                      const int kcol_ = wrot180 ? kernel_dim - kcol - 1 : kcol;
+                      const int krow_ = wrot180_and_trans_0132 ? kernel_dim - krow - 1 : krow;
+                      const int kcol_ = wrot180_and_trans_0132 ? kernel_dim - kcol - 1 : kcol;
 
                       elem_t weight = *(weights + (krow_ * kernel_dim * in_channels + kcol_ * in_channels + kch) * out_channels + poch);
                       if (trans_weight_1203) {
@@ -2487,7 +2495,7 @@ static void tiled_conv_A_stride(
         int batch_size, int in_dim, int in_channels,
         int out_channels, int out_dim,
         int stride, int dilation, int padding, int kernel_dim,
-        bool wrot180, bool trans_output_1203, bool trans_input_3120,
+        bool wrot180_and_trans_0132, bool trans_output_1203, bool trans_input_3120,
         bool trans_weight_1203,
 
         int batches,
@@ -2513,7 +2521,7 @@ static void tiled_conv_A_stride(
         batch_size, in_dim, in_channels,
         out_channels, out_dim,
         stride, dilation, padding, kernel_dim,
-        wrot180, trans_output_1203, trans_input_3120, trans_weight_1203,
+        wrot180_and_trans_0132, trans_output_1203, trans_input_3120, trans_weight_1203,
         input, weights, bias, output,
         act, scale, relu6_shift,
         pool_size, pool_stride, pool_padding);
@@ -2569,7 +2577,7 @@ static void tiled_conv_A_stride(
             printf("dilation is only supported on CPU\n");
             exit(1);
         }
-        if (wrot180 || trans_output_1203 || trans_input_3120 || trans_weight_1203) {
+        if (wrot180_and_trans_0132 || trans_output_1203 || trans_input_3120 || trans_weight_1203) {
             printf("data transformations are only supported on CPU\n");
             exit(1);
         }
@@ -2671,7 +2679,7 @@ static void tiled_conv_A_stride_auto(
         int batch_size, int in_dim, int in_channels,
         int out_channels, int out_dim,
         int stride, int dilation, int padding, int kernel_dim,
-        bool wrot180, bool trans_output_1203, bool trans_input_3120,
+        bool wrot180_and_trans_0132, bool trans_output_1203, bool trans_input_3120,
         bool trans_weight_1203,
 
         const elem_t * input,
@@ -2837,7 +2845,7 @@ static void tiled_conv_A_stride_auto(
         batch_size, in_dim, in_channels,
         out_channels, out_dim,
         stride, dilation, padding, kernel_dim,
-        wrot180, trans_output_1203, trans_input_3120, trans_weight_1203,
+        wrot180_and_trans_0132, trans_output_1203, trans_input_3120, trans_weight_1203,
 
         batches,
         orows, ocols, ochs,

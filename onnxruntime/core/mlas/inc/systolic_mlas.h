@@ -102,5 +102,15 @@ void SystolicConvTranspose(char accelerator_mode, int batch_size, int in_dim, in
                   float* output,
                   bool relu,
                   float output_scale);
+
+void SystolicConvBackpropFilter(char accelerator_mode, int batch_size, int in_dim, int in_channels,
+                  int out_channels, int out_dim,
+                  int stride, int padding, int kernel_dim,
+                  const float* input,
+                  const float* weights,
+                  const float* bias,
+                  float* output,
+                  bool relu,
+                  float output_scale);
                             
 #endif

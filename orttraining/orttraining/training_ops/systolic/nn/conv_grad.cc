@@ -174,11 +174,6 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   const T* Wdata = W->template Data<T>();
   const T* dYdata = dY->template Data<T>();
 
-  // Note that we allocate a temporary buffer to accumulate into, after which we convert back to NHWC
-  BufferUniquePtr ohwi_dW(alloc->Alloc(sizeof(T) * dW->Shape().Size()), BufferDeleter(alloc));
-  T* ohwi_dW_data = static_cast<T*>(ohwi_dW.get());
-
-  math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, ohwi_dW_data, &CPUMathUtil::Instance());
   BufferUniquePtr bias_multiplier(alloc->Alloc(sizeof(T) * output_image_size), BufferDeleter(alloc));
   T* bias_multiplier_data = nullptr;
   Tensor* dB = context->Output(2, TensorShape({M}));
@@ -213,87 +208,96 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
     dW_start = profiler.StartTime();
   }
 
-  // We loop over all the images, and accumulate the gradient for each.
-  // Note how in the Gemm we add into the existing.
-  for (int image_id = 0; image_id < N; ++image_id) {
-    TimePoint start_time;
-    if (profiling_enabled) {
-      start_time = profiler.StartTime();
+  if (!TryConvBackpropFilterOnSystolic<float, float>(acc_mode, dilations, pads, strides,
+                                                     conv_attrs_.group, X, dY, nullptr, dW, /*relu= */ false, 1.0f)) {
+
+    // Note that we allocate a temporary buffer to accumulate into, after which we convert back to NHWC
+    BufferUniquePtr ohwi_dW(alloc->Alloc(sizeof(T) * dW->Shape().Size()), BufferDeleter(alloc));
+    T* ohwi_dW_data = static_cast<T*>(ohwi_dW.get());
+    math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, ohwi_dW_data, &CPUMathUtil::Instance());
+
+    // We loop over all the images, and accumulate the gradient for each.
+    // Note how in the Gemm we add into the existing.
+    for (int image_id = 0; image_id < N; ++image_id) {
+      TimePoint start_time;
+      if (profiling_enabled) {
+        start_time = profiler.StartTime();
+      }
+
+      Im2Col_NHWC(
+          Xdata,
+          C,
+          input_shape[0],
+          input_shape[1],
+          kernel_shape[0],
+          kernel_shape[1],
+          dilations[0],
+          dilations[1],
+          pads[0],
+          pads[1],
+          pads[2],
+          pads[3],
+          strides[0],
+          strides[1],
+          col_buffer_data,
+          conv_attrs_.group,
+          (float)0.0);
+
+      if (profiling_enabled) {
+        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                       Node().Name() + "_dw_im2col",
+                                       start_time,
+                                       {{"op_name", KernelDef().OpName()},
+                                        {"sub_action", "dw_im2col"},
+                                        {"provider", KernelDef().Provider()}});
+        start_time = profiler.StartTime();
+      }
+
+      // Here the "weight" of this convolution, dY is NHWC. We accumulate across the batches in the outer loop.
+      // In this inner loop the channels are used as output channels. Note that we transpose yData so HWxC -> CxHW
+      // We can then multiply (C x HW) * (im2col of X) to get an OHWI output
+      for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+        SystolicGemm(acc_mode, /*transA= */ true, /*transB= */ false,
+                     static_cast<int>(M / conv_attrs_.group),  // Do one matrix-vector product per output channel
+                     static_cast<int>(kernel_dim),
+                     static_cast<int>(output_image_size),
+                     1,
+                     dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
+                     M,
+                     col_buffer_data + group_id * kernel_dim,
+                     conv_attrs_.group * kernel_dim,
+                     1,
+                     ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
+                     kernel_dim);
+        // GemmlowpDebug(/*transA= */ true, /*transB= */ false,
+        //               static_cast<int>(M / conv_attrs_.group),
+        //               static_cast<int>(kernel_dim),
+        //               static_cast<int>(output_image_size),
+        //               dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
+        //               M,
+        //               col_buffer_data + group_id * kernel_dim,
+        //               conv_attrs_.group * kernel_dim,
+        //               ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
+        //               kernel_dim);
+      }
+
+      if (profiling_enabled) {
+        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                       Node().Name() + "_dw_gemm",
+                                       start_time,
+                                       {{"op_name", KernelDef().OpName()},
+                                        {"sub_action", "dw_gemm"},
+                                        {"provider", KernelDef().Provider()}});
+        start_time = profiler.StartTime();
+      }
+      Xdata += X_offset;
     }
 
-    Im2Col_NHWC(
-        Xdata,
-        C,
-        input_shape[0],
-        input_shape[1],
-        kernel_shape[0],
-        kernel_shape[1],
-        dilations[0],
-        dilations[1],
-        pads[0],
-        pads[1],
-        pads[2],
-        pads[3],
-        strides[0],
-        strides[1],
-        col_buffer_data,
-        conv_attrs_.group,
-        (float)0.0);
-
-    if (profiling_enabled) {
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     Node().Name() + "_dw_im2col",
-                                     start_time,
-                                     {{"op_name", KernelDef().OpName()},
-                                      {"sub_action", "dw_im2col"},
-                                      {"provider", KernelDef().Provider()}});
-      start_time = profiler.StartTime();
-    }
-
-    // Here the "weight" of this convolution, dY is NHWC. We accumulate across the batches in the outer loop.
-    // In this inner loop the channels are used as output channels. Note that we transpose yData so HWxC -> CxHW
-    // We can then multiply (C x HW) * (im2col of X) to get an OHWI output
-    for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      SystolicGemm(acc_mode, /*transA= */ true, /*transB= */ false,
-                   static_cast<int>(M / conv_attrs_.group),  // Do one matrix-vector product per output channel
-                   static_cast<int>(kernel_dim),
-                   static_cast<int>(output_image_size),
-                   1,
-                   dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
-                   M,
-                   col_buffer_data + group_id * kernel_dim,
-                   conv_attrs_.group * kernel_dim,
-                   1,
-                   ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
-                   kernel_dim);
-      // GemmlowpDebug(/*transA= */ true, /*transB= */ false,
-      //               static_cast<int>(M / conv_attrs_.group),
-      //               static_cast<int>(kernel_dim),
-      //               static_cast<int>(output_image_size),
-      //               dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
-      //               M,
-      //               col_buffer_data + group_id * kernel_dim,
-      //               conv_attrs_.group * kernel_dim,
-      //               ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
-      //               kernel_dim);
-    }
-
-    if (profiling_enabled) {
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     Node().Name() + "_dw_gemm",
-                                     start_time,
-                                     {{"op_name", KernelDef().OpName()},
-                                      {"sub_action", "dw_gemm"},
-                                      {"provider", KernelDef().Provider()}});
-      start_time = profiler.StartTime();
-    }
-    Xdata += X_offset;
+    //printf("dW_ohwi");
+    //PrintMinMax(dW->Shape().Size(), ohwi_dW_data);
+    // At this point ohwi_dW_data is formatted as [output_channels (derived from M), h, w, input channels]
+    OHWItoHWIO(ohwi_dW_data, dWdata, dW->Shape());
   }
-
-  //printf("dW_ohwi");
-  //PrintMinMax(dW->Shape().Size(), ohwi_dW_data);
-  // At this point ohwi_dW_data is formatted as [output_channels (derived from M), h, w, input channels]
-  OHWItoHWIO(ohwi_dW_data, dWdata, dW->Shape());
 
   // printf("\n");
   //printf("dW finished\n");
@@ -318,7 +322,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, X->Shape());
   if (dX) {
     if (!TryConvTransposeOnSystolic<float, float>(acc_mode, dilations, pads, strides,
-          conv_attrs_.group, dY, W, nullptr, dX, /*relu= */ false, 1.0f)) {
+                                                  conv_attrs_.group, dY, W, nullptr, dX, /*relu= */ false, 1.0f)) {
       T* dXdata = dX->template MutableData<T>();
       dYdata = dY->template Data<T>();
       for (int image_id = 0; image_id < N; ++image_id) {

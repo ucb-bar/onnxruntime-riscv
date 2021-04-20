@@ -215,6 +215,92 @@ inline bool TryConvTransposeOnSystolic(char accelerator_mode,
   return true;
 }
 
+
+template<typename elem_t, typename bias_t>
+inline bool TryConvBackpropFilterOnSystolic(char accelerator_mode,
+                              const std::vector<int64_t>& dilations,
+                              const std::vector<int64_t>& pads,
+                              const std::vector<int64_t>& strides,
+                              int64_t groups,
+                              const Tensor* input,
+                              const Tensor* W,
+                              const Tensor* B,
+                              Tensor* output,
+                              bool relu,
+                              float output_scale) {
+  if (groups != 1) {
+    return false;
+  }
+
+  int input_dim, output_dim, kernel_dim;
+
+  // If input H != W. Note that H, W are fixed by NHWC_to_CHWN
+  if ((input_dim = input->Shape()[1]) != input->Shape()[2]) {
+    return false;
+  }
+
+  // Note that output shape given to us in HWIO form
+  if ((output_dim = output->Shape()[0]) !=  output->Shape()[1]) {
+    return false;
+  }
+
+  // Kernel will undergo NHWC_to_HWNC transform
+  if ((kernel_dim = W->Shape()[1]) != W->Shape()[2]) {
+    return false;
+  }
+
+  // All dilations must be equal to 1.
+  if (std::any_of(dilations.begin(), dilations.end(), [&](int i) { return i != 1; })) {
+    return false;
+  }
+
+  // All pads must be the same
+  if (std::any_of(pads.begin(), pads.end(), [&](int i) { return i != pads[0]; })) {
+    return false;
+  }
+
+  // All strides must be the same
+  if (std::any_of(strides.begin(), strides.end(), [&](int i) { return i != strides[0]; })) {
+    return false;
+  }
+
+  const auto* input_data = input->template Data<elem_t>();
+  const auto* Wdata = W->template Data<elem_t>();
+  const auto* Bdata = B != nullptr ? B->template Data<bias_t>() : nullptr;
+
+  // Bail out early if one of the dimensions is zero.
+  if (output->Shape().Size() == 0) {
+    return true;
+  }
+
+  auto* output_data = output->template MutableData<elem_t>();
+
+  // N.b. the batch size is taken after the NHWC_to_CHWN transform
+  int batch_size = input->Shape()[3];
+  // N.b. the input channels are after the NHWC_to_CHWN
+  int input_channels = input->Shape()[0];
+  int output_channels = output->Shape()[3];
+
+  SystolicConvBackpropFilter(accelerator_mode,
+               batch_size,
+               input_dim,
+               input_channels,
+               output_channels,
+               output_dim,
+               strides[0],
+               pads[0],
+               kernel_dim,
+               /*input= */ input_data,
+               /*weights= */ Wdata,
+               /*bias= */ Bdata,
+               /*output= */ output_data,
+               /*relu =  */ relu,
+               /* output_scale= */ output_scale);
+
+  printf("First few output data %f %f %f %f\n", output_data[0], output_data[1], output_data[2], output_data[3]);
+  return true;
+}
+
 template<typename T>
 void EigenAdd(int N, const T* a, const T* b, T* y) {
   EigenVectorMap<T>(y, N) = ConstEigenVectorMap<T>(a, N).array() + ConstEigenVectorMap<T>(b, N).array();
