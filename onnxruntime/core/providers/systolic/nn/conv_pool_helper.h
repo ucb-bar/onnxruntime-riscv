@@ -211,7 +211,7 @@ inline bool TryConvTransposeOnSystolic(char accelerator_mode,
                /*relu =  */ relu,
                /* output_scale= */ output_scale);
 
-  //printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
+  printf("First few output data %f %f %f %f\n", output_data[0], output_data[1], output_data[2], output_data[3]);
   return true;
 }
 

@@ -499,6 +499,43 @@ TEST(SystolicConvGradTest, WeightMultipleInputOutputChannelNHWCTest) {
   test.Run();
 }
 
+// Test the case where we have ((x_size + 2*padding) - w_size) % stride != 0
+TEST(SystolicConvGradTest, StridesAndPaddingNHWC) {
+  OpTester test("ConvGrad_nhwc", 9);
+
+  std::vector<float> X = {5, 5, 0,
+                          3, 5, 4,
+                          6, 7, 6};
+
+  std::vector<float> W = {9, 4,
+                         7, 7};
+
+  std::vector<float> dY = {6, 4,
+                           8, 8};
+
+
+  test.AddInput<float>("dY", {1, 2, 2, 1}, dY);
+  test.AddInput<float>("X", {1, 3, 3, 1}, X);
+  test.AddInput<float>("W", {2, 2, 1, 1}, W);
+
+
+  std::vector<float> expected_dX = {0,  0,  0, 
+                                    0, 72, 32, 
+                                    0, 56, 56};
+
+  std::vector<float> expected_dW = {40, 32,
+                                   56, 48};
+
+
+  test.AddOutput<float>("dX", {1, 3, 3, 1}, expected_dX);
+  test.AddOutput<float>("dW", {2, 2, 1, 1}, expected_dW);
+
+  test.AddAttribute("strides", std::vector<int64_t>{3, 3});
+  test.AddAttribute("pads", std::vector<int64_t>{2, 2});
+
+  test.Run();
+}
+
 #endif
 
 }  // namespace

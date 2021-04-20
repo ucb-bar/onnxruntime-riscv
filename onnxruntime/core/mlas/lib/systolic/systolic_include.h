@@ -2305,7 +2305,8 @@ static void conv_cpu_without_pool(
         elem_t * output,
 
         int act, acc_scale_t scale, size_t relu6_shift) {
-
+  printf("Output dim %d\n", out_dim);
+  printf("Padding %d\n", padding);
   int W_dilation = trans_weight_1203 ? dilation : 1;
   if (!wrot180_and_trans_0132) {
     dilation = 1;
@@ -2356,6 +2357,7 @@ static void conv_cpu_without_pool(
                 } else if (wrot180_and_trans_0132) {
                   weight = *(weights + (krow_ * kernel_dim * out_channels + kcol_ * out_channels + och) * in_channels + kch);
                 }
+                printf("%f*%f + ", weight, ipixel);
                 opixel += weight * ipixel;
               }
             }
@@ -2368,7 +2370,7 @@ static void conv_cpu_without_pool(
            // And instead write to output[h][w][n][c]
            out = output+(orow*out_dim*batch_size+ocol*batch_size+b)*out_channels + och;
           }
-
+          printf("= %f\n", opixel);
           *out = scale_and_sat(opixel, act, scale, relu6_shift);
         }
       }
