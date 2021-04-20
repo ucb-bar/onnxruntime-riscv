@@ -135,4 +135,4 @@ You can also run other models by creating the appropriate runner script that cal
 
 ## Running via Qemu
 
-Refer to the last paragraph of above.
+See the comment in https://github.com/pranav-prakash/onnxruntime-riscv/issues/20#issuecomment-691397186 for info on how to build userspace qemu for riscv. Binaries can be run as with spike pk, but just note that you will have to use `-x 0` since qemu does not support the Gemmini extension.
