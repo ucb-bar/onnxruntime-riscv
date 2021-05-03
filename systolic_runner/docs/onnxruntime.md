@@ -2,7 +2,7 @@
 
 ## Overview
 
-For a general overview of ONNX runtime please refer to [HighLevelDesign.md](/docs/HighLevelDesign.md)
+For a general overview of ONNX runtime please refer to https://www.onnxruntime.ai/docs/resources/high-level-design.html
 
 This fork:
 
