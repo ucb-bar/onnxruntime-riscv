@@ -4,9 +4,19 @@ All examples below use the [linked](https://github.com/microsoft/onnxruntime/iss
 
 The models are built from the script in `orttraining/tools/mnist_model_builder`.
 
+Sample invocation to run in CPU mode, without NHWC conversion:
+
 ```
 qemu mnist_train --model_type conv --model_name mnist/mnist_conv.onnx --train_data_dir mnist/mnist_data/ --num_train_steps 1 -x 0
 ```
+
+Sample invocation to run in CPU mode, with NHWC coversion:
+
+```
+qemu mnist_train --model_name mnist/mnist_conv_w_batchnorm_noinitializers.onnx    --model_type conv --train_data_dir mnist/mnist_data/ --num_train_steps 2 --train_batch_size 10 -d 0 -O 99 -x 0
+```
+
+Note: leaving out `-x` entirely will disable the Systolic EP. This can be useful for testing against ORT CPU-only kernels.
 
 You will want to remove all non-input initializers from the graph before doing the training
 

@@ -2,7 +2,7 @@
 
 Here we provide a trainer for resnet50 models (although much like the inference counterpart, this should be generalizable to any imagenet-type model). Models to be trained can be acquired in two ways: from the model zoo (pre-trained and thus good for verifying accuracy), or by exporting from pytorch.
 
-Note that depending on which model you run, you will have you change the image preprocessing code inside `trainer.cpp`. You might also have to change the input/output names if you're trying to adapt it for a different model.
+Note that depending on which model you run, you will have you change the image preprocessing code inside `trainer.cpp`. You might also have to change the input/output names (feed/fetch names) in there as well if you're trying to adapt it for a different model.
 
 ## From model zoo
 
@@ -40,6 +40,8 @@ batch_size = 1    # just a random number
 x = torch.randn(batch_size, 3, 224, 224, requires_grad=True)
 torch.onnx.export(model, x, "resnet50.onnx", opset_version=12, do_constant_folding=False, training=torch.onnx.TrainingMode.TRAINING, input_names = ['gpu_0/data_0'], output_names = ['gpu_0/softmax_1'], dynamic_axes={'gpu_0/data_0' : {0 : 'batch_size'}, 'gpu_0/softmax_1' : {0 : 'batch_size'}})
 ```
+
+Note that I'm not sure the preprocessing for pytorch models is correct.
 
 ## Running
 
