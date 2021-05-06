@@ -531,7 +531,7 @@ TEST(SystolicConvGradTest, StridesAndPaddingNHWC) {
   test.AddOutput<float>("dW", {2, 2, 1, 1}, expected_dW);
 
   test.AddAttribute("strides", std::vector<int64_t>{3, 3});
-  test.AddAttribute("pads", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{2, 2, 2, 2}); // Beginning and ending for each spatial axis
 
   test.Run();
 }
