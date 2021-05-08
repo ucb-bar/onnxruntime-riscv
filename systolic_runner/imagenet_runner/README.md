@@ -42,7 +42,13 @@ For a given event, most relevant information will be present in the `Args` secti
 More detailed analysis can be performed by parsing the resulting json directly. For instance, the following provides a breakdown of inference time by op type:
 
 ```
-map(select(.args.op_name != null))  | group_by(.args.op_name) | map({(.[0].args.op_name) : map(.dur) | add}) | sort_by(.[]) | add
+map(select(.args.op_name != null and .args.sub_action == null))  | group_by(.args.op_name) | map({(.[0].args.op_name) : map(.dur) | add}) | sort_by(.[]) | add
+```
+
+Or time by subaction
+
+```
+map(select(.args.sub_action != null))  | group_by(.args.sub_action) | map({(.[0].args.sub_action) : map(.dur) | add}) | sort_by(.[]) | add
 ```
 
 Some other links of interest that will parse files to generate report:
