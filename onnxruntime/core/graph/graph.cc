@@ -1874,7 +1874,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
+      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -2062,7 +2062,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
-                            ") bound to different types (" + *(param_to_type_iter->second) +
+                            ") of Optype (" + op.Name() + ") bound to different types (" + *(param_to_type_iter->second) +
                             " and " + *(input_def->Type()) +
                             " in node (" + node_name + ").");
           return status;
@@ -2381,7 +2381,8 @@ void Graph::InitFunctionBodyForNode(Node& node) {
           input_types.emplace_back();
       }
       onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-      node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+      if (!node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto))
+        return;
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
     }
@@ -2391,10 +2392,10 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     for (const auto& fn_import : onnx_function_proto.opset_import()) {
       auto it = graphImports.find(fn_import.domain());
       if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return; // Incompatible. Do not use this function expansion.
+        return;  // Incompatible. Do not use this function expansion.
     }
 
-    auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
                                                                         logger_);
 
     function_container_.emplace_back(std::move(func_ptr));
@@ -3460,7 +3461,7 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
   // need to create the schema.
-  auto func = onnxruntime::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
+  auto func = std::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
   function_container_.push_back(std::move(func));
   node.SetFunctionBody(*function_container_.back());
 #endif

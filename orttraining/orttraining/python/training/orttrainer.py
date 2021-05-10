@@ -679,31 +679,28 @@ class ORTTrainer(object):
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
         # for example, load_state_dict will be called before returing the function, and it calls _init_session again
         del self._training_session
-
         # Set provider-specific options if needed
         def get_providers(provider_options):
             providers = ort.get_available_providers()
-            
             if provider_options:
                 for provider_name in provider_options:
-                    providers[providers.index(provider_name)] = (provider_name, provider_options[provider_name])
+                    if provider_name in providers:
+                        providers[providers.index(provider_name)] = (provider_name, provider_options[provider_name])
+                    else:
+                        providers.insert(0, (provider_name, provider_options[provider_name]))
             #default: using cuda
             elif 'cuda' in self.options.device.id.lower():
-                cuda_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
-
-                cuda_ep_name = ("ROCMExecutionProvider" if self.is_rocm_pytorch else "CUDAExecutionProvider")
+                gpu_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
+                gpu_ep_name = ("ROCMExecutionProvider" if self.is_rocm_pytorch else "CUDAExecutionProvider")
                 if self.options.device.mem_limit > 0:
-                    if not self.is_rocm_pytorch:
-                        cuda_ep_options["cuda_mem_limit"] = self.options.device.mem_limit
-                    else:
-                        warnings.warn("Ignoring 'mem_limit' for {}".format(cuda_ep_name))
+                    gpu_ep_options["gpu_mem_limit"] = self.options.device.mem_limit
 
-                if cuda_ep_name not in providers:
+                if gpu_ep_name not in providers:
                     raise RuntimeError(
                         "ORTTrainer options specify a CUDA device but the {} provider is unavailable.".format(
                             cuda_ep_name))
 
-                providers[providers.index(cuda_ep_name)] = (cuda_ep_name, cuda_ep_options)
+                providers[providers.index(gpu_ep_name)] = (gpu_ep_name, gpu_ep_options)
 
             return providers
 
@@ -890,7 +887,7 @@ class ORTTrainer(object):
                 test_pt_device = torch.device(target_device)
             except:
                 #in this case, input/output must on CPU
-                assert(input.device == 'cpu')
+                assert(input.device.type == 'cpu')
                 target_device = 'cpu'
             
             torch_tensor = torch.zeros(output_desc.shape, device=target_device,

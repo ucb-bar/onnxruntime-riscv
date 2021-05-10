@@ -5,21 +5,17 @@
 
 #include "core/graph/graph.h"
 #include "core/optimizer/qdq_transformer/qdq_op_transformer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/registry.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 class QDQSimpleTransformer : public QDQOperatorTransformer {
  public:
   QDQSimpleTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
 
-  bool Transform(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
-    if (parents.size() != 1 || children.size() != 1) {
-      return false;
-    }
-
-    FillQDQOptionalZeroPoint(parents);
-    FillQDQOptionalZeroPoint(children);
-
+ protected:
+  bool TransformImpl(const std::vector<const Node*>& parents, const std::vector<const Node*>& children) override {
     graph_.RemoveEdge(parents[0]->Index(), node_.Index(), 0, 0);
     graph_.RemoveEdge(node_.Index(), children[0]->Index(), 0, 0);
 
@@ -31,8 +27,20 @@ class QDQSimpleTransformer : public QDQOperatorTransformer {
   bool KeepNode() const override {
     return true;
   }
+
+  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
+    if (1 != dq_nodes.size() ||  // check that input *data* is output of DequantizeLinear
+        1 != q_nodes.size() ||
+        !optimizer_utils::CheckOutputEdges(graph_, node_, 1)) {
+      return false;
+    }
+
+    return QDQ::IsQDQPairSupported(graph_, *q_nodes[0], *dq_nodes[0]);
+  }
 };
 
 DEFINE_QDQ_CREATOR(MaxPool, QDQSimpleTransformer)
 DEFINE_QDQ_CREATOR(Reshape, QDQSimpleTransformer)
+DEFINE_QDQ_CREATOR(Gather, QDQSimpleTransformer)
+DEFINE_QDQ_CREATOR(Transpose, QDQSimpleTransformer)
 }  // namespace onnxruntime

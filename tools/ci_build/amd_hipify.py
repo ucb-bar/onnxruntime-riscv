@@ -151,6 +151,7 @@ provider_excluded_files = [
                 'cuda_allocator.cc',
                 'cuda_allocator.h',
                 'cuda_call.cc',
+                'cuda_common.cc',
                 'cuda_common.h',
                 'cuda_execution_provider_info.cc',
                 'cuda_execution_provider_info.h',
@@ -198,8 +199,8 @@ training_ops_excluded_files = [
                     'math/softmax_grad.cc',
                     'nn/batch_norm_grad.cc',
                     'nn/batch_norm_grad.h',
-                    'optimizer/adam.cc',
-                    'optimizer/adam.cu',
+                    'nn/conv_grad.cc',
+                    'nn/conv_grad.h',
                     'reduction/reduction_all.cc',
                     'reduction/reduction_ops.cc',
                     'tensor/gather_nd_grad_impl.cu',
@@ -230,6 +231,7 @@ def hipify(src_file_path, dst_file_path):
         s = s.replace('CUDA_KERNEL_ASSERT', 'HIP_KERNEL_ASSERT')
         s = s.replace('CUDA_CALL', 'HIP_CALL')
         s = s.replace('SliceCuda', 'SliceRocm')
+        s = s.replace('thrust::cuda', 'thrust::hip')
         s = s.replace('cuda', 'rocm')
         # s = s.replace('Cuda', 'Rocm')
         s = s.replace('CUDA', 'ROCM')

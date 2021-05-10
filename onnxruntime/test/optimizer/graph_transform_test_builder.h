@@ -230,6 +230,14 @@ class ModelTestBuilder {
     return AddNode(op_type, input_args, {output_arg}, kMSDomain);
   }
 
+  void SetGraphOutputs() {
+    std::vector<const NodeArg*> outputs;
+    for (auto& output_name : output_names_) {
+      outputs.push_back(graph_.GetNodeArg(output_name));
+    }
+    graph_.SetOutputs(outputs);
+  }
+
   Graph& graph_;
   NameMLValMap feeds_;
   std::vector<std::string> output_names_;
@@ -240,7 +248,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
                        TransformerLevel baseline_level,
                        TransformerLevel target_level,
-                       int opset_version = 12);
+                       int opset_version = 12,
+                       double per_sample_tolerance = 0.0,
+                       double relative_per_sample_tolerance = 0.0);
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -50,7 +50,7 @@ std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearConvRelu
     meta_def->outputs.push_back(arg.Name());
     return common::Status::OK();
   });
-  meta_def->inference_function = qlinearconv->Op()->GetTypeAndShapeInferenceFunction();
+  meta_def->type_and_shape_inference_function = qlinearconv->Op()->GetTypeAndShapeInferenceFunction();
 
   return meta_def;
 }
