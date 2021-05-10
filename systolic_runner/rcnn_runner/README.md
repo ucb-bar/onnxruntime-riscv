@@ -47,7 +47,7 @@ so you should have a nice clean resnet50 backbone.
 
 ## Quantization
 
-If you want to quantize the model from the model zoo, you will have to comment out the `QLinearAdd` and `QLinearMul` in registry.py. Hand wavily,  the model from the model zoo has the batchnorm unrolled to add + mul ops, and BN can be sensitive so quantization so quantizing those two ops will destroy accuracy.
+If you want to quantize the model from the model zoo, you will have to comment out the `QLinearAdd` and `QLinearMul` in registry.py. Hand wavily,  the model from the model zoo has the batchnorm unrolled to add + mul ops, and BN can be sensitive so quantization so quantizing those two ops will destroy accuracy. (Note that if you're using a PyTorch export with the BN fused into the Conv, then you can go ahead and enable `QLinearAdd`)
 
 Before running either model through the quantizer, you'll want to run `optimize.py` first with `replace_gemm=True` (can experiment with this to see how it affects accuracy). Then follow the usual calibrate/quantize one-shot method
 
