@@ -195,6 +195,18 @@ inline bool TryConvTransposeOnSystolic(char accelerator_mode,
   int input_channels = input->Shape()[3];
   int output_channels = output->Shape()[3];
 
+  printf("Calling into systolicConvTranspose(/*batch_size = */  %d, /*input_dim = */ %d,"
+                      "/* input_channels = */ %d , /*output_channels = */ %d, /*output_dim=*/ %d, /*stride=*/%d,"
+                      "/*pad=*/ %d, /*kernel_dim=*/ %d",
+               batch_size,
+               input_dim,
+               input_channels,
+               output_channels,
+               output_dim,
+               (int) strides[0],
+               (int) pads[0],
+               kernel_dim);
+
   SystolicConvTranspose(accelerator_mode,
                batch_size,
                input_dim,
@@ -280,6 +292,18 @@ inline bool TryConvBackpropFilterOnSystolic(char accelerator_mode,
   // N.b. the input channels are after the NHWC_to_CHWN
   int input_channels = input->Shape()[0];
   int output_channels = output->Shape()[3];
+
+  printf("Calling into SystolicConvBackpropFilter(/*batch_size = */ %d, /*input_dim = */ %d,"
+                      "/* input_channels = */ %d , /*output_channels = */ %d, /*output_dim=*/ %d, /*stride=*/%d,"
+                      "/*pad=*/ %d, /*kernel_dim=*/ %d",
+               batch_size,
+               input_dim,
+               input_channels,
+               output_channels,
+               output_dim,
+               (int) strides[0],
+               (int) pads[0],
+               kernel_dim);
 
   SystolicConvBackpropFilter(accelerator_mode,
                batch_size,
