@@ -6,7 +6,7 @@ ONNX Runtime has three kinds of tests that can be run: unit tests in the form of
 
 These unit tests are the lowest level of tests -- in the upstream ORT they ensure that SIMD kernels for Gemm/Conv/etc. are implemented properly; in our fork (where we call into gemmini.h), they mainly serve to ensure that the _hardware_ is implemented correctly. This is one of the most important tests, as hardware bugs have been common -- which will manifest as either stalling (simulation freeze) or incorrect results; both of which would be hard to track down and fix without the MLAS unit tests providing a smaller replicable test case.
 
-The main driver for this test is located in `onnxruntime/test/mlas/unittest.cpp`, and we have separate headers for systolic and hwacha tests which we include in here. These tests are built as part of building ORT, and the test binary is located in `build/Release/onnxruntime_mlas_test`. You can run the test in WS mode like
+The main driver for this test is located in `onnxruntime/test/mlas/systolic_unittest.cpp`, and we have separate headers for systolic and hwacha tests which we include in here. These tests are built as part of building ORT, and the test binary is located in `build/Release/systolic_mlas_test`. You can run the test in WS mode like
 
 ```
 ./onnxruntime_mlas_test foo bar
@@ -29,6 +29,8 @@ qemu onnxruntime_test_all --gtest_filter="*SystolicConvGradTest*NHWC*"
 ``` 
 
 Note that `gtest_filter` arg; you'll probably want to use this to limit the tests to a specific one.
+
+Importantly, note that these op tests run in CPU mode by default, since I always use qemu (spike pk doesn't support gtest). If you want to run in WS change the DefaultSystolicExecutionProvider constructor in `default_providers.cc`
 
 ## E2E Model Tests
 
