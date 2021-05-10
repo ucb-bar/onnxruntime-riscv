@@ -40,9 +40,10 @@ class BatchNorm : public OpKernel {
     // For opset 6-8, if spatial attribute exists, pick up the value (by default spatial == 1)
     // From opset 9 onwards, by default, only the spatial case (spatial == 1) is defined per spec
 
-    // This scenario doesn't guarantee we're in training mode, but since ONNX schema lacks is_training attribute
-    // We must make do with this
-    is_train_ = OpKernel::Node().OutputDefs().size() == 5;
+    // For opset 14 onwards, training is true iff we have optional outputs present
+    // For opset < 14, since no training attribute is present we assume optional outputs indicate training mode 
+    is_train_ = OpKernel::Node().OutputDefs().size() > 1;
+    ORT_ENFORCE(!is_train_ || is_spatial_, "Training mode does not support non-spatial BN");
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
@@ -69,82 +70,87 @@ class BatchNorm : public OpKernel {
 
     // calculate sample_size (including all channels)
     size_t sample_size_incl_all_channels = sample_size * C;
-    size_t scale_tensor_size = is_spatial_ ? C : sample_size_incl_all_channels;
 
-    ConstEigenVectorArrayMap<T> scale_arr(scale->template Data<T>(), scale_tensor_size);
-    ConstEigenVectorArrayMap<T> bias_arr(B->template Data<T>(), scale_tensor_size);
-
-    // The saved mean corresponds to the mean from this batch
-    auto* saved_mean = is_train_ ? p_op_kernel_context->Output(3, mean->Shape()) : nullptr;
-    auto* saved_var = is_train_ ? p_op_kernel_context->Output(4, var->Shape()) : nullptr;
-
-    // The running mean corresponds to the mean from all the batches
-    // During inference this running mean is used as the mean for BN
-    auto* running_mean = is_train_ ? p_op_kernel_context->Output(1, mean->Shape()) : nullptr;
-    auto* running_var = is_train_ ? p_op_kernel_context->Output(2, var->Shape()) : nullptr;
-
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(p_op_kernel_context->GetTempSpaceAllocator(&alloc));
+    
+    // Saved mean corresponds to the mean from this batch
+    // If these optional outputs are present (opset <= 9 or internal BN op) we re-use the space for calculations
+    // Note that with opset <= 9 we will be outputting saved_inv_std_dev instead of saved_var
+    Tensor *saved_mean = is_train_ ? p_op_kernel_context->Output(3, mean->Shape()) : nullptr;
+    Tensor *saved_inv_std = is_train_ ? p_op_kernel_context->Output(4, var->Shape()) : nullptr;
+    // With opset <= 9, both must be defined in training. If opset >= 14, neither should be defined in training
+    ORT_ENFORCE(!is_train_ || ((!saved_mean && !saved_inv_std) || (saved_mean && saved_inv_std)), "Invalid number of outputs for BN training");
+    Tensor saved_mean_allocated, saved_inv_std_allocated;
+    if (is_train_ && !saved_mean) {
+      saved_mean_allocated = Tensor(DataTypeImpl::GetType<T>(), mean->Shape(), alloc);
+      saved_inv_std_allocated = Tensor(DataTypeImpl::GetType<T>(), var->Shape(), alloc);
+      saved_mean = &saved_mean_allocated;
+      saved_inv_std = &saved_inv_std_allocated;
+    }
     ConstEigenArrayMap<T> X_arr(X->template Data<T>(),
                                 is_spatial_ ? sample_size : sample_size_incl_all_channels,
                                 is_spatial_ ? N * C : N);
+    ConstEigenVectorArrayMap<T> scale_arr(scale->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
+    ConstEigenVectorArrayMap<T> bias_arr(B->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
 
+    // Note that we only support spatial BN for training
     if (is_train_) {
-      EigenVectorArrayMap<T> saved_mean_arr(saved_mean->template MutableData<T>(), scale_tensor_size);
-      EigenVectorArrayMap<T> saved_var_arr(saved_var->template MutableData<T>(), scale_tensor_size);
+      EigenVectorArrayMap<T> saved_mean_arr(saved_mean->template MutableData<T>(), C);
+      // We first calculate saved_var then later take inverse square root to get saved_inv_std
+      EigenVectorArrayMap<T> saved_var_arr(saved_inv_std->template MutableData<T>(), C);
       saved_mean_arr.setZero();
       saved_var_arr.setZero();
 
-      if (is_spatial_) {
-        for (size_t nc = 0; nc < N * C; ++nc) {
-          saved_mean_arr(nc % C) += X_arr.col(nc).sum();
-        }
-      } else {
-        for (size_t n = 0; n < N; ++n) {
-          saved_mean_arr.col(0) += X_arr.col(n).sum();
-        }
+      for (size_t nc = 0; nc < N * C; ++nc) {
+        saved_mean_arr(nc % C) += X_arr.col(nc).sum();
       }
+  
+      saved_mean_arr /= static_cast<T>(N * sample_size);
+      for (size_t nc = 0; nc < N * C; ++nc) {
+        saved_var_arr(nc % C) += (X_arr.col(nc) - saved_mean_arr(nc % C)).matrix().squaredNorm();
+      }
+      saved_var_arr /= static_cast<T>(N * sample_size);
 
-      saved_mean_arr /= N * (is_spatial_ ? sample_size : sample_size_incl_all_channels);
-      if (is_spatial_) {
-        for (size_t nc = 0; nc < N * C; ++nc) {
-          saved_var_arr(nc % C) += (X_arr.col(nc) - saved_mean_arr(nc % C)).matrix().squaredNorm();
-        }
-      } else {
-        for (size_t n = 0; n < N; ++n) {
-          saved_var_arr.col(0) += (X_arr.col(n) - saved_mean_arr.col(0)).matrix().squaredNorm();
-        }
-      }
-      saved_var_arr /= N * (is_spatial_ ? sample_size : sample_size_incl_all_channels);
+      // The running mean corresponds to the mean from all the batches
+      // During inference this running mean is used as the mean for BN
+      auto* running_mean = p_op_kernel_context->Output(1, mean->Shape());
+      auto* running_var = p_op_kernel_context->Output(2, var->Shape());
+      const auto* input_running_mean = p_op_kernel_context->Input<Tensor>(3);
+      const auto* input_running_var = p_op_kernel_context->Input<Tensor>(4);
 
       // Assume that running mean and variance are initialized properly in the model given to us
       // Because we alias it, we have the past history here
       EigenVectorArrayMap<T> running_mean_arr(
-          running_mean->template MutableData<T>(), scale_tensor_size);
+          running_mean->template MutableData<T>(), C);
       EigenVectorArrayMap<T> running_var_arr(
-          running_var->template MutableData<T>(), scale_tensor_size);
-      running_mean_arr = running_mean_arr * momentum_ + saved_mean_arr * (1. - momentum_);
-      running_var_arr = running_var_arr * momentum_ + saved_var_arr * (1. - momentum_);
+          running_var->template MutableData<T>(), C);
+      ConstEigenVectorArrayMap<T> input_running_mean_arr(
+          input_running_mean->template Data<T>(), C);
+      ConstEigenVectorArrayMap<T> input_running_var_arr(
+          input_running_var->template Data<T>(), C);
+      running_mean_arr = input_running_mean_arr * momentum_ + saved_mean_arr * (1. - momentum_);
+      running_var_arr = input_running_var_arr * momentum_ + saved_var_arr * (1. - momentum_);
     }
 
     // Regardless of training or testing, we will apply the estimated mean
     // and standard deviation to the input. For testing, they are
     // specified directly by the input, and for training, they are computed
     // by the op.
-    Eigen::Array<T, Eigen::Dynamic, 1> inv_std(var->Shape().Size());
+    Eigen::Array<T, Eigen::Dynamic, 1> inv_std(is_spatial_ ? C : sample_size_incl_all_channels);
 
     if (!is_train_) {
-      ConstEigenVectorArrayMap<T> var_arr(var->template Data<T>(), scale_tensor_size);
+      ConstEigenVectorArrayMap<T> var_arr(var->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
       inv_std = (var_arr + epsilon_).sqrt().inverse();
     } else {
-      // Note that, to be consistent with cudnn, we will actually output saved inverse std
-      // This breaks the ONNX spec, but the existing cuda kernel for batchnormgrad relies on this behavior
-      EigenVectorArrayMap<T> saved_inv_std(saved_var->template MutableData<T>(), scale_tensor_size);
-      saved_inv_std = (saved_inv_std + epsilon_).inverse().sqrt();
-      inv_std = saved_inv_std;
+      EigenVectorArrayMap<T> saved_inv_std_arr(saved_inv_std->template MutableData<T>(), C);
+      saved_inv_std_arr = (saved_inv_std_arr + epsilon_).inverse().sqrt();
+      inv_std = saved_inv_std_arr;
     }
 
     // If we're training, do batch normalization based on computation from this batch
     ConstEigenVectorArrayMap<T> mean_arr(
-        !is_train_ ? mean->template Data<T>() : saved_mean->template Data<T>(), scale_tensor_size);
+        !is_train_ ? mean->template Data<T>() : saved_mean->template Data<T>(), is_spatial_ ? C : sample_size_incl_all_channels);
 
     // We can fuse the output computation as follows:
     //   ((x - est_mean) * (inv_var) * scale + bias
@@ -165,7 +171,6 @@ class BatchNorm : public OpKernel {
         Y_arr.col(n) = X_arr.col(n) * new_scale.col(0) + new_bias.col(0);
       }
     }
-
     return Status::OK();
   }
 
