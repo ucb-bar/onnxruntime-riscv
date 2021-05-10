@@ -152,7 +152,6 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   }
 
   Tensor* dW = context->Output(1, W->Shape());
-  T* dWdata = dW->template MutableData<T>();
 
   TensorShape input_shape = X->Shape().Slice(1, 3);
   TensorShape output_shape = dY->Shape().Slice(1, 3);
@@ -202,114 +201,116 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  // We first calculate dW
-  TimePoint dW_start;
-  if (profiling_enabled) {
-    dW_start = profiler.Now();
-  }
-
-  if (!TryConvBackpropFilterOnSystolic<float, float>(acc_mode, dilations, pads, strides,
-                                                     conv_attrs_.group, X, dY, nullptr, dW, /*relu= */ false, 1.0f)) {
-
-    // Note that we allocate a temporary buffer to accumulate into, after which we convert back to NHWC
-    BufferUniquePtr ohwi_dW(alloc->Alloc(sizeof(T) * dW->Shape().Size()), BufferDeleter(alloc));
-    T* ohwi_dW_data = static_cast<T*>(ohwi_dW.get());
-    math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, ohwi_dW_data, &CPUMathUtil::Instance());
-
-    // We loop over all the images, and accumulate the gradient for each.
-    // Note how in the Gemm we add into the existing.
-    for (int image_id = 0; image_id < N; ++image_id) {
-      TimePoint start_time;
-      if (profiling_enabled) {
-        start_time = profiler.Now();
-      }
-
-      Im2Col_NHWC(
-          Xdata,
-          C,
-          input_shape[0],
-          input_shape[1],
-          kernel_shape[0],
-          kernel_shape[1],
-          dilations[0],
-          dilations[1],
-          pads[0],
-          pads[1],
-          pads[2],
-          pads[3],
-          strides[0],
-          strides[1],
-          col_buffer_data,
-          conv_attrs_.group,
-          (float)0.0);
-
-      if (profiling_enabled) {
-        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                       Node().Name() + "_dw_im2col",
-                                       start_time,
-                                       {{"op_name", KernelDef().OpName()},
-                                        {"sub_action", "dw_im2col"},
-                                        {"provider", KernelDef().Provider()}});
-        start_time = profiler.Now();
-      }
-
-      // Here the "weight" of this convolution, dY is NHWC. We accumulate across the batches in the outer loop.
-      // In this inner loop the channels are used as output channels. Note that we transpose yData so HWxC -> CxHW
-      // We can then multiply (C x HW) * (im2col of X) to get an OHWI output
-      for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-        SystolicGemm(acc_mode, /*transA= */ true, /*transB= */ false,
-                     static_cast<int>(M / conv_attrs_.group),  // Do one matrix-vector product per output channel
-                     static_cast<int>(kernel_dim),
-                     static_cast<int>(output_image_size),
-                     1,
-                     dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
-                     M,
-                     col_buffer_data + group_id * kernel_dim,
-                     conv_attrs_.group * kernel_dim,
-                     1,
-                     ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
-                     kernel_dim);
-        // GemmlowpDebug(/*transA= */ true, /*transB= */ false,
-        //               static_cast<int>(M / conv_attrs_.group),
-        //               static_cast<int>(kernel_dim),
-        //               static_cast<int>(output_image_size),
-        //               dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
-        //               M,
-        //               col_buffer_data + group_id * kernel_dim,
-        //               conv_attrs_.group * kernel_dim,
-        //               ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
-        //               kernel_dim);
-      }
-
-      if (profiling_enabled) {
-        profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                       Node().Name() + "_dw_gemm",
-                                       start_time,
-                                       {{"op_name", KernelDef().OpName()},
-                                        {"sub_action", "dw_gemm"},
-                                        {"provider", KernelDef().Provider()}});
-        start_time = profiler.Now();
-      }
-      Xdata += X_offset;
+  if (dW) {
+    T* dWdata = dW->template MutableData<T>();
+    // We first calculate dW
+    TimePoint dW_start;
+    if (profiling_enabled) {
+      dW_start = profiler.Now();
     }
 
-    //printf("dW_ohwi");
-    //PrintMinMax(dW->Shape().Size(), ohwi_dW_data);
-    // At this point ohwi_dW_data is formatted as [output_channels (derived from M), h, w, input channels]
-    OHWItoHWIO(ohwi_dW_data, dWdata, dW->Shape());
-  }
+    if (!TryConvBackpropFilterOnSystolic<float, float>(acc_mode, dilations, pads, strides,
+                                                       conv_attrs_.group, X, dY, nullptr, dW, /*relu= */ false, 1.0f)) {
+      // Note that we allocate a temporary buffer to accumulate into, after which we convert back to NHWC
+      BufferUniquePtr ohwi_dW(alloc->Alloc(sizeof(T) * dW->Shape().Size()), BufferDeleter(alloc));
+      T* ohwi_dW_data = static_cast<T*>(ohwi_dW.get());
+      math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, ohwi_dW_data, &CPUMathUtil::Instance());
 
-  // printf("\n");
-  //printf("dW finished\n");
-  // DumpTensor<float>(dW);
+      // We loop over all the images, and accumulate the gradient for each.
+      // Note how in the Gemm we add into the existing.
+      for (int image_id = 0; image_id < N; ++image_id) {
+        TimePoint start_time;
+        if (profiling_enabled) {
+          start_time = profiler.Now();
+        }
 
-  if (profiling_enabled) {
-    profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                   Node().Name() + "_dW",
-                                   dW_start,
-                                   {{"op_name", KernelDef().OpName()},
-                                    {"sub_action", "_dW"},
-                                    {"provider", KernelDef().Provider()}});
+        Im2Col_NHWC(
+            Xdata,
+            C,
+            input_shape[0],
+            input_shape[1],
+            kernel_shape[0],
+            kernel_shape[1],
+            dilations[0],
+            dilations[1],
+            pads[0],
+            pads[1],
+            pads[2],
+            pads[3],
+            strides[0],
+            strides[1],
+            col_buffer_data,
+            conv_attrs_.group,
+            (float)0.0);
+
+        if (profiling_enabled) {
+          profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                         Node().Name() + "_dw_im2col",
+                                         start_time,
+                                         {{"op_name", KernelDef().OpName()},
+                                          {"sub_action", "dw_im2col"},
+                                          {"provider", KernelDef().Provider()}});
+          start_time = profiler.Now();
+        }
+
+        // Here the "weight" of this convolution, dY is NHWC. We accumulate across the batches in the outer loop.
+        // In this inner loop the channels are used as output channels. Note that we transpose yData so HWxC -> CxHW
+        // We can then multiply (C x HW) * (im2col of X) to get an OHWI output
+        for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+          SystolicGemm(acc_mode, /*transA= */ true, /*transB= */ false,
+                       static_cast<int>(M / conv_attrs_.group),  // Do one matrix-vector product per output channel
+                       static_cast<int>(kernel_dim),
+                       static_cast<int>(output_image_size),
+                       1,
+                       dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
+                       M,
+                       col_buffer_data + group_id * kernel_dim,
+                       conv_attrs_.group * kernel_dim,
+                       1,
+                       ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
+                       kernel_dim);
+          // GemmlowpDebug(/*transA= */ true, /*transB= */ false,
+          //               static_cast<int>(M / conv_attrs_.group),
+          //               static_cast<int>(kernel_dim),
+          //               static_cast<int>(output_image_size),
+          //               dYdata + Y_offset * image_id + group_id * (M / conv_attrs_.group),
+          //               M,
+          //               col_buffer_data + group_id * kernel_dim,
+          //               conv_attrs_.group * kernel_dim,
+          //               ohwi_dW_data + group_id * (M / conv_attrs_.group) * kernel_dim,
+          //               kernel_dim);
+        }
+
+        if (profiling_enabled) {
+          profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                         Node().Name() + "_dw_gemm",
+                                         start_time,
+                                         {{"op_name", KernelDef().OpName()},
+                                          {"sub_action", "dw_gemm"},
+                                          {"provider", KernelDef().Provider()}});
+          start_time = profiler.Now();
+        }
+        Xdata += X_offset;
+      }
+
+      //printf("dW_ohwi");
+      //PrintMinMax(dW->Shape().Size(), ohwi_dW_data);
+      // At this point ohwi_dW_data is formatted as [output_channels (derived from M), h, w, input channels]
+      OHWItoHWIO(ohwi_dW_data, dWdata, dW->Shape());
+    }
+
+    // printf("\n");
+    //printf("dW finished\n");
+    // DumpTensor<float>(dW);
+
+    if (profiling_enabled) {
+      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+                                     Node().Name() + "_dW",
+                                     dW_start,
+                                     {{"op_name", KernelDef().OpName()},
+                                      {"sub_action", "_dW"},
+                                      {"provider", KernelDef().Provider()}});
+    }
   }
 
   // Now we proceed to calculate dX
@@ -421,7 +422,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   //   //DumpTensor<float>(dB);
   //   PrintMinMax<float>(dB);
   // }
-  
+
   return Status::OK();
 }  // namespace systolic
 
@@ -460,7 +461,6 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   }
 
   Tensor* dW = context->Output(1, W->Shape());
-  T* dWdata = dW->template MutableData<T>();
 
   TensorShape input_shape = X->Shape().Slice(2);
   TensorShape output_shape = dY->Shape().Slice(2);
@@ -484,8 +484,12 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   const T* Wdata = W->template Data<T>();
   const T* dYdata = dY->template Data<T>();
 
-  // Pre-setting the gradients to zero.
-  math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, dWdata, &CPUMathUtil::Instance());
+  T* dWdata = nullptr;
+  if (dW) {
+    dWdata = dW->template MutableData<T>();
+    // Pre-setting the gradients to zero.
+    math::Set<T, CPUMathUtil>(dW->Shape().Size(), 0, dWdata, &CPUMathUtil::Instance());
+  }
 
   BufferUniquePtr bias_multiplier(alloc->Alloc(sizeof(T) * output_image_size), BufferDeleter(alloc));
   T* bias_multiplier_data = nullptr;
@@ -503,50 +507,52 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   }
 
   for (int image_id = 0; image_id < N; ++image_id) {
-    for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
-      if (Is2DKernel) {
-        math::Im2col<T, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
-            C / conv_attrs_.group,
-            input_shape[0],
-            input_shape[1],
-            kernel_shape[0],
-            kernel_shape[1],
-            dilations[0],
-            dilations[1],
-            pads[0],
-            pads[1],
-            pads[2],
-            pads[3],
-            strides[0],
-            strides[1],
-            col_buffer_data);
-      } else {
-        math::Im2col<T, StorageOrder::NCHW>()(
-            Xdata + group_id * X_offset,
-            input_shape.GetDims().data(),
-            output_shape.GetDims().data(),
-            kernel_dim,
-            kernel_shape.data(),
-            strides.data(),
-            dilations.data(),
-            pads.data(),
-            static_cast<int>(kernel_shape.size()),
-            col_buffer_data);
+    if (dW) {
+      for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+        if (Is2DKernel) {
+          math::Im2col<T, StorageOrder::NCHW>()(
+              Xdata + group_id * X_offset,
+              C / conv_attrs_.group,
+              input_shape[0],
+              input_shape[1],
+              kernel_shape[0],
+              kernel_shape[1],
+              dilations[0],
+              dilations[1],
+              pads[0],
+              pads[1],
+              pads[2],
+              pads[3],
+              strides[0],
+              strides[1],
+              col_buffer_data);
+        } else {
+          math::Im2col<T, StorageOrder::NCHW>()(
+              Xdata + group_id * X_offset,
+              input_shape.GetDims().data(),
+              output_shape.GetDims().data(),
+              kernel_dim,
+              kernel_shape.data(),
+              strides.data(),
+              dilations.data(),
+              pads.data(),
+              static_cast<int>(kernel_shape.size()),
+              col_buffer_data);
+        }
+        // Gradient with respect to W, filter.
+
+        SystolicGemm(acc_mode, /*transA=*/false, /*transB= */ true,
+                     M / conv_attrs_.group,
+                     kernel_dim,
+                     output_image_size,
+                     1,
+                     dYdata + group_id * Y_offset,
+                     col_buffer_data,
+                     1,
+                     dWdata + group_id * W_offset);
+
+        //GemmlowpDebug(M / conv_attrs_.group, kernel_dim, output_image_size, dYdata + group_id * Y_offset, col_buffer_data,  dWdata + group_id * W_offset);
       }
-      // Gradient with respect to W, filter.
-
-      SystolicGemm(acc_mode, /*transA=*/false, /*transB= */ true,
-                   M / conv_attrs_.group,
-                   kernel_dim,
-                   output_image_size,
-                   1,
-                   dYdata + group_id * Y_offset,
-                   col_buffer_data,
-                   1,
-                   dWdata + group_id * W_offset);
-
-      //GemmlowpDebug(M / conv_attrs_.group, kernel_dim, output_image_size, dYdata + group_id * Y_offset, col_buffer_data,  dWdata + group_id * W_offset);
     }
     if (dB) {
       // printf("dB Provided\n");
