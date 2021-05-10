@@ -205,7 +205,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
   // We first calculate dW
   TimePoint dW_start;
   if (profiling_enabled) {
-    dW_start = profiler.StartTime();
+    dW_start = profiler.Now();
   }
 
   if (!TryConvBackpropFilterOnSystolic<float, float>(acc_mode, dilations, pads, strides,
@@ -221,7 +221,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
     for (int image_id = 0; image_id < N; ++image_id) {
       TimePoint start_time;
       if (profiling_enabled) {
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
 
       Im2Col_NHWC(
@@ -250,7 +250,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                                        {{"op_name", KernelDef().OpName()},
                                         {"sub_action", "dw_im2col"},
                                         {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
 
       // Here the "weight" of this convolution, dY is NHWC. We accumulate across the batches in the outer loop.
@@ -288,7 +288,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                                        {{"op_name", KernelDef().OpName()},
                                         {"sub_action", "dw_gemm"},
                                         {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
       Xdata += X_offset;
     }
@@ -316,7 +316,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
 
   TimePoint dX_start;
   if (profiling_enabled) {
-    dX_start = profiler.StartTime();
+    dX_start = profiler.Now();
   }
 
   Tensor* dX = context->Output(0, X->Shape());
@@ -328,7 +328,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
       for (int image_id = 0; image_id < N; ++image_id) {
         TimePoint start_time;
         if (profiling_enabled) {
-          start_time = profiler.StartTime();
+          start_time = profiler.Now();
         }
         for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
           SystolicGemm(acc_mode,
@@ -366,7 +366,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                                          {{"op_name", KernelDef().OpName()},
                                           {"sub_action", "_dX_gemm"},
                                           {"provider", KernelDef().Provider()}});
-          start_time = profiler.StartTime();
+          start_time = profiler.Now();
         }
         Col2Im_NHWC(
             col_buffer_data,
@@ -393,7 +393,7 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                                          {{"op_name", KernelDef().OpName()},
                                           {"sub_action", "_dX_col2im"},
                                           {"provider", KernelDef().Provider()}});
-          start_time = profiler.StartTime();
+          start_time = profiler.Now();
         }
 
         dXdata += X_offset;

@@ -143,7 +143,7 @@ Status Conv_nhwc<T>::Compute(OpKernelContext* context) const {
   for (int image_id = 0; image_id < N; ++image_id) {
     TimePoint start_time;
     if (profiling_enabled) {
-      start_time = profiler.StartTime();
+      start_time = profiler.Now();
     }
     // We use a version of im2col that does all groups at once
     // Whereas official onnxruntime optimization (CPU kernel) has a version
@@ -177,7 +177,7 @@ Status Conv_nhwc<T>::Compute(OpKernelContext* context) const {
                                        {{"op_name", KernelDef().OpName()},
                                         {"sub_action", "im2col"},
                                         {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
     }
 
@@ -208,7 +208,7 @@ Status Conv_nhwc<T>::Compute(OpKernelContext* context) const {
                                         {"relu_fused", fused_relu_ ? "yes" : "no"},
                                         {"dimensions", dimension_string},
                                         {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
     }
 

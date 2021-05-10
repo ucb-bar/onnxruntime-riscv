@@ -1063,7 +1063,7 @@ Return Value:
 
 #if defined(MLAS_TARGET_AMD64_IX86)
         RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
-#elif defined(MLAS_TARGET_POWER)
+#elif defined(MLAS_TARGET_POWER) or defined(MLAS_TARGET_CPU_ONLY)
         RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {

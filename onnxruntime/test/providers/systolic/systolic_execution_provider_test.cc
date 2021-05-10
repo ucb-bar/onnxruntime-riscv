@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace test {
 TEST(SystolicExecutionProviderTest, MetadataTest) {
   SystolicExecutionProviderInfo info;
-  auto provider = onnxruntime::make_unique<SystolicExecutionProvider>(info);
+  auto provider = std::make_unique<SystolicExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
   ASSERT_STREQ(provider->GetAllocator(0, OrtMemTypeDefault)->Info().name, "Systolic");
 }

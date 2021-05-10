@@ -23,7 +23,7 @@ std::unique_ptr<IExecutionProvider> SystolicProviderFactory::CreateProvider() {
   SystolicExecutionProviderInfo info;
   info.create_arena = create_arena_;
   info.accelerator_mode = accelerator_mode_;
-  return onnxruntime::make_unique<SystolicExecutionProvider>(info);
+  return std::make_unique<SystolicExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Systolic(int use_arena, char accelerator_mode) {

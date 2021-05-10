@@ -32,7 +32,7 @@ echo "Performing ${BUILD_TYPE} build"
 # Download protoc if we don't have it
 if [ ! -d "build/protoc" ]; then
 	mkdir -p "build/protoc"
-	curl --location "https://github.com/protocolbuffers/protobuf/releases/download/v3.11.2/protoc-3.11.2-linux-x86_64.zip" --output "build/protoc/protoc.zip"
+	curl --location "https://github.com/protocolbuffers/protobuf/releases/download/v3.16.0/protoc-3.16.0-linux-x86_64.zip" --output "build/protoc/protoc.zip"
 	cd build/protoc
 	unzip protoc.zip
 fi

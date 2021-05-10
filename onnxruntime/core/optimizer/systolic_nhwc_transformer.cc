@@ -157,7 +157,7 @@ void SystolicNhwcTransformerImpl::CreateNhwcArgument(Node& node,
     std::string output_reorder_def_name = graph_.GenerateNodeArgName(basename + "_nhwc_" + std::to_string(idx));
     auto* output_nhwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
     nhwc_args_[output_original_arg] =
-        onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
+        std::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
     output_defs[idx] = output_nhwc_arg;
   }
 }
@@ -170,7 +170,7 @@ void SystolicNhwcTransformerImpl::FuseNhwcArgument(Node& node, const NhwcArgumen
   auto& nhwc_node = nhwc_arg.output_node_;
   auto* output_nhwc_arg = nhwc_node.MutableOutputDefs()[0];
   nhwc_args_[output_original_arg] =
-      onnxruntime::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
+      std::make_unique<NhwcArgument>(nhwc_node, output_nhwc_arg, original_uses);
 }
 
 void SystolicNhwcTransformerImpl::InsertReorderInput(Node& node) {

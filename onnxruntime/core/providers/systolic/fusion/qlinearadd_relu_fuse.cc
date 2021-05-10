@@ -10,7 +10,7 @@ namespace systolic {
  * Also note that for fusion to occur no execution provider must be assignd to the node beforehand
  */
 std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearAddReluMeta(const Node* qlinearadd, const Node* relu) {
-  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->name = qlinearadd->OpType();
   meta_def->domain = kMSDomain;
   meta_def->since_version = 1;

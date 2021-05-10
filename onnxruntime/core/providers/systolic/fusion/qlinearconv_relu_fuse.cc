@@ -24,7 +24,7 @@ namespace systolic {
  */
 
 std::unique_ptr<::onnxruntime::IndexedSubGraph::MetaDef> getFusedQlinearConvReluMeta(const Node* qlinearconv, const Node* relu) {
-  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->name = qlinearconv->OpType();
   meta_def->domain = "";
   meta_def->since_version = 10;

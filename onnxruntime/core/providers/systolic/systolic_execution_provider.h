@@ -47,7 +47,7 @@ class SystolicExecutionProvider : public IExecutionProvider {
 
   AllocatorCreationInfo device_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(SYSTOLIC, OrtAllocatorType::OrtDeviceAllocator));
       },
       0,
       create_arena};
