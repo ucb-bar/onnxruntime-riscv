@@ -1084,6 +1084,22 @@ if(WIN32 AND onnxruntime_ENABLE_INSTRUMENT)
   target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
 endif()
 
+onnxruntime_add_executable(systolic_mlas_test ${TEST_SRC_DIR}/mlas/systolic_unittest.cpp)
+target_include_directories(systolic_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+set(systolic_mlas_test_libs onnxruntime_mlas onnxruntime_common)
+if(NOT WIN32)
+  list(APPEND systolic_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
+endif()
+if (onnxruntime_USE_OPENMP)
+  list(APPEND systolic_mlas_test_libs OpenMP::OpenMP_CXX)
+endif()
+list(APPEND systolic_mlas_test_libs Threads::Threads)
+target_link_libraries(systolic_mlas_test PRIVATE ${systolic_mlas_test_libs})
+if (onnxruntime_LINK_LIBATOMIC)
+  target_link_libraries(systolic_mlas_test PRIVATE atomic)
+endif()
+set_target_properties(systolic_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
 file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/mlas/unittest/*.h"
   "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
