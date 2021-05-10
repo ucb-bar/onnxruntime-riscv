@@ -58,7 +58,9 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
-      ("use_gist", "Use GIST encoding/decoding.")
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("x,execution", "Systolic execution mode. Either 0, 1, or 2 (CPU, OS, WS).", cxxopts::value<int>(), "[0/1/2]")
       ("O,optimization_level", "Optimization level. NHWC transformation is applied at -O 99.",
                             cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")
@@ -89,6 +91,8 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
     params.lr_params.initial_lr = flags["learning_rate"].as<float>();
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -198,10 +202,9 @@ void setup_training_params(MnistParameters& params) {
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  params.model_with_gist_nodes_path = ToPathString(params.model_name) + ORT_TSTR("_with_gist.onnx");
   params.output_dir = ORT_TSTR(".");
 
-  //Gist encode
-  params.model_gist_encode_path = ToPathString(params.model_name) + ORT_TSTR("_encode_gist.onnx");
   params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),
                                            "loss",
                                            {"predictions", "labels"});
@@ -283,7 +286,7 @@ int main(int argc, char* args[]) {
   printf("Setting up logger\n");
   // setup logger
   string default_logger_id{"Default"};
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  auto logging_manager = std::make_unique<logging::LoggingManager>(unique_ptr<logging::ISink>{new logging::CLogSink{}},
                                                                            static_cast<logging::Severity>(params.debug),
                                                                            false,
                                                                            logging::LoggingManager::InstanceType::Default,
@@ -322,7 +325,7 @@ int main(int argc, char* args[]) {
   printf("Creating training runner\n");
   auto training_data_loader = std::make_shared<SingleDataLoader>(trainingData, feeds);
   auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env, session_options);
+  auto runner = std::make_unique<TrainingRunner>(params, *env, session_options);
   printf("Initializing training runner\n");
   RETURN_IF_FAIL(runner->Initialize());
   printf("Starting training\n");
