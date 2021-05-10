@@ -22,6 +22,7 @@
 #error At least one of fp or int8 must be enabled
 #endif
 
+
 #define GEMMINI_ASSERTIONS
 
 // Accelerator interface
@@ -952,7 +953,7 @@ static void tiled_matmul(size_t dim_I, size_t dim_J, size_t dim_K,
 }
 
 static size_t tiled_matmul_total_spad_rows(size_t I, size_t J, size_t K) {
-  return (I * K + K * J) * DIM;
+  return (I * K + K * J + 1) * DIM;
 }
 
 static size_t tiled_matmul_total_acc_rows(size_t I, size_t J) {
@@ -2413,9 +2414,10 @@ static int tiled_conv_total_spad_rows_A_stride(bool acc,
     const int out_channels_per_bank = ochs / DIM + (ochs % DIM != 0);
     const int batches_per_bank = batches / DIM + (batches % DIM != 0);
 
+    // TODO only half the rows and cols should be needed for downsamples
     const int A_rows = trans_input_3120 ?
-        (batches_per_bank * ichs * (irows >> downsample) * (icols >> downsample)) :
-        (in_channels_per_bank * batches * (irows >> downsample) * (icols >> downsample));
+        (batches_per_bank * ichs * irows * icols) :
+        (in_channels_per_bank * batches * irows * icols);
 
     const int B_rows = trans_weight_0132 ?
       in_channels_per_bank * kcols * krows * ochs :
