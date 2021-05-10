@@ -410,17 +410,17 @@ Status ConvGrad_nhwc<T>::Compute(OpKernelContext* context) const {
                                     {"provider", KernelDef().Provider()}});
   }
 
-  printf("dX\n");
-  //DumpTensor<float>(dX);
-  PrintMinMax<float>(dX);
-  printf("dW\n");
-  // DumpTensor<float>(dW);
-  PrintMinMax<float>(dW);
-  if (dB) {
-    printf("dB\n");
-    //DumpTensor<float>(dB);
-    PrintMinMax<float>(dB);
-  }
+  // printf("dX\n");
+  // //DumpTensor<float>(dX);
+  // PrintMinMax<float>(dX);
+  // printf("dW\n");
+  // // DumpTensor<float>(dW);
+  // PrintMinMax<float>(dW);
+  // if (dB) {
+  //   printf("dB\n");
+  //   //DumpTensor<float>(dB);
+  //   PrintMinMax<float>(dB);
+  // }
   
   return Status::OK();
 }  // namespace systolic
@@ -630,17 +630,17 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  printf("dX\n");
-  //DumpTensor<float>(dX);
-  PrintMinMax<float>(dX);
-  printf("dW\n");
-  // DumpTensor<float>(dW);
-  PrintMinMax<float>(dW);
-  if (dB) {
-    printf("dB\n");
-    //DumpTensor<float>(dB);
-    PrintMinMax<float>(dB);
-  }
+  // printf("dX\n");
+  // //DumpTensor<float>(dX);
+  // PrintMinMax<float>(dX);
+  // printf("dW\n");
+  // // DumpTensor<float>(dW);
+  // PrintMinMax<float>(dW);
+  // if (dB) {
+  //   printf("dB\n");
+  //   //DumpTensor<float>(dB);
+  //   PrintMinMax<float>(dB);
+  // }
 
   return Status::OK();
 }
