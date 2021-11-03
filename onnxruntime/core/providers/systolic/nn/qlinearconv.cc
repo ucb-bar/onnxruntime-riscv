@@ -215,7 +215,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   for (int image_id = 0; image_id < N; ++image_id) {
     TimePoint start_time;
     if (profiling_enabled) {
-      start_time = profiler.StartTime();
+      start_time = profiler.Now();
     }
     // We use a version of im2col that does all groups at once
     // Whereas official onnxruntime optimization (CPU kernel) has a version
@@ -249,7 +249,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
                                        {{"op_name", KernelDef().OpName()},
                                         {"sub_action", "im2col"},
                                         {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
     }
 
@@ -280,7 +280,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
                                         {"relu_fused", fused_relu_ ? "yes" : "no"},
                                         {"dimensions", dimension_string},
                                         {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
 
       // GemmlowpDebug(static_cast<int>(output_image_size),
@@ -455,7 +455,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {
       TimePoint start_time;
       if (profiling_enabled) {
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
 
       if (col_buffer_data != nullptr) {
@@ -499,7 +499,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                                          {{"op_name", KernelDef().OpName()},
                                           {"sub_action", "im2col"},
                                           {"provider", KernelDef().Provider()}});
-          start_time = profiler.StartTime();
+          start_time = profiler.Now();
         }
       }
 
@@ -512,7 +512,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
       if (Bdata) {
         int dimI = static_cast<int>(M / conv_attrs_.group);
         int dimJ = static_cast<int>(output_image_size);
-        std::unique_ptr<int[]> matrix_bias(new int[dimI * dimJ]);
+      std::unique_ptr<int[]> matrix_bias(new int[dimI * dimJ]);
         const int32_t* bias_data = Bdata + group_id * B_offset;
         for (int i = 0; i < dimI; i++) {
           std::fill(&matrix_bias.get()[i * dimJ], &matrix_bias.get()[i * dimJ + dimJ], bias_data[i]);
@@ -527,7 +527,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                                        {{"op_name", KernelDef().OpName()},
                                         {"sub_action", "bias splat"},
                                         {"provider", KernelDef().Provider()}});
-        start_time = profiler.StartTime();
+        start_time = profiler.Now();
       }
 
       SystolicMultiply(static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
