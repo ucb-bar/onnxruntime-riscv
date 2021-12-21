@@ -144,7 +144,7 @@ TVM_REGISTER_GLOBAL("tvm.contrib.onnxruntime.profile_event")
         DCHECK(!g_codegen_profiler_events[event_id].first.empty());
         DCHECK(g_codegen_profiler_event_ids[g_codegen_profiler_events[event_id].first].id == event_id);
         g_codegen_profiler_events[event_id].second =
-            profiling::Profiler::Instance().StartTime();
+            profiling::Profiler::Instance().Now();
       }
     });
 

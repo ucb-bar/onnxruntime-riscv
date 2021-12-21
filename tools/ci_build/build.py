@@ -1713,8 +1713,10 @@ def is_cross_compiling_on_apple(args):
         return True
     return False
 
+
 def prebuilt_protoc_from_host(cmake_path, source_dir, build_dir, args):
     return str(os.path.realpath("build/protoc/bin/protoc"))
+
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     if (args.arm or args.arm64 or args.arm64ec or args.enable_windows_store) and \

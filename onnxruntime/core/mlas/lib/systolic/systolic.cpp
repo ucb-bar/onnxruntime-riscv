@@ -278,7 +278,7 @@ void SystolicConv(char accelerator_mode, int batch_size, int in_dim, int in_chan
   // }
   // printf("Relu? %d\n", relu);
 
-  tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
+  tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
                   stride,
                   /*input_dilation= */ 1,
                   /*kernel_dilation= */ 1,
@@ -312,7 +312,7 @@ void SystolicConvTranspose(char accelerator_mode, int batch_size, int in_dim, in
   printf("Called into systolic conv transpose\n");
 
 
-  tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
+  tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
                   /*stride = */ 1,
                   /*input_dilation= */ stride,
                   /*kernel_dilation= */ 1,
@@ -345,7 +345,7 @@ void SystolicConvBackpropFilter(char accelerator_mode, int batch_size, int in_di
   printf("Called into systolic conv backprop filter\n");
 
 
-  tiled_conv_A_stride_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
+  tiled_conv_auto(batch_size, in_dim, in_channels, out_channels, out_dim,
                   /*stride = */ 1,
                   /*input_dilation= */ 1,
                   /*kernel_dilation= */ stride,
