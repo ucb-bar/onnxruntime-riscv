@@ -2,7 +2,7 @@
 
 I'd recommend first familiarizing yourself with ONNX Runtime and crucially the code paths taken for inference of a given model. Some useful links:
 
-https://www.onnxruntime.ai/docs/resources/high-level-design.html
+https://onnxruntime.ai/docs/reference/high-level-design.html
 
 https://programmer.group/source-reading-of-onnx-runtime-overview-of-model-reasoning-process.html
 
@@ -10,4 +10,4 @@ https://programmer.help/blogs/source-reading-of-onnx-runtime-implementation-of-m
 
 https://github.com/microsoft/onnxruntime/wiki
 
-systolic_runner/docs/onnxruntime.md
+https://github.com/ucb-bar/onnxruntime-riscv/blob/2021-12-23/systolic_runner/docs/onnxruntime.md
