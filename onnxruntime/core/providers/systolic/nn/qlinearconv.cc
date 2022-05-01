@@ -154,12 +154,29 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   Tensor *output = context->Output(0, pool_attrs_.fused_pool ? Y_dims_postpool_shape : Y_dims_shape);
 
   // If we can run on Systolic, do so!
-  if (TryConvOnSystolic<int8_t, int32_t>(
+  bool success = true;
+
+  if (context->GetOperatorThreadPool()) {
+    printf("not null\n");
+  } else {
+    printf("null");
+  }
+
+  concurrency::ThreadPool::TrySimpleParallelFor(
+    context->GetOperatorThreadPool(),
+    2,
+    [&](std::ptrdiff_t task_id) {
+      bool result = TryConvOnSystolic<int8_t, int32_t>(
           static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
           dilations,
           pads, strides, conv_attrs_.group, X, W, B, output,
           Y_dims_shape, Y_dims_postpool_shape,
-          fused_relu_, &pool_attrs_, real_multiplier)) {
+          fused_relu_, &pool_attrs_, real_multiplier, task_id);
+      success = success && result;
+    }
+  );
+
+  if (success) {
     return Status::OK();
   }
 

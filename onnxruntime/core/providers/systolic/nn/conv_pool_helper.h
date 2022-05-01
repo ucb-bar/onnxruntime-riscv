@@ -33,7 +33,9 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                               const TensorShape& Y_dims_postpool,
                               bool relu,
                               const PoolAttributes *pool_attrs_,
-                              float output_scale) {
+                              float output_scale,
+                              int task_id
+                              ) {
   if (groups != 1) {
     return false;
   }
@@ -108,6 +110,34 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   int input_channels = X->Shape()[3];
   int output_channels = W->Shape()[3];
 
+  if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1) {
+
+    int i_dim = batch_size * output_dim * output_dim;
+    bool odd = (i_dim % 2) * task_id;
+    int j_dim = output_channels;
+    int k_dim = kernel_dim * kernel_dim * input_channels;
+  
+    i_dim /= 2;
+    Xdata += task_id * i_dim * k_dim;
+    Ydata += task_id * i_dim * j_dim;
+    i_dim += odd;
+
+    SystolicMultiply(
+      accelerator_mode,
+      relu,
+      i_dim,
+      j_dim,
+      k_dim,
+      Xdata, k_dim, 
+      Wdata, j_dim, 
+      Ydata, j_dim, 
+      output_scale,
+      Bdata, j_dim,
+      true
+    );
+    return true;
+  }
+
   SystolicConv(accelerator_mode,
                batch_size,
                input_dim,
@@ -127,7 +157,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                pool_stride,
                pool_padding);
 
-  //printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
+  // printf("First few output data %d %d %d %d\n", Ydata[0], Ydata[1], Ydata[2], Ydata[3]);
   return true;
 }
 

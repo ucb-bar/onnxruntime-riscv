@@ -170,7 +170,7 @@ int main(int argc, char* argv[]) {
 
   // initialize session options if needed
   Ort::SessionOptions session_options;
-  session_options.SetIntraOpNumThreads(1);
+  session_options.SetIntraOpNumThreads(2);
   if (cmd.count("trace")) {
     session_options.EnableProfiling(cmd["trace"].as<std::string>().c_str());
   }
