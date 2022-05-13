@@ -201,10 +201,8 @@ void SystolicMultiply(char accelerator_mode, bool relu,
                       elem_t* out, int strideOut,
                       acc_scale_t real_multiplier,
                       const acc_t* bias, int strideBias, bool repeating_bias) {
-#ifndef FOR_FIRESIM
   printf("Called into systolic matmul!\n");
   printf("Using accelerated matmul with dimensions (%d, %d, %d)\n", dimI, dimJ, dimK);
-#endif
   tiled_matmul_auto(dimI, dimJ, dimK,
                     strideIn1, strideIn2, strideBias, strideOut,
                     in1, in2, bias, out, /*activation= */ relu,
@@ -219,9 +217,7 @@ void SystolicMultiply(char accelerator_mode, bool relu,
 void SystolicAdd(char accelerator_mode __attribute__((unused)), bool relu, const elem_t* A, float A_scale, const elem_t* B,
                  float B_scale,
                  elem_t* C, float C_scale, int dim) {
-#ifndef FOR_FIRESIM
   printf("Called into systolic add\n");
-#endif
   // To most efficiently use systolic, instead of using 1xdim, we use 16xResizedDim.
   // Systolic can load multiple blocks in a given row
 
