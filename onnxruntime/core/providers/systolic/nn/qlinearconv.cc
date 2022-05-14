@@ -11,6 +11,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/common/safeint.h"
 #include "conv_pool_helper.h"
+#include <thread>
 
 #ifdef SYSTOLIC_INT8
 
@@ -154,18 +155,20 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   Tensor *output = context->Output(0, pool_attrs_.fused_pool ? Y_dims_postpool_shape : Y_dims_shape);
 
   // If we can run on Systolic, do so!
-  bool success[2];
+  const auto ncores = std::thread::hardware_concurrency();
+  bool success[ncores];
 
   concurrency::ThreadPool::TrySimpleParallelFor(
     context->GetOperatorThreadPool(),
-    2,
+    ncores + 1,
     [&](std::ptrdiff_t task_id) {
       bool result = TryConvOnSystolic<int8_t, int32_t>(
           static_cast<const SystolicExecutionProvider*>(this->Info().GetExecutionProvider())->GetAcceleratorMode(),
           dilations,
           pads, strides, conv_attrs_.group, X, W, B, output,
           Y_dims_shape, Y_dims_postpool_shape,
-          fused_relu_, &pool_attrs_, real_multiplier, task_id);
+          fused_relu_, &pool_attrs_, real_multiplier, 
+          task_id, ncores);
       success[task_id] = success;
     }
   );

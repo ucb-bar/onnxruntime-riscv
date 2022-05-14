@@ -34,7 +34,8 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                               bool relu,
                               const PoolAttributes *pool_attrs_,
                               float output_scale,
-                              int task_id
+                              int task_id,
+                              int ncores
                               ) {
   if (groups != 1) {
     return false;
@@ -113,14 +114,14 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1) {
 
     int i_dim = batch_size * output_dim * output_dim;
-    int odd = i_dim % 2;
+    int per_core = i_dim / ncores;
     int j_dim = output_channels;
     int k_dim = kernel_dim * kernel_dim * input_channels;
   
-    i_dim /= 2;
+    i_dim = std::min(i_dim / ncores, i_dim - (task_id * per_core));
     Xdata += task_id * i_dim * k_dim; // X * W -> Y
     Ydata += task_id * i_dim * j_dim;
-    i_dim += (odd * task_id);
+    // i_dim += (odd * task_id);
 
     // X: i x k, W: k x j, Y: i x j, B: i x j
     SystolicMultiply(
