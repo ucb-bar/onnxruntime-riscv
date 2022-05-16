@@ -1,7 +1,7 @@
 # transformers requires sklearn
 pandas
 sklearn
-numpy==1.19.5
+numpy==1.21.0
 transformers==v4.3.2
 tensorboard
 h5py
