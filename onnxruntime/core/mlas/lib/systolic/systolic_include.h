@@ -685,7 +685,6 @@ static void tiled_matmul_outer(size_t dim_I, size_t dim_J, size_t dim_K,
   const size_t sizeof_D = low_D ? sizeof(elem_t) : sizeof(acc_t) ;
   const size_t sizeof_C = full_C ? sizeof(acc_t) : sizeof(elem_t);
 
-  printf("activation: %d | ", act);
   gemmini_extended_config_ex(dataflow, act, 0, relu6_shift, 1, a_transpose, b_transpose);
   gemmini_extended_config_st(stride_C * sizeof_C, act, scale);
   gemmini_extended3_config_ld(stride_A * sizeof(elem_t), A_scale_factor, false, 0);

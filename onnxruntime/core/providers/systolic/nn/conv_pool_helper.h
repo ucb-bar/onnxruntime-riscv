@@ -112,16 +112,14 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   int output_channels = W->Shape()[3];
 
   if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1) {
-
     int i_dim = batch_size * output_dim * output_dim;
     int per_core = i_dim / ncores;
     int j_dim = output_channels;
     int k_dim = kernel_dim * kernel_dim * input_channels;
   
+    Xdata += task_id * per_core * k_dim; // X * W -> Y
+    Ydata += task_id * per_core * j_dim;
     i_dim = std::min(i_dim / ncores, i_dim - (task_id * per_core));
-    Xdata += task_id * i_dim * k_dim; // X * W -> Y
-    Ydata += task_id * i_dim * j_dim;
-    // i_dim += (odd * task_id);
 
     // X: i x k, W: k x j, Y: i x j, B: i x j
     SystolicMultiply(
@@ -138,7 +136,6 @@ inline bool TryConvOnSystolic(char accelerator_mode,
       true
     );
   } else if (task_id == 0) {
-    
     SystolicConv(accelerator_mode,
                batch_size,
                input_dim,
@@ -161,21 +158,21 @@ inline bool TryConvOnSystolic(char accelerator_mode,
 
   asm volatile("fence");
 
-  printf("task id: %d | ", task_id);
-  printf("output scale: %f | ", output_scale);
-  printf("relu: %d | ", relu);
+  // printf("task id: %d | ", task_id);
+  // printf("output scale: %f | ", output_scale);
+  // printf("relu: %d | ", relu);
 
-  /* Histogram debugging */
-  int counts[256] = {0};
-  for (int i = 0; i < Y->Shape().Size(); i++) {
-    counts[(int)(Ydata[i]) + 128]++;
-  }
-  for (int i = 0; i < 256; i++) {
-    if (counts[i] != 0) {
-      printf("%d: %d | ", i - 128, counts[i]);
-    }
-  }
-  printf("\n");
+  // /* Histogram debugging */
+  // int counts[256] = {0};
+  // for (int i = 0; i < Y->Shape().Size(); i++) {
+  //   counts[(int)(Ydata[i]) + 128]++;
+  // }
+  // for (int i = 0; i < 256; i++) {
+  //   if (counts[i] != 0) {
+  //     printf("%d: %d | ", i - 128, counts[i]);
+  //   }
+  // }
+  // printf("\n");
 
   return true;
 }
