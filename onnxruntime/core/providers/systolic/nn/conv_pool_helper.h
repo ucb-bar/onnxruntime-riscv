@@ -35,7 +35,8 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                               const PoolAttributes *pool_attrs_,
                               float output_scale,
                               int task_id,
-                              int ncores
+                              int ncores,
+                              int multi_dim
                               ) {
   if (groups != 1) {
     return false;
@@ -112,29 +113,45 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   int output_channels = W->Shape()[3];
 
   if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1) {
-    int i_dim = batch_size * output_dim * output_dim;
-    int per_core = i_dim / ncores;
-    int j_dim = output_channels;
-    int k_dim = kernel_dim * kernel_dim * input_channels;
-  
-    Xdata += task_id * per_core * k_dim; // X * W -> Y
-    Ydata += task_id * per_core * j_dim;
-    i_dim = std::min(i_dim / ncores, i_dim - (task_id * per_core));
+      int i_dim = batch_size * output_dim * output_dim;
+      int j_dim = output_channels;
+      int k_dim = kernel_dim * kernel_dim * input_channels;
+
+      int orig_j_dim = j_dim;
+
+      int max_task_id = ncores - 1;
+
+    if (multi_dim == 0) {
+      int per_core = i_dim / (ncores - 1);
+    
+      Xdata += task_id * per_core * k_dim;
+      Ydata += task_id * per_core * j_dim;
+      i_dim = (task_id == max_task_id) ? (i_dim - task_id * per_core) : per_core;
+      
+    } else if (multi_dim == 1) {
+      int per_core = j_dim / (ncores - 1);
+
+      Wdata += task_id * per_core;
+      Ydata += task_id * per_core;
+      Bdata += task_id * per_core;
+      j_dim = (task_id == max_task_id) ? (j_dim - task_id * per_core) : per_core;
+    }
 
     // X: i x k, W: k x j, Y: i x j, B: i x j
-    SystolicMultiply(
-      accelerator_mode,
-      relu,
-      i_dim,
-      j_dim,
-      k_dim,
-      Xdata, k_dim, 
-      Wdata, j_dim, 
-      Ydata, j_dim, 
-      output_scale,
-      Bdata, j_dim,
-      true
-    );
+      SystolicMultiply(
+        accelerator_mode,
+        relu,
+        i_dim,
+        j_dim,
+        k_dim,
+        Xdata, k_dim, 
+        Wdata, orig_j_dim, 
+        Ydata, orig_j_dim, 
+        output_scale,
+        Bdata, 1,
+        true
+      );
+      
   } else if (task_id == 0) {
     SystolicConv(accelerator_mode,
                batch_size,
