@@ -168,7 +168,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
           pads, strides, conv_attrs_.group, X, W, B, output,
           Y_dims_shape, Y_dims_postpool_shape,
           fused_relu_, &pool_attrs_, real_multiplier, 
-          task_id, ncores, 1);
+          task_id, ncores, 0);
       success[task_id] = success;
     }
   );
