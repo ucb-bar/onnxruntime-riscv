@@ -35,7 +35,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                               const PoolAttributes *pool_attrs_,
                               float output_scale,
                               int task_id,
-                              int ncores,
+                              int nthreads,
                               int multi_dim
                               ) {
   if (groups != 1) {
@@ -113,35 +113,29 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   int output_channels = W->Shape()[3];
 
   if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1) {
-      int i_dim = batch_size * output_dim * output_dim;
-      int j_dim = output_channels;
-      int k_dim = kernel_dim * kernel_dim * input_channels;
+    printf("task id: %d\n", task_id);
+    int i_dim = batch_size * output_dim * output_dim;
+    int j_dim = output_channels;
+    int k_dim = kernel_dim * kernel_dim * input_channels;
 
-      int orig_j_dim = j_dim;
+    int orig_j_dim = j_dim;
 
-      int max_task_id = ncores - 1;
+    int max_task_id = nthreads - 1;
 
     if (multi_dim == 0) {
-      int per_core = i_dim / ncores;
+      int per_core = i_dim / nthreads;
     
       Xdata += task_id * per_core * k_dim;
       Ydata += task_id * per_core * j_dim;
-      i_dim = ((task_id == max_task_id) ? i_dim % ncores : 0) + per_core;
+      i_dim = ((task_id == max_task_id) ? i_dim % nthreads : 0) + per_core;
       
     } else if (multi_dim == 1) {
-      int per_core = j_dim / ncores;
+      int per_core = j_dim / nthreads;
 
       Wdata += task_id * per_core;
       Ydata += task_id * per_core;
       Bdata += task_id * per_core;
-      j_dim = ((task_id == max_task_id) ? j_dim % ncores : 0) + per_core;
-
-      // int per_core = j_dim / (ncores - 1);
-
-      // Wdata += task_id * per_core;
-      // Ydata += task_id * per_core;
-      // Bdata += task_id * per_core;
-      // j_dim = (task_id == max_task_id) ? (j_dim - task_id * per_core) : per_core;
+      j_dim = ((task_id == max_task_id) ? j_dim % nthreads : 0) + per_core;
     }
 
     // X: i x k, W: k x j, Y: i x j, B: i x j
