@@ -173,22 +173,6 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                pool_padding);
   }
 
-  // printf("task id: %d | ", task_id);
-  // printf("output scale: %f | ", output_scale);
-  // printf("relu: %d | ", relu);
-
-  // /* Histogram debugging */
-  // int counts[256] = {0};
-  // for (int i = 0; i < Y->Shape().Size(); i++) {
-  //   counts[(int)(Ydata[i]) + 128]++;
-  // }
-  // for (int i = 0; i < 256; i++) {
-  //   if (counts[i] != 0) {
-  //     printf("%d: %d | ", i - 128, counts[i]);
-  //   }
-  // }
-  // printf("\n");
-
   return true;
 }
 

@@ -1,3 +1,0 @@
-images/dog.jpg
-images/cat.jpg
-images/laptop.jpg

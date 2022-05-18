@@ -173,7 +173,11 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
     }
   );
 
-  if (success[0] && success[1]) {
+  bool final_success = true;
+  for (int i = 0; i < ncores; i++) {
+    final_success = final_success && success[i];
+  }
+  if (final_success) {
     return Status::OK();
   }
 
