@@ -112,8 +112,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   int input_channels = X->Shape()[3];
   int output_channels = W->Shape()[3];
 
-  if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1) {
-    printf("task id: %d\n", task_id);
+  if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1 && nthreads > 1) {
     int i_dim = batch_size * output_dim * output_dim;
     int j_dim = output_channels;
     int k_dim = kernel_dim * kernel_dim * input_channels;
@@ -149,8 +148,8 @@ inline bool TryConvOnSystolic(char accelerator_mode,
         Wdata, orig_j_dim, 
         Ydata, orig_j_dim, 
         output_scale,
-        Bdata, 0,
-        true
+        Bdata, /* D_stride */ 0,
+        /* repeating_bias */ true
       );
       
   } else if (task_id == 0) {

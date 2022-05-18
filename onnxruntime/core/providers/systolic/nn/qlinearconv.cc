@@ -155,7 +155,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
 
   // If we can run on Systolic, do so!
   const auto nthreads = concurrency::ThreadPool::DegreeOfParallelism(context->GetOperatorThreadPool());
-  bool success[nthreads];
+  bool success = True;
 
   concurrency::ThreadPool::TrySimpleParallelFor(
     context->GetOperatorThreadPool(),
@@ -167,16 +167,13 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
           pads, strides, conv_attrs_.group, X, W, B, output,
           Y_dims_shape, Y_dims_postpool_shape,
           fused_relu_, &pool_attrs_, real_multiplier, 
-          task_id, nthreads, 1);
-      success[task_id] = success;
+          task_id, nthreads, 
+          /* multi_dim */ 1);
+      success = success && result;
     }
   );
 
-  bool final_success = true;
-  for (int i = 0; i < nthreads; i++) {
-    final_success = final_success && success[i];
-  }
-  if (final_success) {
+  if (success) {
     return Status::OK();
   }
 
