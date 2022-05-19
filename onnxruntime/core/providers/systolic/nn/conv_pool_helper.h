@@ -36,7 +36,7 @@ inline bool TryConvOnSystolic(char accelerator_mode,
                               float output_scale,
                               int task_id,
                               int nthreads,
-                              int multi_dim
+                              int multi_dim /* dimension to multithread over. 0: i, 1: j */
                               ) {
   if (groups != 1) {
     return false;
