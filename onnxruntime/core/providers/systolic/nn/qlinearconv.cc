@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <stdlib.h>
+#include <string>
+
 #include "qlinearconv.h"
 #include "core/providers/systolic/systolic_fwd.h"
 #include "core/providers/systolic/helper/helper.h"
@@ -154,7 +157,12 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   Tensor *output = context->Output(0, pool_attrs_.fused_pool ? Y_dims_postpool_shape : Y_dims_shape);
 
   // If we can run on Systolic, do so!
-  const auto nthreads = concurrency::ThreadPool::DegreeOfParallelism(context->GetOperatorThreadPool());
+  int nthreads = concurrency::ThreadPool::DegreeOfParallelism(context->GetOperatorThreadPool());
+
+  char *multi_dim_setting = getenv("MULTIDIM");
+  int multi_dim = (multi_dim_setting != NULL) && (strcmp(multi_dim_setting, "0") == 0 || strcmp(multi_dim_setting, "1") == 0) ? 
+                        stoi(getenv("MULTIDIM")) : 1;
+  printf("multi_dim: %d\n", multi_dim);
   bool success = True;
 
   concurrency::ThreadPool::TrySimpleParallelFor(
@@ -168,7 +176,7 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
           Y_dims_shape, Y_dims_postpool_shape,
           fused_relu_, &pool_attrs_, real_multiplier, 
           task_id, nthreads, 
-          /* multi_dim */ 1);
+          multi_dim);
       success = success && result;
     }
   );
