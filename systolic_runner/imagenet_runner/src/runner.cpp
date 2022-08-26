@@ -175,20 +175,9 @@ int main(int argc, char* argv[]) {
 
   // initialize session options if needed
   Ort::SessionOptions session_options;
-  int nthreads = std::thread::hardware_concurrency();
-  char *nthreads_setting = std::getenv("NTHREADS");
-
-  printf("nthreads_setting: %s\n", nthreads_setting);
-
-  if (nthreads_setting != NULL) {
-    try {
-      nthreads = std::stoi(nthreads_setting);
-    }
-    catch(std::invalid_argument const& ex) { }
-  }
+  int nthreads = cmd["nthreads"].as<int>() > 0 ? cmd["nthreads"].as<int>() : std::thread::hardware_concurrency();
 
   printf("nthreads: %d\n", nthreads);
-  printf("getenv test: %s\n", std::getenv("PATH"));
 
   session_options.SetIntraOpNumThreads(nthreads);
   
