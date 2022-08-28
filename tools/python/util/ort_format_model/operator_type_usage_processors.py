@@ -509,7 +509,7 @@ class OperatorTypeUsageManager:
                 # roundtrip test to validate that we can initialize the processor from the entry and get the
                 # same values back
                 self._operator_processors[key].from_config_entry(entry)
-                assert(entry == self._operator_processors[key].to_config_entry())
+                assert entry == self._operator_processors[key].to_config_entry()
 
     class _OpTypeImplFilter(OpTypeImplFilterInterface):
         def __init__(self, manager):
