@@ -12,6 +12,8 @@ export CXX=riscv64-unknown-linux-gnu-g++
 export CC=riscv64-unknown-linux-gnu-gcc
 export CXXFLAGS="-march=rv64imafdc -mabi=lp64d"
 
+export NTHREADS="1"
+
 BUILD_TYPE="Debug"
 for var in "$@"
 do

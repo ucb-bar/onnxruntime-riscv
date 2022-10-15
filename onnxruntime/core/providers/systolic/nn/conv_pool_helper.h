@@ -112,14 +112,14 @@ inline bool TryConvOnSystolic(char accelerator_mode,
   int input_channels = X->Shape()[3];
   int output_channels = W->Shape()[3];
 
+  int max_task_id = nthreads - 1;
+
   if (pads[0] == 0 && kernel_dim == 1 && strides[0] == 1 && nthreads > 1) {
     int i_dim = batch_size * output_dim * output_dim;
     int j_dim = output_channels;
     int k_dim = kernel_dim * kernel_dim * input_channels;
 
     int orig_j_dim = j_dim;
-
-    int max_task_id = nthreads - 1;
 
     if (multi_dim == 0) {
       int per_core = i_dim / nthreads;
@@ -138,20 +138,19 @@ inline bool TryConvOnSystolic(char accelerator_mode,
     }
 
     // X: i x k, W: k x j, Y: i x j, B: i x j
-      SystolicMultiply(
-        accelerator_mode,
-        relu,
-        i_dim,
-        j_dim,
-        k_dim,
-        Xdata, k_dim, 
-        Wdata, orig_j_dim, 
-        Ydata, orig_j_dim, 
-        output_scale,
-        Bdata, /* D_stride */ 0,
-        /* repeating_bias */ true
-      );
-      
+    SystolicMultiply(
+      accelerator_mode,
+      relu,
+      i_dim,
+      j_dim,
+      k_dim,
+      Xdata, k_dim, 
+      Wdata, orig_j_dim, 
+      Ydata, orig_j_dim, 
+      output_scale,
+      Bdata, /* D_stride */ 0,
+      /* repeating_bias */ true
+    );
   } else if (task_id == 0) {
     SystolicConv(accelerator_mode,
                batch_size,

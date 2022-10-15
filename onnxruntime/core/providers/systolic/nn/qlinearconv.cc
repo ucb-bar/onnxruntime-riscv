@@ -46,6 +46,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv_nhwc);
 
+#define MULTI_DIM 0 // The dimension multithread across (0 = i, 1 = j)
+
 /**
  * Reference https://github.com/pytorch/pytorch/blob/master/caffe2/operators/conv_op_impl.h
  * 
@@ -157,13 +159,9 @@ Status QLinearConv_nhwc::Compute(OpKernelContext* context) const {
   Tensor *output = context->Output(0, pool_attrs_.fused_pool ? Y_dims_postpool_shape : Y_dims_shape);
 
   // If we can run on Systolic, do so!
-  int nthreads = concurrency::ThreadPool::DegreeOfParallelism(context->GetOperatorThreadPool());
-
-  char *multi_dim_setting = getenv("MULTIDIM");
-  int multi_dim = (multi_dim_setting != NULL) && (strcmp(multi_dim_setting, "0") == 0 || strcmp(multi_dim_setting, "1") == 0) ? 
-                        stoi(getenv("MULTIDIM")) : 1;
-  printf("multi_dim: %d\n", multi_dim);
-  bool success = True;
+  int nthreads = std::max(concurrency::ThreadPool::DegreeOfParallelism(context->GetOperatorThreadPool()), 2);
+  bool success = true;
+  int multi_dim = (MULTI_DIM == 1 || MULTI_DIM == 0) ? MULTI_DIM : 0;
 
   concurrency::ThreadPool::TrySimpleParallelFor(
     context->GetOperatorThreadPool(),
