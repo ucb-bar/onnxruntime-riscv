@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <thread>
 #include <vector>
+#include <algorithm>
 
 #if defined(SYSTOLIC_FP32) &&  defined(SYSTOLIC_INT8)
 #error Currently do not support both fp and int8 at same time
@@ -2342,11 +2343,15 @@ static void tiled_conv(
       }
     };
 
+    std::vector<std::thread> workers;
     if (thread_dim == 0) {
       // multithread across output rows
       for (int b = 0; b < batch_size; b++) {
         for (int threadnum = 0; threadnum < threads_to_use; threadnum++) {
-          conv_outputrow_threaded(threadnum, b);
+          workers.push_back(std::thread(conv_outputrow_threaded, b, threadnum));
+        }
+        for (std::thread & t : workers) {
+          t.join();
         }
       }
     } else {
@@ -2355,7 +2360,12 @@ static void tiled_conv(
         for (int porow = 0; porow < pool_out_dim; porow += porows) {
           const int orow = porow * pool_stride - pool_padding;
           for (int threadnum = 0; threadnum < threads_to_use; threadnum++) {
-            conv_outputcol_threaded(threadnum, b, porow);
+            for (int threadnum = 0; threadnum < threads_to_use; threadnum++) {
+              workers.push_back(std::thread(conv_outputcol_threaded, threadnum, b, porow));
+            }
+            for (std::thread & t : workers) {
+              t.join();
+            }
           }
         }
       }
