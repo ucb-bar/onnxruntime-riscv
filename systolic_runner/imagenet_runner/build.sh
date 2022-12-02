@@ -51,3 +51,6 @@ rm -f ort_test
 make -s -j16 ort_test root_path="${root_path}" build_path="${build_path}" extra_libs="${extra_libs}" \
                        extra_defs="${extra_defs}" training_libs="${training_libs}" extra_providers="${extra_providers}"
 echo "Please ignore any dlopen warning above. Glibc hates being statically linked."
+
+export NTHREADS=1
+echo "nthreads set to 1"

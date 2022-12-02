@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 //
 
+#include <stdlib.h>
+#include <string>
+
 #include <assert.h>
 #include <iostream>
 #include <vector>
@@ -24,6 +27,8 @@
 #include "tensor_helper.h"
 #include "cmd_args.h"
 #include "labels.h"
+
+#include <thread>
 
 bool has_suffix(const std::string &str, const std::string &suffix)
 {
@@ -170,7 +175,12 @@ int main(int argc, char* argv[]) {
 
   // initialize session options if needed
   Ort::SessionOptions session_options;
-  session_options.SetIntraOpNumThreads(1);
+  int nthreads = cmd["nthreads"].as<int>() > 0 ? cmd["nthreads"].as<int>() : std::thread::hardware_concurrency();
+
+  printf("nthreads: %d\n", nthreads);
+
+  session_options.SetIntraOpNumThreads(nthreads);
+  
   if (cmd.count("trace")) {
     session_options.EnableProfiling(cmd["trace"].as<std::string>().c_str());
   }

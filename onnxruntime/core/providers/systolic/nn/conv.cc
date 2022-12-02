@@ -96,7 +96,8 @@ Status Conv_nhwc<T>::Compute(OpKernelContext* context) const {
           dilations,
           pads, strides, conv_attrs_.group, X, W, B, Y,
           Y_dims_shape, Y_dims_shape,
-          fused_relu_, /*pool_attrs= */ nullptr, /*real_multiplier=*/ 1)) {
+          fused_relu_, /*pool_attrs= */ nullptr, /*real_multiplier=*/ 1,
+          /* task_id */ 0, /* nthreads */ 1, /* multi_dim */ 0)) {
     return Status::OK();
   }
 
