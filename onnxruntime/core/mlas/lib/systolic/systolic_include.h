@@ -71,6 +71,8 @@
 #define RELU 1
 #define RELU6 2
 
+#define NTHREADS 3
+
 #ifdef ELEM_T_IS_FLOAT
 elem_t elem_t_bits_to_elem_t(elem_t_bits x) {
     union {
@@ -2072,18 +2074,19 @@ static void tiled_conv(
     const int pool_out_dim = (out_dim + 2*pool_padding - pool_size) / pool_stride + 1;
     const int dilated_in_dim = in_dim + (input_dilation-1)*(in_dim-1);
 
+    int per_thread_ochs = out_channels / NTHREADS;
+
     for (int b = 0; b < batch_size; b += batches) {
         for (int porow = 0; porow < pool_out_dim; porow += porows) {
             const int orow = porow * pool_stride - pool_padding;
 
             for (int pocol = 0; pocol < pool_out_dim; pocol += pocols) {
                 const int ocol = pocol * pool_stride - pool_padding;
-
-                for (int poch = 0; poch < out_channels; poch += pochs) {
+                for (int threadnum = 0; threadnum < NTHREADS; threadnum++) {
+                  for (int poch = threadnum * per_thread_ochs; poch < (threadnum + 1) * per_thread_ochs; poch += pochs) {
                     for (int krow = 0; krow < kernel_dim; krow += krows) {
                         const int orow_floored = orow < 0 ? 0 : orow;
                         int irow = orow_floored * stride + krow * kernel_dilation - padding;
-
                         for (int kcol = 0; kcol < kernel_dim; kcol += kcols) {
                             const int ocol_floored = ocol < 0 ? 0 : ocol;
                             int icol = ocol_floored * stride + kcol * kernel_dilation - padding;
@@ -2189,7 +2192,118 @@ static void tiled_conv(
                             }
                         }
                     }
+                  }
                 }
+                for (int poch = NTHREADS * per_thread_ochs; poch < out_channels; poch += pochs) {
+                    for (int krow = 0; krow < kernel_dim; krow += krows) {
+                        const int orow_floored = orow < 0 ? 0 : orow;
+                        int irow = orow_floored * stride + krow * kernel_dilation - padding;
+                        for (int kcol = 0; kcol < kernel_dim; kcol += kcols) {
+                            const int ocol_floored = ocol < 0 ? 0 : ocol;
+                            int icol = ocol_floored * stride + kcol * kernel_dilation - padding;
+
+                            for (int kch = 0; kch < in_channels; kch += kchs) {
+                                elem_t * out = output + (b*pool_out_dim*pool_out_dim + porow*pool_out_dim + pocol) * out_channels + poch;
+                                if (trans_output_1203) {
+                                    out = output + (porow*pool_out_dim*batch_size + pocol*batch_size + b) * out_channels + poch;
+                                }
+
+                                if (krow + krows < kernel_dim ||
+                                        kcol + kcols < kernel_dim ||
+                                        kch + kchs < in_channels) {
+                                    out = NULL;
+                                }
+
+                                const acc_t * bias_ = bias + poch;
+                                if (krow > 0 ||
+                                        kcol > 0 ||
+                                        kch > 0) {
+                                    bias_ = NULL;
+                                }
+
+                                const int batches_ = batch_size - b > batches ? batches : batch_size - b;
+                                const int porows_ = pool_out_dim - porow > porows ? porows : pool_out_dim - porow;
+                                const int pocols_ = pool_out_dim - pocol > pocols ? pocols : pool_out_dim - pocol;
+                                const int pochs_ = out_channels - poch > pochs ? pochs : out_channels - poch;
+                                const int krows_ = kernel_dim - krow > krows ? krows : kernel_dim - krow;
+                                const int kcols_ = kernel_dim - kcol > kcols ? kcols : kernel_dim - kcol;
+                                const int kchs_ = in_channels - kch > kchs ? kchs : in_channels - kch;
+
+                                const int ocols_ = pocols_ * pool_stride + pool_size - 1;
+                                const int orows_ = porows_ * pool_stride + pool_size - 1;
+
+                                const int plpad = ocol < 0 ? -ocol : 0;
+                                const int prpad = ocol + ocols_ > out_dim ? ocol + ocols_ - out_dim : 0;
+                                const int pupad = orow < 0 ? -orow : 0;
+                                const int pdpad = orow + orows_ > out_dim ? orow + orows_ - out_dim : 0;
+
+                                const int dilated_krows_ = krows_ + (kernel_dilation - 1)*(krows_ - 1);
+                                const int dilated_kcols_ = kcols_ + (kernel_dilation - 1)*(kcols_ - 1);
+
+                                const int icols_ = (ocols_ - plpad - prpad) * stride + dilated_kcols_ - 1;
+                                const int irows_ = (orows_ - pupad - pdpad) * stride + dilated_krows_ - 1;
+
+                                int lpad = icol < 0 ? -icol : 0;
+                                int rpad = icol + icols_ > dilated_in_dim ? icol + icols_ - dilated_in_dim : 0;
+                                int upad = irow < 0 ? -irow : 0;
+                                int dpad = irow + irows_ > dilated_in_dim ? irow + irows_ - dilated_in_dim : 0;
+
+                                if (input_dilated) {
+                                  lpad += lpad == 0 && icol % 2 != 0;
+                                  rpad += rpad == 0 && (icol + icols_) % 2 != 1;
+                                  upad += upad == 0 && irow % 2 != 0;
+                                  dpad += dpad == 0 && (irow + irows_) % 2 != 1;
+                                }
+
+                                int krow_ = krow;
+                                int kcol_ = kcol;
+                                if (wrot180) {
+                                  krow_ = kernel_dim - krow - krows_;
+                                  kcol_ = kernel_dim - kcol - kcols_;
+                                }
+
+                                const elem_t * weights_slice = weights + (krow_*kernel_dim*in_channels + kcol_*in_channels + kch) * out_channels + poch;
+                                if (trans_weight_1203) {
+                                  weights_slice = weights + (kch*kernel_dim*kernel_dim + krow_*kernel_dim+kcol_) * out_channels + poch;
+                                } else if (trans_weight_0132) {
+                                  weights_slice = weights + (krow_*kernel_dim*out_channels + kcol_*out_channels + poch) * in_channels + kch;
+                                }
+
+                                const elem_t * in = input + (b*in_dim*in_dim + ((irow+upad)>>input_dilated)*in_dim + ((icol+lpad)>>input_dilated)) * in_channels + kch;
+                                if (trans_input_3120) {
+                                  in = input + (kch*in_dim*in_dim + ((irow+upad)>>input_dilated)*in_dim + ((icol+lpad)>>input_dilated)) * batch_size + b;
+                                }
+
+                                sp_tiled_conv(
+                                    batch_size, in_dim, in_channels,
+                                    out_channels, out_dim, pool_out_dim,
+
+                                    stride, padding, kernel_dim, kernel_dilation,
+
+                                    pool_size, pool_stride, pool_padding,
+
+                                    batches_,
+                                    porows_, pocols_, pochs_,
+                                    krows_, kcols_, kchs_,
+
+                                    lpad, rpad, upad, dpad,
+                                    plpad, prpad, pupad, pdpad,
+
+                                    in,
+                                    weights_slice,
+                                    out,
+                                    bias_,
+
+                                    act, scale,
+
+                                    wrot180, trans_output_1203, trans_input_3120,
+                                    trans_weight_1203, trans_weight_0132,
+
+                                    no_bias, no_pool, downsample, input_dilated);
+                            }
+                        }
+                    }
+                  }
             }
         }
     }
