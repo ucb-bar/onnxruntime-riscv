@@ -173,7 +173,7 @@ int main(int argc, char* argv[]) {
   // initialize session options if needed
   Ort::SessionOptions session_options;
   const auto processor_count = std::thread::hardware_concurrency();
-  session_options.SetIntraOpNumThreads(processor_count);
+  session_options.SetIntraOpNumThreads(1);
   
   if (cmd.count("trace")) {
     session_options.EnableProfiling(cmd["trace"].as<std::string>().c_str());

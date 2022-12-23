@@ -71,6 +71,8 @@
 #define RELU 1
 #define RELU6 2
 
+#define NTHREADS 4
+
 #ifdef ELEM_T_IS_FLOAT
 elem_t elem_t_bits_to_elem_t(elem_t_bits x) {
     union {
@@ -1952,7 +1954,7 @@ static void conv_cpu(
 
 static void tiled_conv(
         int batch_size, int in_dim, int in_channels,
-        int out_channels, int out_dim,
+        int out_channels, int out_channels_thread, int out_channels_offset, int out_dim,
         int stride, int input_dilation, int kernel_dilation, int padding, int kernel_dim,
         bool wrot180, bool trans_output_1203, bool trans_input_3120,
         bool trans_weight_1203, bool trans_weight_0132,
@@ -2078,8 +2080,8 @@ static void tiled_conv(
 
             for (int pocol = 0; pocol < pool_out_dim; pocol += pocols) {
                 const int ocol = pocol * pool_stride - pool_padding;
-
-                for (int poch = 0; poch < out_channels; poch += pochs) {
+                printf("total_och: %d, per_thread_och: %d\n", out_channels, out_channels_thread);
+                for (int poch = out_channels_offset; poch < out_channels_offset + out_channels_thread; poch += pochs) {
                     for (int krow = 0; krow < kernel_dim; krow += krows) {
                         const int orow_floored = orow < 0 ? 0 : orow;
                         int irow = orow_floored * stride + krow * kernel_dilation - padding;
@@ -2349,6 +2351,8 @@ static void tiled_conv_auto(
         pool_padding = 0;
     }
 
+    int per_thread_och = out_channels / NTHREADS;
+
     const int pool_out_dim = (out_dim + 2*pool_padding - pool_size) / pool_stride + 1;
 
     const bool downsample = stride == 2 && kernel_dim == 1 && padding == 0 && no_pool && in_dim % 2 == 0;
@@ -2356,8 +2360,8 @@ static void tiled_conv_auto(
     // Tile convolution params
 
     // int args[] = {batch_size, porows, pocols, pochs, krows, kcols, kchs};
-    int args[] = {batch_size, pool_out_dim, pool_out_dim, out_channels, kernel_dim, kernel_dim, in_channels};
-    const int max_args[] = {batch_size, pool_out_dim, pool_out_dim, out_channels, kernel_dim, kernel_dim, in_channels};
+    int args[] = {batch_size, pool_out_dim, pool_out_dim, per_thread_och, kernel_dim, kernel_dim, in_channels};
+    const int max_args[] = {batch_size, pool_out_dim, pool_out_dim, per_thread_och, kernel_dim, kernel_dim, in_channels};
 
     const int orows_idx = 1;
     const int ocols_idx = 2;
@@ -2491,15 +2495,16 @@ static void tiled_conv_auto(
     printf("inner matmul size: i=%d, j=%d, k=%d\n\n", ocols, ochs, kchs);
     */
 
-    tiled_conv(
+    for (int threadno = 0; threadno < NTHREADS; threadno++) {
+      tiled_conv(
         batch_size, in_dim, in_channels,
-        out_channels, out_dim,
+        out_channels, per_thread_och, threadno * per_thread_och, out_dim,
         stride, input_dilation, kernel_dilation, padding, kernel_dim,
         wrot180, trans_output_1203, trans_input_3120,
         trans_weight_1203, trans_weight_0132,
 
         batches,
-        orows, ocols, ochs,
+        orows, ocols, ochs / NTHREADS,
         krows, kcols, kchs,
 
         input,
@@ -2511,6 +2516,7 @@ static void tiled_conv_auto(
         pool_size, no_pool ? 0 : pool_stride, pool_padding,
 
         tiled_conv_type);
+    }
 }
 
 // This function is for a convolution with kernel_dim=1, stride==2, padding=0, and no pooling
