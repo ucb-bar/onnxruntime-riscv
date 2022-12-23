@@ -2074,6 +2074,8 @@ static void tiled_conv(
     const int pool_out_dim = (out_dim + 2*pool_padding - pool_size) / pool_stride + 1;
     const int dilated_in_dim = in_dim + (input_dilation-1)*(in_dim-1);
 
+    int per_thread_ochs = out_channels / NTHREADS;
+
     for (int b = 0; b < batch_size; b += batches) {
         for (int porow = 0; porow < pool_out_dim; porow += porows) {
             const int orow = porow * pool_stride - pool_padding;
@@ -2085,7 +2087,6 @@ static void tiled_conv(
                     for (int krow = 0; krow < kernel_dim; krow += krows) {
                         const int orow_floored = orow < 0 ? 0 : orow;
                         int irow = orow_floored * stride + krow * kernel_dilation - padding;
-
                         for (int kcol = 0; kcol < kernel_dim; kcol += kcols) {
                             const int ocol_floored = ocol < 0 ? 0 : ocol;
                             int icol = ocol_floored * stride + kcol * kernel_dilation - padding;
@@ -2191,7 +2192,7 @@ static void tiled_conv(
                             }
                         }
                     }
-                }
+                  }
             }
         }
     }
