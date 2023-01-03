@@ -71,7 +71,8 @@
 #define RELU 1
 #define RELU6 2
 
-#define NTHREADS 4
+// Number of threads to use in convolution
+#define NTHREADS 1
 
 #ifdef ELEM_T_IS_FLOAT
 elem_t elem_t_bits_to_elem_t(elem_t_bits x) {
@@ -2082,7 +2083,7 @@ static void tiled_conv(
 
             for (int pocol = 0; pocol < pool_out_dim; pocol += pocols) {
                 const int ocol = pocol * pool_stride - pool_padding;
-                printf("total_och: %d, per_thread_och: %d\n", out_channels, out_channels_thread);
+                // printf("total_och: %d, per_thread_och: %d\n", out_channels, out_channels_thread);
                 for (int poch = out_channels_offset; poch < out_channels_offset + out_channels_thread; poch += pochs) {
                     for (int krow = 0; krow < kernel_dim; krow += krows) {
                         const int orow_floored = orow < 0 ? 0 : orow;
