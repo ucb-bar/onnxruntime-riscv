@@ -136,3 +136,6 @@ You can also run other models by creating the appropriate runner script that cal
 ## Running via Qemu
 
 See the comment in https://github.com/pranav-prakash/onnxruntime-riscv/issues/20#issuecomment-691397186 for info on how to build userspace qemu for riscv. Binaries can be run as with spike pk, but just note that you will have to use `-x 0` since qemu does not support the Gemmini extension.
+
+## Multithreading Extensions
+To multithread convolution, set the `NTHREADS` variable in `onnxruntime-riscv/onnxruntime/core/mlas/lib/systolic/systolic_include.h` to the desired number of threads and recompile/rebuild. Multithreading is done across output channels. 
