@@ -22,10 +22,15 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
         ("k,kernel", "Use custom kernels",  cxxopts::value<bool>()->default_value("false"), "[output path]")
 #endif
         ("t,trace", "Profiling trace output file", cxxopts::value<std::string>(), "[output path]")
+        ("v,velocity", "Drone velocity", cxxopts::value<float>()->default_value("1.0"), "[drone velocity]")
+        ("w,wall", "Depth of the wall to use the small network", cxxopts::value<float>()->default_value("1.0"), "[wall depth threshold]")
+        ("e,inter", "Inter Op Threads", cxxopts::value<int>()->default_value("1"), "[inter op threads]")
+        ("a,intra", "Intra Op Threads", cxxopts::value<int>()->default_value("1"), "[intra op threads]")
         ("O,optimization", "Optimization level. NHWC transformation is applied at -O 99.",
                             cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")
         ("d,debug", "Debug level", cxxopts::value<int>()->default_value("2"), "[0-4, with 0 being most verbose]")
-        ("s,save_model", "Save transformed model to path", cxxopts::value<std::string>(), "[path]");
+        ("s,save_model", "Save transformed model to path", cxxopts::value<std::string>(), "[path]")
+        ("b,backupmodel", "ONNX model path", cxxopts::value<std::string>(), "[path]");
 
     options.add_options("Info")
         ("h,help", "Print help");

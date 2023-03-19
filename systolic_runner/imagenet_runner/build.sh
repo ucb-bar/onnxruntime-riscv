@@ -50,4 +50,8 @@ rm -f ort_test
 # 16 cores is surely overkill for 2 jobs
 make -s -j16 ort_test root_path="${root_path}" build_path="${build_path}" extra_libs="${extra_libs}" \
                        extra_defs="${extra_defs}" training_libs="${training_libs}" extra_providers="${extra_providers}"
+make -s -j16 drone_test root_path="${root_path}" build_path="${build_path}" extra_libs="${extra_libs}" \
+                       extra_defs="${extra_defs}" training_libs="${training_libs}" extra_providers="${extra_providers}"
+make -s -j16 drone_dynamic_test root_path="${root_path}" build_path="${build_path}" extra_libs="${extra_libs}" \
+                       extra_defs="${extra_defs}" training_libs="${training_libs}" extra_providers="${extra_providers}"
 echo "Please ignore any dlopen warning above. Glibc hates being statically linked."
