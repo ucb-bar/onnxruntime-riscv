@@ -26,6 +26,7 @@ cxxopts::ParseResult parse(int argc, char* argv[]) {
         ("w,wall", "Depth of the wall to use the small network", cxxopts::value<float>()->default_value("1.0"), "[wall depth threshold]")
         ("e,inter", "Inter Op Threads", cxxopts::value<int>()->default_value("1"), "[inter op threads]")
         ("a,intra", "Intra Op Threads", cxxopts::value<int>()->default_value("1"), "[intra op threads]")
+        ("l,sleep", "Intra Op Threads", cxxopts::value<int>()->default_value("0"), "[time to sleep during takeoff]")
         ("O,optimization", "Optimization level. NHWC transformation is applied at -O 99.",
                             cxxopts::value<int>()->default_value("1"), "[0 (none) / 1 (basic) / 2 (extended) / 99 (all)]")
         ("d,debug", "Debug level", cxxopts::value<int>()->default_value("2"), "[0-4, with 0 being most verbose]")

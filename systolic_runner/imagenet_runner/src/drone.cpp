@@ -432,7 +432,10 @@ int main(int argc, char* argv[]) {
   printf("Setting target velocity to %f\n", cmd["velocity"].as<float>());
   send_arm();
   send_takeoff();
-  // sleep(1);
+  int sleep_dur = cmd["sleep"].as<int>();
+  if (sleep > 0) {
+    sleep(sleep_dur);
+  } 
   printf("Loading image\n");
 
   int dimX, dimY, numChannels;
